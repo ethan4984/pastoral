@@ -49,3 +49,11 @@ char *strncpy(char *dest, const char *src, size_t n) {
 
 	return dest;
 }
+
+void memcpy(void *dest, void *src, size_t n) {
+	memcpy8(dest, src, n);
+}
+
+void memset(void *src, int data, size_t n) {
+	memset8(src, data, n);
+}

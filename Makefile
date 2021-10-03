@@ -54,3 +54,8 @@ $(DISK_IMAGE): limine kernel
 clean:
 	rm -f $(DISK_IMAGE) serial.log qemu.log
 	$(MAKE) -C kernel clean 
+
+.PHONY: distclean
+distclean: clean
+	rm -rf limine
+	$(MAKE) -C kernel distclean

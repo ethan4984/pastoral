@@ -61,3 +61,5 @@ int strcmp(const char *str0, const char *str1);
 int strncmp(const char *str0, const char *str1, size_t n);
 char *strcpy(char *dest, const char *src);
 char *strncpy(char *dest, const char *src, size_t n);
+void memcpy(void *dest, void *src, size_t n);
+void memset(void *src, int data, size_t n);

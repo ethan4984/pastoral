@@ -15,6 +15,7 @@ static struct stivale_header stivale_hdr = {
 };
 
 void main(struct stivale_struct *stivale_struct) {
+	print("Pastoral unleashes the real power of the cpu\n");
 	for(;;)
 		asm ("hlt");
 }
