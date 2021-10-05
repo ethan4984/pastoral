@@ -14,7 +14,7 @@ static struct stivale_header stivale_hdr = {
     .entry_point = 0
 };
 
-void main(struct stivale_struct *stivale_struct) {
+void pastoral_entry(struct stivale_struct *stivale_struct) {
 	print("Pastoral unleashes the real power of the cpu\n");
 	for(;;)
 		asm ("hlt");

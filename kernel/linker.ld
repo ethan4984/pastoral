@@ -3,7 +3,7 @@ OUTPUT_FORMAT(elf64-x86-64)
 OUTPUT_ARCH(i386:x86-64)
 
 /* We want the symbol _start to be our entry point */
-ENTRY(main)
+ENTRY(pastoral_entry)
 
 /* Define the program headers we want */
 PHDRS
