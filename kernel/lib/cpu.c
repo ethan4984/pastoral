@@ -1,6 +1,6 @@
 #include <cpu.h>
 
-uint64_t high_vma = 0xffff800000000000;
+uint64_t HIGH_VMA = 0xffff800000000000;
 
 struct cpuid_state cpuid(size_t leaf, size_t subleaf) {
 	struct cpuid_state ret = { .leaf = leaf, subleaf = subleaf };

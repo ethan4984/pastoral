@@ -6,7 +6,7 @@
 #define PAGE_SIZE 0x1000ull
 #define KERNEL_HIGH_VMA 0xffffffff80000000
 
-extern uint64_t high_vma;
+extern uint64_t HIGH_VMA;
 
 #define MSR_EFER 0xc0000080
 #define MSR_STAR 0xc0000081
