@@ -6,9 +6,9 @@
 #define DIV_ROUNDUP(a, b) (((a) + ((b) - 1)) / (b))
 #define ALIGN_UP(a, b) (DIV_ROUNDUP(a, b) * b)
 #define ABS(a, b) ((a) > (b) ? (a) - (b) : (b) - (a))
-#define BIT_SET(a, b) ((a)[(b) * 8] |= (1 << ((b) % 8)))
-#define BIT_CLEAR(a, b) ((a)[(b) * 8] &= ~(1 << ((b) % 8)))
-#define BIT_TEST(a, b) (((a)[(b) * 8] >> ((b) % 8)) & 0x1)
+#define BIT_SET(a, b) ((a)[(b) / 8] |= (1 << ((b) % 8)))
+#define BIT_CLEAR(a, b) ((a)[(b) / 8] &= ~(1 << ((b) % 8)))
+#define BIT_TEST(a, b) (((a)[(b) / 8] >> ((b) % 8)) & 0x1)
 
 static inline void memset8(uint8_t *src, uint8_t data, size_t n) {
 	for(size_t i = 0; i < n; i++) {

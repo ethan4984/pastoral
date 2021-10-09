@@ -28,7 +28,9 @@ INTERNALCFLAGS :=        \
 	-mno-sse             \
 	-mno-sse2            \
 	-mno-red-zone        \
-	-MMD
+	-MMD				 \
+	-Wno-sign-compare	 \
+	-O0
 
 CFILES      := $(shell find ./ -type f -name '*.c')
 OBJ         := $(CFILES:.c=.o)

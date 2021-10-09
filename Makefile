@@ -4,7 +4,6 @@ DISK_IMAGE = pastoral.img
 all: $(DISK_IMAGE)
 
 QEMUFLAGS = -m 4G \
-			-serial stdio \
 			-smp 4 \
 			-drive id=disk,file=pastoral.img,if=none \
 			-device ahci,id=ahci \
@@ -12,7 +11,7 @@ QEMUFLAGS = -m 4G \
 
 .PHONY: run
 run: $(DISK_IMAGE)
-	qemu-system-x86_64 $(QEMUFLAGS) -enable-kvm
+	qemu-system-x86_64 $(QEMUFLAGS) -enable-kvm -serial stdio
 
 .PHONY: console
 console: $(DISK_IMAGE)

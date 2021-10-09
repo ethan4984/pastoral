@@ -1,6 +1,7 @@
 #include <stivale.h>
 #include <cpu.h>
 #include <debug.h>
+#include <mm/pmm.h>
 
 static uint8_t stack[8192];
 
@@ -16,6 +17,9 @@ static struct stivale_header stivale_hdr = {
 
 void pastoral_entry(struct stivale_struct *stivale_struct) {
 	print("Pastoral unleashes the real power of the cpu\n");
+
+	pmm_init(stivale_struct);
+
 	for(;;)
 		asm ("hlt");
 }
