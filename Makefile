@@ -42,12 +42,12 @@ $(DISK_IMAGE): limine kernel
 	sudo mkdir disk_image/boot
 	sudo cp kernel/pastoral.elf disk_image/boot/
 	sudo cp kernel/limine.cfg disk_image/
-	sudo cp tools/limine/bin/limine.sys disk_image/boot/
-#	sync
+	sudo cp limine/limine.sys disk_image/boot/
+	sync
 	sudo umount disk_image/
 	sudo losetup -d `cat loopback_dev`
 	rm -rf disk_image loopback_dev
-	tools/limine/limine-install/limine-install pastoral.img 
+	limine/limine-install-linux-x86_64 pastoral.img 
 
 .PHONY: clean
 clean:

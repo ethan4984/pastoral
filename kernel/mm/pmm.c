@@ -97,6 +97,16 @@ void pmm_init(struct stivale_struct *stivale_struct) {
 			size_t entry_cnt = DIV_ROUNDUP(mmap[i].length, PAGE_SIZE);
 			buffer_size += sizeof(struct pmm_module) * 2 + DIV_ROUNDUP(entry_cnt, 8);
 		}
+
+		if(mmap[i].base < 0x100000) {
+			if(0x100000 - mmap[i].base > mmap[i].length) {
+				mmap[i].length = 0;
+				continue;
+			}
+
+			mmap[i].base += 0x100000 - mmap[i].base;
+			mmap[i].length -= 0x100000 - mmap[i].base;
+		}
 	}
 
 	for(size_t i = 0; i < stivale_struct->memory_map_entries; i++) { // find a memory range that the buffer can fit inside and allocate it

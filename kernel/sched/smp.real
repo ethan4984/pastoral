@@ -14,13 +14,15 @@ init_CS:
 	mov ss, ax
 	mov gs, ax
 
+	lgdt [GDT]
+
 	mov eax, [0x1000 + 8]
 	mov cr3, eax
 
 	mov eax, cr4
 
 	test dword [0x1000 + 40], (1 << 0)
-	jz .no_la57
+	jmp .no_la57
 
 	or eax, (1 << 12)
 
@@ -35,8 +37,6 @@ init_CS:
 
 	mov eax, 0x80000011
 	mov cr0, eax
-
-	lgdt [GDT]
 
 	mov dword [.farjmp], code64 + 0x80000
 	o32 jmp far [.farjmp]
