@@ -22,7 +22,7 @@ init_CS:
 	mov eax, cr4
 
 	test dword [0x1000 + 40], (1 << 0)
-	jmp .no_la57
+	jz .no_la57
 
 	or eax, (1 << 12)
 

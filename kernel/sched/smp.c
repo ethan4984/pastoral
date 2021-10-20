@@ -90,7 +90,7 @@ void boot_aps() {
 		xapic_write(XAPIC_ICR_OFF, 0x600 | 0x80); // MT = 0b11 V=0x80 for 0x80000
 	}
 
-	while((volatile char)core_init_lock);
+	spinlock(&core_init_lock);
 
 	kernel_mappings.unmap_page(&kernel_mappings, 0);
 }

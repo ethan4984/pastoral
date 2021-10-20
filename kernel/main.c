@@ -9,6 +9,7 @@
 #include <int/idt.h>
 #include <sched/smp.h>
 #include <acpi/rsdp.h>
+#include <drivers/tty.h>
 
 static uint8_t stack[8192];
 
@@ -38,6 +39,9 @@ void pastoral_entry(struct stivale_struct *stivale_struct) {
 	slab_cache_create(NULL, 1024);
 	slab_cache_create(NULL, 2048);
 	slab_cache_create(NULL, 4096);
+	slab_cache_create(NULL, 8192);
+
+	tty_init(stivale_struct);
 
 	gdt_init();
 	idt_init();
