@@ -10,6 +10,17 @@
 #define BIT_CLEAR(a, b) ((a)[(b) / 8] &= ~(1 << ((b) % 8)))
 #define BIT_TEST(a, b) (((a)[(b) / 8] >> ((b) % 8)) & 0x1)
 
+static inline size_t pow2_roundup(size_t a) {
+	a--;
+	a |= a >> 1;
+	a |= a >> 2;
+	a |= a >> 4;
+	a |= a >> 8;
+	a |= a >> 16;
+	a++;
+	return a;
+}
+
 static inline void memset8(uint8_t *src, uint8_t data, size_t n) {
 	for(size_t i = 0; i < n; i++) {
 		*src++ = data;

@@ -11,11 +11,11 @@ QEMUFLAGS = -m 4G \
 
 .PHONY: run
 run: $(DISK_IMAGE)
-	qemu-system-x86_64 $(QEMUFLAGS) -enable-kvm -serial stdio
+	qemu-system-x86_64 $(QEMUFLAGS) -enable-kvm -serial stdio 
 
 .PHONY: console
 console: $(DISK_IMAGE)
-	qemu-system-x86_64 $(QEMUFLAGS) -no-reboot -monitor stdio -d int -D qemu.log -no-shutdown -enable-kvm
+	qemu-system-x86_64 $(QEMUFLAGS) -no-reboot -monitor stdio -d int -D qemu.log -no-shutdown 
 
 .PHONY: int
 int: $(DISK_IMAGE)
@@ -42,12 +42,12 @@ $(DISK_IMAGE): limine kernel
 	sudo mkdir disk_image/boot
 	sudo cp kernel/pastoral.elf disk_image/boot/
 	sudo cp kernel/limine.cfg disk_image/
-	sudo cp limine/limine.sys disk_image/boot/
-	sync
+	sudo cp tools/limine/bin/limine.sys disk_image/boot/
+#	sync
 	sudo umount disk_image/
 	sudo losetup -d `cat loopback_dev`
 	rm -rf disk_image loopback_dev
-	limine/limine-install-linux-x86_64 pastoral.img 
+	tools/limine/limine-install/limine-install pastoral.img 
 
 .PHONY: clean
 clean:

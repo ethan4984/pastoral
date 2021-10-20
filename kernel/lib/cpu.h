@@ -2,12 +2,14 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <sched/smp.h>
 
 #define PAGE_SIZE 0x1000ull
 #define KERNEL_HIGH_VMA 0xffffffff80000000
 
 extern uint64_t HIGH_VMA;
 
+#define MSR_LAPIC_BASE 0x1b
 #define MSR_EFER 0xc0000080
 #define MSR_STAR 0xc0000081
 #define MSR_LSTAR 0xc0000082
@@ -23,6 +25,10 @@ extern uint64_t HIGH_VMA;
 #define COM2 0x2f8
 #define COM3 0x3e8
 #define COM4 0x2e8
+
+#define CORE_LOCAL ({ \
+	(struct cpu_local*)(rdmsr(MSR_GS_BASE)); \
+})
 
 struct registers {
 	uint64_t r15;
@@ -112,8 +118,8 @@ static inline void set_user_gs(uintptr_t addr) {
 	wrmsr(KERNEL_GS_BASE, addr);
 }
 
-static inline void invplg(uint64_t vaddr) {
-	asm volatile ("invplg %0" :: "m"(vaddr) : "memory");
+static inline void invlpg(uint64_t vaddr) {
+	asm volatile ("invlpg %0" :: "m"(vaddr) : "memory");
 }
 
 static inline void spinlock(void *lock) {
