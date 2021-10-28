@@ -1,0 +1,17 @@
+#include <fs/vfs.h>
+#include <vector.h>
+
+static struct vfs_cluster *root_cluster;
+
+struct vfs_node *vfs_create_node(struct vfs_node *parent, struct asset *asset, const char *name) {
+	struct vfs_node *new_node = alloc(sizeof(struct vfs_node));
+
+	*new_node = (struct vfs_node) {
+		.name = name,
+		.asset = asset
+	};
+
+	parent->next = new_node;
+
+	return new_node;
+}
