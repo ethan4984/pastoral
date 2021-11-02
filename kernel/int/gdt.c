@@ -48,8 +48,8 @@ struct gdt {
 	struct segment_descriptor null;
 	struct segment_descriptor kernel_code64;
 	struct segment_descriptor kernel_data64;
-	struct segment_descriptor user_code64;
 	struct segment_descriptor user_data64;
+	struct segment_descriptor user_code64;
 	struct tss_descriptor tss_descriptor;
 } __attribute__((packed));
 

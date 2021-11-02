@@ -2,6 +2,8 @@
 
 uint64_t HIGH_VMA = 0xffff800000000000;
 
+extern void syscall_main();
+
 struct cpuid_state cpuid(size_t leaf, size_t subleaf) {
 	struct cpuid_state ret = { .leaf = leaf, subleaf = subleaf };
 
@@ -19,6 +21,9 @@ struct cpuid_state cpuid(size_t leaf, size_t subleaf) {
 
 void init_cpu_features() {
 	wrmsr(MSR_EFER, rdmsr(MSR_EFER) | 1); // set SCE
+	wrmsr(MSR_STAR, 0x13ull << 48 | 0x8ull << 32);
+	wrmsr(MSR_LSTAR, (uintptr_t)syscall_main);
+	wrmsr(MSR_SFMASK, ~(uint32_t)2);
 
 	uint64_t cr0;
 	asm volatile ("mov %%cr0, %0" : "=r"(cr0));

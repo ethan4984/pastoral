@@ -201,13 +201,13 @@ void vmm_init(struct stivale_struct *stivale_struct) {
 
 	size_t phys = 0;
 	for(size_t i = 0; i < 0x400; i++) {
-		kernel_mappings.map_page(&kernel_mappings, phys + KERNEL_HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G);
+		kernel_mappings.map_page(&kernel_mappings, phys + KERNEL_HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G | VMM_FLAGS_US);
 		phys += 0x200000;
 	}
 
 	phys = 0;
 	for(size_t i = 0; i < 0x400; i++) {
-		kernel_mappings.map_page(&kernel_mappings, phys + HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G);
+		kernel_mappings.map_page(&kernel_mappings, phys + HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G | VMM_FLAGS_US);
 		phys += 0x200000;
 	}
 
@@ -216,7 +216,7 @@ void vmm_init(struct stivale_struct *stivale_struct) {
 	for(size_t i = 0; i < stivale_struct->memory_map_entries; i++) {
 		phys = (mmap[i].base / 0x200000) * 0x200000;
 		for(size_t j = 0; j < DIV_ROUNDUP(mmap[i].length, 0x200000); j++) {
-			kernel_mappings.map_page(&kernel_mappings, phys + HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G);
+			kernel_mappings.map_page(&kernel_mappings, phys + HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G | VMM_FLAGS_US);
 			phys += 0x200000;
 		}
 	}
