@@ -130,5 +130,13 @@ static inline void spinrelease(void *lock) {
 	__atomic_clear(lock, __ATOMIC_RELEASE);
 }
 
+static inline void set_errno(uint64_t code) {
+	CORE_LOCAL->errno = code;	
+}
+
+static inline uint64_t get_errno() {
+	return CORE_LOCAL->errno;
+}
+
 struct cpuid_state cpuid(size_t leaf, size_t subleaf);
 void init_cpu_features();

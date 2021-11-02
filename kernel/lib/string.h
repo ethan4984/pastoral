@@ -5,6 +5,7 @@
 
 #define DIV_ROUNDUP(a, b) (((a) + ((b) - 1)) / (b))
 #define ALIGN_UP(a, b) (DIV_ROUNDUP(a, b) * b)
+#define LENGTHOF(a) (sizeof(a) / sizeof(a[0]))
 #define ABS(a, b) ((a) > (b) ? (a) - (b) : (b) - (a))
 #define BIT_SET(a, b) ((a)[(b) / 8] |= (1 << ((b) % 8)))
 #define BIT_CLEAR(a, b) ((a)[(b) / 8] &= ~(1 << ((b) % 8)))
