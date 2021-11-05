@@ -1,11 +1,11 @@
 #pragma once
 
-#include <fs/vfs.h>
+#include <types.h>
 
 struct fd_handle {
-	ssize_t flags;
-	struct vfs_node *vfs_node;
+	struct asset *asset;
 	int fd_number;
+	int flags;
 	off_t position;
 };
 
