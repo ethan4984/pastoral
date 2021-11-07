@@ -3,10 +3,13 @@
 #include <cpu.h>
 #include <sched/sched.h>
 #include <errno.h>
+#include <bitmap.h>
+#include <string.h>
+#include <fs/vfs.h>
 
 static char fd_lock;
 
-struct fd_handle *translate_fd(int index) {
+struct fd_handle *fd_translate(int index) {
 	spinlock(&fd_lock);
 
 	struct sched_task *current_task = CURRENT_TASK;
@@ -26,8 +29,8 @@ struct fd_handle *translate_fd(int index) {
 	return NULL;
 }
 
-off_t lseek(int fd, off_t offset, int whence) {
-	struct fd_handle *fd_handle = translate_fd(fd);
+off_t fd_seek(int fd, off_t offset, int whence) {
+	struct fd_handle *fd_handle = fd_translate(fd);
 	if(fd_handle == NULL) {
 		set_errno(EBADF);
 		return -1;
@@ -57,8 +60,8 @@ off_t lseek(int fd, off_t offset, int whence) {
 	return fd_handle->position;
 }
 
-ssize_t write(int fd, const void *buf, size_t count) {
-	struct fd_handle *fd_handle = translate_fd(fd);
+ssize_t fd_write(int fd, const void *buf, size_t count) {
+	struct fd_handle *fd_handle = fd_translate(fd);
 	if(fd_handle == NULL) {
 		set_errno(EBADF);
 		return -1;
@@ -86,8 +89,8 @@ ssize_t write(int fd, const void *buf, size_t count) {
 	return ret;
 }
 
-ssize_t read(int fd, void *buf, size_t count) {
-	struct fd_handle *fd_handle = translate_fd(fd);
+ssize_t fd_read(int fd, void *buf, size_t count) {
+	struct fd_handle *fd_handle = fd_translate(fd);
 	if(fd_handle == NULL) {
 		set_errno(EBADF);
 		return -1;
@@ -113,4 +116,37 @@ ssize_t read(int fd, void *buf, size_t count) {
 	}
 
 	return ret;
+}
+
+int fd_open(const char *path, int flags) {
+	if(strlen(path) > MAX_PATH_LENGTH) {
+		set_errno(ENAMETOOLONG);
+		return -1;
+	}
+
+	struct vfs_node *vfs_node = vfs_search_absolute(path, NULL);
+	if(vfs_node == NULL) {
+		set_errno(ENOENT);
+		return -1;
+	}
+
+	if(flags & O_CREAT && vfs_node == NULL) {
+		// TODO create
+	} else if(vfs_node == NULL) {
+		set_errno(ENOENT);
+		return -1;
+	}
+
+	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
+
+	*new_handle = (struct fd_handle) {
+		.asset = NULL,
+		.fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap),
+		.flags = flags,
+		.position = 0
+	};
+
+	VECTOR_PUSH(CURRENT_TASK->fd_list, new_handle);
+
+	return new_handle->fd_number;
 }

@@ -14,6 +14,10 @@ struct vfs_node *vfs_create_node(struct vfs_node *parent, struct asset *asset, c
 		parent = &vfs_root_node;
 	}
 
+	if(asset == NULL) {
+		asset = parent->asset;
+	}
+
 	*new_node = (struct vfs_node) {
 		.name = name,
 		.asset = asset
@@ -55,8 +59,9 @@ struct vfs_node *vfs_search_absolute(const char *src, struct vfs_node *node) {
 }
 
 const char *vfs_absolute_path(struct vfs_node *node) {
-	if(node == NULL)
+	if(node == NULL) {
 		return NULL;
+	}
 
 	VECTOR(struct vfs_node*) node_list = { 0 };
 
