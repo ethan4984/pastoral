@@ -30,7 +30,7 @@ INTERNALCFLAGS :=		\
 	-mno-red-zone		\
 	-MMD				 \
 	-Wno-sign-compare	 \
-	-O2
+	-O0
 
 CFILES	  := $(shell find ./ -type f -name '*.c')
 ASMFILES	:= $(shell find ./ -type f -name '*.asm')

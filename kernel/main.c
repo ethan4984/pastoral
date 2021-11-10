@@ -10,6 +10,7 @@
 #include <sched/smp.h>
 #include <acpi/rsdp.h>
 #include <drivers/tty.h>
+#include <drivers/hpet.h>
 
 static uint8_t stack[8192];
 
@@ -59,6 +60,8 @@ void pastoral_entry(struct stivale_struct *stivale_struct) {
 	apic_init();
 
 	boot_aps();
+
+	hpet_init();
 
 	for(;;)
 		asm ("hlt");

@@ -41,7 +41,7 @@ uint64_t ioapic_read_redirection_table(struct ioapic *ioapic, uint8_t redirectio
 }
 
 void apic_init() {
-	madt_hdr = find_sdt("APIC");
+	madt_hdr = acpi_find_sdt("APIC");
 
 	if(madt_hdr == NULL) {
 		print("apic: unable to locate APIC SDT\n");

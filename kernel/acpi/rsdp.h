@@ -41,4 +41,4 @@ extern struct rsdp *rsdp;
 extern struct rsdt *rsdt;
 extern struct xsdt *xsdt;
 
-void *find_sdt(const char *signature);
+void *acpi_find_sdt(const char *signature);

@@ -7,7 +7,7 @@ struct rsdp *rsdp;
 struct rsdt *rsdt;
 struct xsdt *xsdt;
 
-void *find_sdt(const char *signature) {
+void *acpi_find_sdt(const char *signature) {
 	if(xsdt != NULL) {
 		for(size_t i = 0; i < (xsdt->acpi_hdr.length - sizeof(struct acpi_hdr)); i++) {
 			struct acpi_hdr *acpi_hdr = (struct acpi_hdr*)(xsdt->acpi_ptr[i] + HIGH_VMA);
