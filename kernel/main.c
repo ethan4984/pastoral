@@ -18,7 +18,7 @@ __attribute__((section(".stivalehdr"), used))
 static struct stivale_header stivale_hdr = {
 	.stack = (uintptr_t)stack + sizeof(stack),
 	.flags = (1 << 0) | (1 << 1) | (1 << 3),
-	.framebuffer_width  = 1024,
+	.framebuffer_width	= 1024,
 	.framebuffer_height = 768,
 	.framebuffer_bpp = 32,
 	.entry_point = 0
@@ -57,11 +57,14 @@ void pastoral_entry(struct stivale_struct *stivale_struct) {
 		print("acpi: rsdt found at %x\n", (uintptr_t)rsdt);
 	}
 
-	apic_init();
-
-	boot_aps();
-
 	hpet_init();
+
+	apic_init();
+	boot_aps();
+	
+	apic_timer_init(100);
+
+	asm ("sti");
 
 	for(;;)
 		asm ("hlt");

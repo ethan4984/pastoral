@@ -1,6 +1,7 @@
 #include <int/apic.h>
 #include <debug.h>
 #include <mm/vmm.h>
+#include <drivers/hpet.h>
 #include <cpu.h>
 
 typeof(madt_ent0_list) madt_ent0_list;
@@ -38,6 +39,19 @@ void ioapic_write_redirection_table(struct ioapic *ioapic, uint32_t redirection_
 uint64_t ioapic_read_redirection_table(struct ioapic *ioapic, uint8_t redirection_entry) {
 	uint64_t data = ioapic_read(ioapic, redirection_entry + 0x10) | ((uint64_t)ioapic_read(ioapic, redirection_entry + 0x10 + 1) << 32);
 	return data;
+}
+
+void apic_timer_init(uint32_t ms) {
+	xapic_write(XAPIC_TIMER_DIVIDE_CONF_OFF, 0x3); // divide by 16
+	xapic_write(XAPIC_TIMER_INITAL_COUNT_OFF, ~0);
+
+	sleep(ms);
+
+	uint32_t ticks = ~0 - xapic_read(XAPIC_TIMER_CURRENT_COUNT_OFF);
+
+	xapic_write(XAPIC_TIMER_LVT_OFF, 0x20 | (1 << 17));
+	xapic_write(XAPIC_TIMER_DIVIDE_CONF_OFF, 0x3); // divide by 16
+	xapic_write(XAPIC_TIMER_INITAL_COUNT_OFF, ticks);
 }
 
 void apic_init() {

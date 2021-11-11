@@ -206,7 +206,7 @@ void vmm_init(struct stivale_struct *stivale_struct) {
 	}
 
 	phys = 0;
-	for(size_t i = 0; i < 0x400; i++) {
+	for(size_t i = 0; i < 0x800; i++) {
 		kernel_mappings.map_page(&kernel_mappings, phys + HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G | VMM_FLAGS_US);
 		phys += 0x200000;
 	}

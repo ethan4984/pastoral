@@ -622,7 +622,7 @@ void idt_init() {
 	set_idt_descriptor(0x8, 0, 0x8e, (uintptr_t)isr254, 254);
 	set_idt_descriptor(0x8, 0, 0x8e, (uintptr_t)isr255, 255);
 
-	struct idtr idtr = {
+	volatile struct idtr idtr = {
 		.limit = sizeof(idt) - 1,
 		.offset = (uintptr_t)idt
 	};
