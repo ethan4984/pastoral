@@ -29,7 +29,7 @@ static int thermal_lvt_init() {
 
 	uint32_t thermal_sensor_interrupt = xapic_read(XAPIC_THERMAL_LVT_OFF);
 	thermal_sensor_interrupt |= vec;
-	thermal_sensor_interrupt &= (1 << 16);
+	thermal_sensor_interrupt &= ~(1 << 16);
 	xapic_write(XAPIC_THERMAL_LVT_OFF, thermal_sensor_interrupt);
 
 	return 0;
