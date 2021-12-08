@@ -15,6 +15,11 @@ static void ehfi_notification(struct registers*, void*) {
 
 	if(therm_status_package & (1 << 26)) {
 		print("EHFI structure has been updated\n");
+		for(size_t i = 0; i < logical_processor_cnt; i++) {
+			print("proc %d: performance capability %d energy efficency capability %d\n",
+			ehfi_structure->entries[i].perf_capability,
+			ehfi_structure->entries[i].energy_capability);
+		}
 	}
 
 	therm_status_package &= ~(1 << 26);
