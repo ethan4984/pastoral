@@ -52,12 +52,14 @@ _ret: \
 })
 
 #define VECTOR_REMOVE_BY_VALUE(THIS, VALUE) ({ \
-	for(size_t _j = 0; _j < (THIS).element_cnt; _j++) { \
+	size_t _j = 0; \
+	for(; _j < (THIS).element_cnt; _j++) { \
 		if((THIS).elements[_j] == VALUE) { \
 			VECTOR_REMOVE_BY_INDEX(THIS, _j); \
 			break; \
 		} \
 	} \
+	_j; \
 })
 
 #define VECTOR_DELETE(THIS) \

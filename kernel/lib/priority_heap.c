@@ -63,8 +63,8 @@ static void max_heapify(struct priority_heap *heap, int index) {
 }
 
 void priority_heap_delete(struct priority_heap *heap, struct priority_heap_node *node) {
-	VECTOR_REMOVE_BY_VALUE(heap->nodes, node);
-	max_heapify(heap, heap->nodes.element_cnt);
+	size_t index = VECTOR_REMOVE_BY_VALUE(heap->nodes, node) + 1;
+	max_heapify(heap, index);
 }
 
 void priority_heap_insert(struct priority_heap *heap, struct priority_heap_node *node) {
