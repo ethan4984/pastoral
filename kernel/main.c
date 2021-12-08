@@ -8,6 +8,7 @@
 #include <int/gdt.h>
 #include <int/idt.h>
 #include <sched/smp.h>
+#include <sched/ehfi.h>
 #include <acpi/rsdp.h>
 #include <drivers/tty.h>
 #include <drivers/hpet.h>
@@ -61,6 +62,8 @@ void pastoral_entry(struct stivale_struct *stivale_struct) {
 
 	apic_init();
 	boot_aps();
+
+	ehfi_init();
 	
 	apic_timer_init(100);
 

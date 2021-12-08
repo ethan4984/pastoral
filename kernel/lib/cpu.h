@@ -21,6 +21,12 @@ extern uint64_t HIGH_VMA;
 #define MSR_GS_BASE 0xc0000101
 #define KERNEL_GS_BASE 0xc0000102
 
+#define MSR_HW_FEEDBACK_PTR 0x17d0
+#define MSR_HW_FEEDBACK_CONFIG 0x17d1
+
+#define MSR_PACKAGE_THERM_STATUS 0x1b1
+#define MSR_PACKAGE_THERM_INTERRUPT 0x1b2
+
 #define COM1 0x3f8
 #define COM2 0x2f8
 #define COM3 0x3e8

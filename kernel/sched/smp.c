@@ -11,6 +11,8 @@
 
 static char core_init_lock;
 
+size_t logical_processor_cnt;
+
 static void core_bootstrap(struct cpu_local *cpu_local) {
 	print("initalising core: apic_id %x\n", xapic_read(XAPIC_ID_REG_OFF) >> 24);
 
@@ -48,7 +50,9 @@ void boot_aps() {
 	kernel_mappings.map_page(&kernel_mappings, 0, 0, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS);
 	memcpy8((void*)0x80000, (void*)(uintptr_t)smp_init_begin, (uintptr_t)smp_init_end - (uintptr_t)smp_init_begin);
 
-	for(size_t i = 0; i < madt_ent0_list.element_cnt; i++) {
+	logical_processor_cnt = madt_ent0_list.element_cnt;
+
+	for(size_t i = 0; i < logical_processor_cnt; i++) {
 		struct madt_ent0 *madt0 = &madt_ent0_list.elements[i];
 
 		if(madt0->flags != 1) { // unusable

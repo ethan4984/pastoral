@@ -13,4 +13,6 @@ struct cpu_local {
 	struct page_table *page_table;
 } __attribute__((packed));
 
+extern size_t logical_processor_cnt;
+
 void boot_aps();
