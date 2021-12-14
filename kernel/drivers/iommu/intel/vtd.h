@@ -43,8 +43,19 @@ struct dmar {
 	struct dmar_unit units[];
 } __attribute__((packed));
 
-struct remapping_unit {
+struct rtt {
+	uint64_t ctp;
+	uint64_t reserved;
+};
+
+struct device_scope {
+	struct pci_device *device;
+	struct dmar_scope *scope;
+};
+
+struct remapping_module {
 	struct dmar_unit *unit;
+	VECTOR(struct device_scope*) devices;
 };
 
 int vtd_init();

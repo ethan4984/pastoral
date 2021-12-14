@@ -69,4 +69,6 @@ inline void pci_write(uint32_t data, uint8_t bus, uint8_t device_code, uint8_t f
 };
 
 extern VECTOR(struct pci_device*) pci_device_list;
+
 void pci_init();
+struct pci_device *pci_search_device(uint8_t bus, uint8_t dev, uint8_t func);

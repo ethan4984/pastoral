@@ -328,3 +328,15 @@ void pci_init() {
 		}
 	}
 }
+
+struct pci_device *pci_search_device(uint8_t bus, uint8_t dev, uint8_t func) {
+	for(size_t i = 0; i < pci_device_list.element_cnt; i++) {
+		struct pci_device *device = pci_device_list.elements[i];
+
+		if(device->bus == bus && device->dev == dev && device->func == func) {
+			return device;
+		}
+	}
+
+	return NULL;
+}
