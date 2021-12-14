@@ -7,7 +7,9 @@ QEMUFLAGS = -m 4G \
 			-smp 4 \
 			-drive id=disk,file=pastoral.img,if=none \
 			-device ahci,id=ahci \
-			-device ide-hd,drive=disk,bus=ahci.0
+			-device ide-hd,drive=disk,bus=ahci.0 \
+			-device intel-iommu,aw-bits=48 \
+			-machine type=q35
 
 .PHONY: run
 run: $(DISK_IMAGE)

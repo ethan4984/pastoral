@@ -12,6 +12,7 @@
 #include <acpi/rsdp.h>
 #include <drivers/tty.h>
 #include <drivers/hpet.h>
+#include <drivers/pci.h>
 #include <vmm/intel/vtd.h>
 
 static uint8_t stack[8192];
@@ -63,6 +64,8 @@ void pastoral_entry(struct stivale_struct *stivale_struct) {
 
 	apic_init();
 	boot_aps();
+
+	pci_init();
 
 	ehfi_init();
 	vtd_init();

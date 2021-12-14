@@ -1,14 +1,22 @@
 #pragma once
 
+#include <drivers/pci.h>
 #include <acpi/rsdp.h>
+#include <vector.h>
 
-#define DMAR_UNIT_TYPE 0
+#define DMAR_DRHD_TYPE 0
 #define DMAR_RMRR_TYPE 1
 #define DMAR_ATSR_TYPE 2
 #define DMAR_RHSA_TYPE 3
 #define DMAR_ANDD_TYPE 4
 
-struct device_scope {
+#define DMAR_SCOPE_PCI_ENDPOINT 0x1
+#define DMAR_SCOPE_PCI_SUB_HIERARCHY 0x2
+#define DMAR_SCOPE_IOAPIC 0x3
+#define DMAR_MSI_CAPABLE_HPET 0x4
+#define DMAR_ACPI_NAMESPACE_DEVICE 0x5
+
+struct dmar_scope {
 	uint8_t type;
 	uint8_t length;
 	uint16_t reserved;
@@ -24,7 +32,7 @@ struct dmar_unit {
 	uint8_t reserved;
 	uint16_t segment_number;
 	uint64_t register_base;
-	struct device_scope scope[];
+	struct dmar_scope scopes[];
 } __attribute__((packed));
 
 struct dmar {
@@ -34,5 +42,9 @@ struct dmar {
 	uint8_t reserved[10];
 	struct dmar_unit units[];
 } __attribute__((packed));
+
+struct remapping_unit {
+	struct dmar_unit *unit;
+};
 
 int vtd_init();

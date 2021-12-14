@@ -56,18 +56,12 @@ void print(const char *str, ...) {
 					break;
 				}
 				case 'x': {
-					serial_write('0');
-					serial_write('x');
-
 					uint64_t number = va_arg(arg, uint64_t);
 					serial_print_number(number, 16);
 
 					break;
 				}
 				case 'b': {
-					serial_write('0');
-					serial_write('b');
-
 					uint64_t number = va_arg(arg, uint64_t);
 					serial_print_number(number, 2);
 					break;
