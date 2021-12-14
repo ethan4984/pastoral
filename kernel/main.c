@@ -13,7 +13,7 @@
 #include <drivers/tty.h>
 #include <drivers/hpet.h>
 #include <drivers/pci.h>
-#include <vmm/intel/vtd.h>
+#include <drivers/iommu/intel/vtd.h>
 
 static uint8_t stack[8192];
 
