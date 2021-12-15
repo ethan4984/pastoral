@@ -2,6 +2,7 @@
 
 #include <drivers/pci.h>
 #include <acpi/rsdp.h>
+#include <bitmap.h>
 #include <vector.h>
 
 #define DMAR_DRHD_TYPE 0
@@ -44,9 +45,24 @@ struct dmar {
 } __attribute__((packed));
 
 struct rtt {
-	uint64_t ctp;
-	uint64_t reserved;
-};
+	uint64_t present : 1;
+	uint64_t reserved0 : 10;
+	uint64_t ctp : 52;
+	uint64_t reserved1 : 64;
+} __attribute__((packed));
+
+struct context_entry {
+	uint64_t present : 1;
+	uint64_t fpd : 1;
+	uint64_t translation_type : 2;
+	uint64_t reserved0 : 8;
+	uint64_t second_level_page_translation_ptr : 52;
+	uint64_t address_width : 3;
+	uint64_t ign : 4;
+	uint64_t reserved1 : 1;
+	uint64_t domain_id : 16;
+	uint64_t reserved2 : 40;
+} __attribute__((packed));
 
 struct device_scope {
 	struct pci_device *device;
@@ -56,6 +72,11 @@ struct device_scope {
 struct remapping_module {
 	struct dmar_unit *unit;
 	VECTOR(struct device_scope*) devices;
+
+	int domain_cnt;
+	int address_width;
+
+	struct bitmap domain_bitmap;
 };
 
 int vtd_init();

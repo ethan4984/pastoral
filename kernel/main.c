@@ -44,6 +44,7 @@ void pastoral_entry(struct stivale_struct *stivale_struct) {
 	slab_cache_create(NULL, 2048);
 	slab_cache_create(NULL, 4096);
 	slab_cache_create(NULL, 8192);
+	slab_cache_create(NULL, 16384);
 
 	tty_init(stivale_struct);
 

@@ -111,6 +111,43 @@ int vtd_init() {
 		drhd_set_global_config(module, 30, true); // set root table pointer
 
 		print("drhd: root table enabled\n");
+
+		uint64_t cap_reg = UNIT_READ64(module, 0x8);
+		for(size_t i = 0; i < 5; i++) {
+			if((cap_reg >> 8) & (1 << i)) {
+				print("drhd: %d level paging supported\n", i + 2);
+			}
+		}
+
+		module->domain_cnt = pow(2, 2 * (cap_reg & 0x7) + 4);
+		bitmap_init(&module->domain_bitmap, false, module->domain_cnt);
+
+		if(cap_reg & (1 << 7)) {
+			bitmap_alloc(&module->domain_bitmap);				
+		}
+
+		for(size_t i = 0; i < module->devices.element_cnt; i++) {
+			struct device_scope *scope = module->devices.elements[i];
+			struct pci_device *device = scope->device;
+
+			print("drhd: device: %x:%x:%x\n", device->bus, device->dev, device->func);
+
+			int context_index = device->dev * 8 + device->func;
+
+			struct rtt *root_entry = &root_table[device->bus];
+			struct context_entry *context_table = (struct context_entry*)(pmm_alloc(DIV_ROUNDUP(sizeof(struct context_entry) * 256, PAGE_SIZE), 1) + HIGH_VMA);
+			struct context_entry *context_entry = &context_table[context_index];
+
+			root_entry->ctp = (uintptr_t)context_table - HIGH_VMA;
+			root_entry->present = 1;
+
+			context_entry->domain_id = bitmap_alloc(&module->domain_bitmap);
+			context_entry->address_width = 0b10; // 4 level paging
+			context_entry->translation_type = 0b00;
+			context_entry->present = 1;
+
+			print("drhd: allocated domain %d\n", context_entry->domain_id);
+		}
 	}
 
 	return 0;
