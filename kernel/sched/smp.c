@@ -85,6 +85,11 @@ void boot_aps() {
 		parameters[4] = (uintptr_t)&idtr;
 		parameters[5] = 0; // la57
 
+		struct cpuid_state cpuid_state = cpuid(7, 0);
+		if(cpuid_state.rcx & (1 << 16)) {
+			parameters[5] = 1;
+		}
+
 		uint8_t apic_id = madt0->apic_id;
 
 		xapic_write(XAPIC_ICR_OFF + 0x10, (apic_id << 24));

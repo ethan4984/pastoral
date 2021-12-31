@@ -41,4 +41,9 @@ void init_cpu_features() {
 			(1 << 10); // Enables unmasked SSE exceptions
 											
 	asm volatile ("mov %0, %%cr4" :: "r"(cr4));
+
+	struct cpuid_state cpuid_state = cpuid(7, 0);
+	if(cpuid_state.rcx & (1 << 16)) {
+		HIGH_VMA = 0xff00000000000000;
+	}
 }
