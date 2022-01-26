@@ -13,7 +13,9 @@
 #include <drivers/tty.h>
 #include <drivers/hpet.h>
 #include <drivers/pci.h>
+#include <drivers/pit.h>
 #include <drivers/iommu/intel/vtd.h>
+#include <fs/vfs.h>
 
 static uint8_t stack[8192];
 
@@ -61,16 +63,43 @@ void pastoral_entry(struct stivale_struct *stivale_struct) {
 		print("acpi: rsdt found at %x\n", (uintptr_t)rsdt);
 	}
 
-	hpet_init();
+	vfs_init();
 
+	struct vfs_node *node0 = vfs_create_node(NULL, vfs_default_asset(S_IFDIR), NULL, "lol");
+	struct vfs_node *node1 = vfs_create_node(NULL, vfs_default_asset(S_IFDIR), NULL, "bruh");
+	struct vfs_node *node2 = vfs_create_node(NULL, vfs_default_asset(S_IFDIR), NULL, "what");
+	struct vfs_node *node3 = vfs_create_node(node2, vfs_default_asset(S_IFREG), NULL, "file");
+	struct vfs_node *node4 = vfs_create_node(node2, vfs_default_asset(S_IFREG), NULL, "file1");
+	struct vfs_node *node5 = vfs_create_node_deep(NULL, vfs_default_asset(S_IFREG), NULL, "/what/lol/ok/kill");
+
+	const char *node0_path = vfs_absolute_path(node0);
+	const char *node1_path = vfs_absolute_path(node1);
+	const char *node2_path = vfs_absolute_path(node2);
+	const char *node3_path = vfs_absolute_path(node3);
+	const char *node4_path = vfs_absolute_path(node4);
+	const char *node5_path = vfs_absolute_path(node5);
+
+	print("%x: %s\n", (uintptr_t)node0, node0_path); 
+	print("%x: %s\n", (uintptr_t)node1, node1_path); 
+	print("%x: %s\n", (uintptr_t)node2, node2_path); 
+	print("%x: %s\n", (uintptr_t)node3, node3_path); 
+	print("%x: %s\n", (uintptr_t)node4, node4_path); 
+	print("%x: %s\n", (uintptr_t)node5, node5_path); 
+
+	struct vfs_node *node6 = vfs_search_absolute(NULL, "/what/lol/ok/kill");
+
+	print("found this %x\n", (uintptr_t)node6);
+
+	for(;;);
+
+	hpet_init();
 	apic_init();
 	boot_aps();
-
 	pci_init();
-
 	ehfi_init();
 	vtd_init();
-	
+	pit_init(stivale_struct);
+
 	apic_timer_init(100);
 
 	asm ("sti");

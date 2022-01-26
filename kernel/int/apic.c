@@ -54,6 +54,30 @@ void apic_timer_init(uint32_t ms) {
 	xapic_write(XAPIC_TIMER_INITAL_COUNT_OFF, ticks);
 }
 
+int ioapic_set_irq_redirection(uint32_t lapic_id, uint8_t vector, uint8_t irq) {
+	for(size_t i = 0; i < madt_ent2_list.element_cnt; i++) {
+		struct madt_ent2 *madt2 = &madt_ent2_list.elements[i];
+
+		if(madt2->irq_src == irq) {
+			irq = madt2->gsi;
+			break;
+		}
+	}
+
+	uint64_t entry = vector | ((uint64_t)lapic_id << 56);
+
+	for(size_t i = 0; i < ioapic_list.element_cnt; i++) { 
+		struct ioapic *ioapic = &ioapic_list.elements[i]; 
+
+		if(irq <= ioapic->maximum_redirection_entry && irq >= ioapic->madt1->gsi_base) {
+			ioapic_write_redirection_table(ioapic, (irq - ioapic->madt1->gsi_base) * 2, entry);
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
 void apic_init() {
 	madt_hdr = acpi_find_sdt("APIC");
 
@@ -135,6 +159,8 @@ void apic_init() {
 		} else if(madt2->flags & (1 << 3)) { // level triggered
 			entry |= IOAPIC_TRIGGER_MODE;
 		}
+
+		entry |= (uint64_t)xapic_read(XAPIC_ID_REG_OFF) << 56;
 
 		print("ioapic: mapping gsi %x to legacy irq %x\n", madt2->gsi, madt2->irq_src);
 

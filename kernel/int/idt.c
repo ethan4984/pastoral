@@ -108,6 +108,10 @@ extern void isr_handler_main(struct registers *regs) {
 }
 
 void idt_init() {
+	for(int i = 0; i < 48; i++) {
+		interrupt_vectors[i].reserved = 1;
+	}
+
 	extern void isr0();
 	extern void isr1();
 	extern void isr2();

@@ -124,7 +124,7 @@ int fd_open(const char *path, int flags) {
 		return -1;
 	}
 
-	struct vfs_node *vfs_node = vfs_search_absolute(path, NULL);
+	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path);
 	if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;

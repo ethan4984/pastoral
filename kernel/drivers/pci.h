@@ -50,7 +50,7 @@ struct pci_device {
 };
 
 
-inline uint32_t pci_read(uint8_t bus, uint8_t device_code, uint8_t func, uint8_t off) {
+static inline uint32_t pci_read(uint8_t bus, uint8_t device_code, uint8_t func, uint8_t off) {
 	outd(0xcf8, (1 << 31) | // enable
 				((uint32_t)bus << 16) | // bus number
 				(((uint32_t)device_code & 31) << 11) | // device number
@@ -59,7 +59,7 @@ inline uint32_t pci_read(uint8_t bus, uint8_t device_code, uint8_t func, uint8_t
 	return ind(0xcfc);
 }
 
-inline void pci_write(uint32_t data, uint8_t bus, uint8_t device_code, uint8_t func, uint8_t off) {
+static inline void pci_write(uint32_t data, uint8_t bus, uint8_t device_code, uint8_t func, uint8_t off) {
 	outd(0xcf8, (1 << 31) | // enable
 				((uint32_t)bus << 16) | // bus number
 				(((uint32_t)device_code & 31) << 11) | // device number

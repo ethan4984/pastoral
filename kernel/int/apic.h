@@ -71,5 +71,6 @@ void ioapic_write_redirection_table(struct ioapic *ioapic, uint32_t redirection_
 void xapic_write(uint32_t reg, uint32_t data);
 uint32_t xapic_read(uint32_t reg);
 uint64_t ioapic_read_redirection_table(struct ioapic *ioapic, uint8_t redirection_entry);
+int ioapic_set_irq_redirection(uint32_t lapic_id, uint8_t vector, uint8_t irq);
 
 extern VECTOR(struct ioapic) ioapic_list;

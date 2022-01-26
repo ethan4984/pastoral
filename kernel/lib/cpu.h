@@ -70,77 +70,77 @@ struct cpuid_state {
 	uint64_t rdx;
 };
 
-inline void outb(uint16_t port, uint8_t data) {
+static inline void outb(uint16_t port, uint8_t data) {
 	asm volatile("outb %0, %1" :: "a"(data), "Nd"(port));
 }
 
-inline void outw(uint16_t port, uint16_t data) {
+static inline void outw(uint16_t port, uint16_t data) {
 	asm volatile("outw %0, %1" :: "a"(data), "Nd"(port));
 }
 
-inline void outd(uint16_t port, uint32_t data) {
+static inline void outd(uint16_t port, uint32_t data) {
 	asm volatile("outl %0, %1" :: "a"(data), "Nd"(port));
 }
 
-inline uint8_t inb(uint16_t port) {
+static inline uint8_t inb(uint16_t port) {
 	uint8_t data;
 	asm volatile("inb %1, %0" : "=a"(data):"Nd"(port));
 	return data;
 }
 
-inline uint16_t inw(uint16_t port) {
+static inline uint16_t inw(uint16_t port) {
 	uint16_t data;
 	asm volatile("inw %1, %0" : "=a"(data):"Nd"(port));
 	return data;
 }
 
-inline uint32_t ind(uint16_t port) {
+static inline uint32_t ind(uint16_t port) {
 	uint32_t data;
 	asm volatile("inl %1, %0" : "=a"(data):"Nd"(port));
 	return data;
 }
 
-inline uint64_t rdmsr(uint32_t msr) {
+static inline uint64_t rdmsr(uint32_t msr) {
 	uint64_t rax, rdx;
 	asm volatile ("rdmsr" : "=a"(rax), "=d"(rdx) : "c"(msr) : "memory");
 	return (rdx << 32) | rax;
 }
 
-inline void wrmsr(uint32_t msr, uint64_t data) {
+static inline void wrmsr(uint32_t msr, uint64_t data) {
 	uint64_t rax = (uint32_t)data;
 	uint64_t rdx = data >> 32;
 	asm volatile ("wrmsr" :: "a"(rax), "d"(rdx), "c"(msr));
 }
 
-inline void swapgs(void) {
+static inline void swapgs(void) {
 	asm volatile ("swapgs" ::: "memory");
 }
 
-inline void set_kernel_gs(uintptr_t addr) {
+static inline void set_kernel_gs(uintptr_t addr) {
 	wrmsr(MSR_GS_BASE, addr);
 }
 
-inline void set_user_gs(uintptr_t addr) {
+static inline void set_user_gs(uintptr_t addr) {
 	wrmsr(KERNEL_GS_BASE, addr);
 }
 
-inline void invlpg(uint64_t vaddr) {
+static inline void invlpg(uint64_t vaddr) {
 	asm volatile ("invlpg %0" :: "m"(vaddr) : "memory");
 }
 
-inline void spinlock(void *lock) {
+static inline void spinlock(void *lock) {
 	while(__atomic_test_and_set(lock, __ATOMIC_ACQUIRE));
 }
 
-inline void spinrelease(void *lock) {
+static inline void spinrelease(void *lock) {
 	__atomic_clear(lock, __ATOMIC_RELEASE);
 }
 
-inline void set_errno(uint64_t code) {
+static inline void set_errno(uint64_t code) {
 	CORE_LOCAL->errno = code;	
 }
 
-inline uint64_t get_errno() {
+static inline uint64_t get_errno() {
 	return CORE_LOCAL->errno;
 }
 

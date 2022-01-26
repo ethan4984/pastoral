@@ -21,7 +21,7 @@ static inline size_t pow2_roundup(size_t a) {
 	return a;
 }
 
-inline ssize_t pow(ssize_t base, ssize_t exp) {
+static inline ssize_t pow(ssize_t base, ssize_t exp) {
     ssize_t result = 1;
 
     for(;;) { 
@@ -63,25 +63,25 @@ static inline void memset64(uint64_t *src, uint64_t data, size_t n) {
 	}
 }
 
-static inline void memcpy8(uint8_t *dest, uint8_t *src, size_t n) {
+static inline void memcpy8(uint8_t *dest, const uint8_t *src, size_t n) {
 	for(size_t i = 0; i < n; i++) {
 		*dest++ = *src++;
 	}
 }
 
-static inline void memcpy16(uint16_t *dest, uint16_t *src, size_t n) {
+static inline void memcpy16(uint16_t *dest, const uint16_t *src, size_t n) {
 	for(size_t i = 0; i < n; i++) {
 		*dest++ = *src++;
 	}
 }
 
-static inline void memcpy32(uint32_t *dest, uint32_t *src, size_t n) {
+static inline void memcpy32(uint32_t *dest, const uint32_t *src, size_t n) {
 	for(size_t i = 0; i < n; i++) {
 		*dest++ = *src++;
 	}
 }
 
-static inline void memcpy64(uint64_t *dest, uint64_t *src, size_t n) {
+static inline void memcpy64(uint64_t *dest, const uint64_t *src, size_t n) {
 	for(size_t i = 0; i < n; i++) {
 		*dest++ = *src++;
 	}
@@ -89,7 +89,7 @@ static inline void memcpy64(uint64_t *dest, uint64_t *src, size_t n) {
 
 static inline size_t strlen(const char *str) {
 	size_t len = 0;
-	while(str[len++]);
+	while(str[len]) len++;
 	return len;
 }
 
