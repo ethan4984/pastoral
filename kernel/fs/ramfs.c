@@ -49,7 +49,7 @@ struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, int mod
 	ramfs_handle->inode = asset->stat->st_ino;
 	VECTOR_PUSH(ramfs_node_list, ramfs_handle);
 
-	struct vfs_node *vfs_node = vfs_create_node(parent, asset, parent->filesystem, name);
+	struct vfs_node *vfs_node = vfs_create_node(parent, asset, parent->filesystem, name, 0);
 
 	return vfs_node;
 }

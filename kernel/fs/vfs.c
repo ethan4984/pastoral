@@ -17,7 +17,7 @@ struct asset *vfs_default_asset(mode_t mode) {
 	return asset;
 }
 
-struct vfs_node *vfs_create_node(struct vfs_node *parent, struct asset *asset, struct filesystem *filesystem, const char *name) {
+struct vfs_node *vfs_create_node(struct vfs_node *parent, struct asset *asset, struct filesystem *filesystem, const char *name, int dangle) {
 	if(parent == NULL) {
 		parent = vfs_root;
 	}
@@ -29,7 +29,9 @@ struct vfs_node *vfs_create_node(struct vfs_node *parent, struct asset *asset, s
 	node->filesystem = filesystem;
 	node->parent = parent;
 
-	VECTOR_PUSH(parent->children, node);
+	if(!dangle) {
+		VECTOR_PUSH(parent->children, node);
+	}
 
 	if(S_ISDIR(asset->stat->st_mode)) {
 		struct vfs_node *current_directory = alloc(sizeof(struct vfs_node));
@@ -132,7 +134,11 @@ struct vfs_node *vfs_create_node_deep(struct vfs_node *parent, struct asset *ass
 			break;
 		}
 
-		parent = node;
+		if(node->mountpoint) {
+			parent = node->mountpoint;
+		} else {
+			parent = node;
+		}
 	}
 
 	if(i >= subpath_list.element_cnt) {
@@ -140,10 +146,13 @@ struct vfs_node *vfs_create_node_deep(struct vfs_node *parent, struct asset *ass
 	}
 	
 	for(; i < (subpath_list.element_cnt - 1); i++) {
-		parent = vfs_create_node(parent, vfs_default_asset(S_IFDIR), parent->filesystem, subpath_list.elements[i]);
+		parent = vfs_create_node(parent, vfs_default_asset(S_IFDIR), parent->filesystem, subpath_list.elements[i], 0);
+		if(parent->mountpoint) {
+			parent = parent->mountpoint;
+		} 
 	}
 
-	return vfs_create_node(parent, asset, filesystem, subpath_list.elements[i]);
+	return vfs_create_node(parent, asset, filesystem, subpath_list.elements[i], 0);
 }
 
 struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path) {
@@ -173,6 +182,10 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path) 
 		if(parent == NULL) {
 			return NULL;
 		}
+
+		if(parent->mountpoint) {
+			parent = parent->mountpoint;
+		} 
 
 		if(!S_ISDIR(parent->asset->stat->st_mode)) {
 			return NULL;	
@@ -207,4 +220,21 @@ const char *vfs_absolute_path(struct vfs_node *node) {
 	VECTOR_DELETE(node_list);
 
 	return ++ret;
+}
+
+int vfs_mount(struct vfs_node *parent, const char *source, const char *target, struct filesystem *filesystem) {
+	struct vfs_node *source_node = vfs_search_absolute(parent, source);
+	struct vfs_node *target_node = vfs_search_absolute(parent, target);
+
+	if(source_node == NULL || target_node == NULL) {
+		return -1;
+	}
+
+	if(!S_ISDIR(target_node->asset->stat->st_mode)) {
+		return -1;
+	}
+
+	target_node->mountpoint = vfs_create_node(target_node->parent, vfs_default_asset(0644 | S_IFDIR), filesystem, target_node->name, 1);
+
+	return 0;
 }
