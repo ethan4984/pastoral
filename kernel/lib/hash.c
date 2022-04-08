@@ -36,12 +36,14 @@ void hash_table_push(struct hash_table *table, void *key, void *data, size_t key
     size_t index = hash & table->capacity;
 
     if(table->keys.elements[index] == NULL) {
+        table->keys.elements[index] = key;
         table->data.elements[index] = data;
         return;
     }
 
     for(; index < table->capacity; index++) {
         if(table->keys.elements[index] == NULL) {
+            table->keys.elements[index] = key;
             table->data.elements[index] = data;
             return;
         }
@@ -53,4 +55,24 @@ void hash_table_push(struct hash_table *table, void *key, void *data, size_t key
     VECTOR_INIT(table->keys, table->capacity);
 
     hash_table_push(table, key, data, key_size);
+}
+
+void hash_table_delete(struct hash_table *table, void *key, size_t key_size) {
+    uint64_t hash = fnv_hash(key, key_size);
+
+    size_t index = hash & table->capacity;
+
+    if(memcmp(table->keys.elements[index], key, key_size) == 0) {
+        table->keys.elements[index] = NULL;
+        table->data.elements[index] = NULL;
+        return;
+    }
+
+    for(; table->keys.elements[index] != NULL && index < table->capacity; index++) {
+        if(memcmp(table->keys.elements[index], key, key_size) == 0) {
+            table->keys.elements[index] = NULL;
+            table->data.elements[index] = NULL;
+            return;
+        }
+    }
 }
