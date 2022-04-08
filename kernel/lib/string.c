@@ -60,6 +60,16 @@ char *strchr(const char *str, char c) {
 	return NULL;
 }
 
+int memcmp(const char *str0, const char *str1, size_t n) {
+	for(size_t i = 0; i < n; i++) {
+		if(str0[i] != str1[i]) {
+			return str0[i] - str1[i];
+		}
+	}
+
+	return 0;
+}
+
 static void sprint_print_number(char *str, int *write_cnt, size_t number, int base) {
 	static char characters[] = "0123456789ABCDEF";
 	int arr[50], cnt = 0;

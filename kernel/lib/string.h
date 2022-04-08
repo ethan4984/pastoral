@@ -96,6 +96,7 @@ static inline size_t strlen(const char *str) {
 int strcmp(const char *str0, const char *str1);
 int strncmp(const char *str0, const char *str1, size_t n);
 int sprint(char *str, const char *format, ...);
+int memcmp(const char *str0, const char *str, size_t n);
 char *strcpy(char *dest, const char *src);
 char *strncpy(char *dest, const char *src, size_t n);
 char *strchr(const char *str, char c);
