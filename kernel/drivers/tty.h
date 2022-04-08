@@ -20,5 +20,5 @@ struct tty {
 
 extern struct tty *current_tty;
 
-void tty_init(struct stivale_struct *stivale_struct);
+void tty_init();
 void tty_putchar(struct tty *tty, char c);

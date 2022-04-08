@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stivale.h>
 #include <types.h>
 
 #define VMM_FLAGS_P (1 << 0)
@@ -34,3 +33,4 @@ void vmm_init();
 void vmm_init_page_table(struct page_table *page_table);
 void vmm_map_range(struct page_table *page_table, uintptr_t vaddr, uint64_t cnt, uint64_t flags);
 void vmm_unmap_range(struct page_table *page_table, uintptr_t vaddr, uint64_t cnt);
+void vmm_default_table(struct page_table *page_table);

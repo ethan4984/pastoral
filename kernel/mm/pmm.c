@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <cpu.h>
 #include <string.h>
+#include <stivale.h>
 
 struct pmm_module {
 	struct stivale_mmap_entry *mmap_entry;
@@ -87,7 +88,7 @@ static void pmm_module_free(struct pmm_module *module, uint64_t base, uint64_t c
 	spinrelease(&module->lock);
 }
 
-void pmm_init(struct stivale_struct *stivale_struct) {
+void pmm_init() {
 	struct stivale_mmap_entry *mmap = (struct stivale_mmap_entry*)stivale_struct->memory_map_addr;
 
 	size_t buffer_size = 0;
@@ -148,6 +149,8 @@ void pmm_init(struct stivale_struct *stivale_struct) {
 			pmm_init_module(node->next, &mmap[i]);
 		}
 	}
+
+    print("pmm: initialised\n");
 }
 
 

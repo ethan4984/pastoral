@@ -4,6 +4,7 @@
 #include <time.h>
 #include <debug.h>
 #include <drivers/pit.h>
+#include <stivale.h>
 
 #define TIMER_FREQ 1000
 #define PIT_FREQ 1193182
@@ -18,7 +19,7 @@ void pit_handler(struct registers*, void*) {
 	time_add_interval(&clock_monotonic, &interval);
 }
 
-void pit_init(struct stivale_struct *stivale_struct) {
+void pit_init() {
 	int divisor = PIT_FREQ / TIMER_FREQ;
 
 	if((TIMER_FREQ % TIMER_FREQ) > (TIMER_FREQ / 2)) { // round up

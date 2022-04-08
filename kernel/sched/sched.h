@@ -16,6 +16,7 @@ struct sched_thread {
 	size_t user_stack;
 	size_t kernel_stack;
 	size_t user_gs_base;
+	size_t user_fs_base;
 	size_t kernel_stack_size;
 	size_t user_stack_size;
 	size_t errno;
@@ -28,7 +29,7 @@ struct sched_task {
 	struct bitmap fd_bitmap;
 
 	VECTOR(struct sched_thread*) thread_list;
-	struct bitmap thread_bitmap;
+	struct bitmap tid_bitmap;
 
 	pid_t pid;
 	pid_t ppid;
@@ -39,13 +40,25 @@ struct sched_task {
 	struct page_table *page_table;
 };
 
-struct sched_task *translate_pid(pid_t pid);
-struct sched_thread *translate_tid(pid_t pid, tid_t tid);
+struct sched_task *sched_translate_pid(pid_t pid);
+struct sched_thread *sched_translate_tid(pid_t pid, tid_t tid);
+struct sched_task *sched_default_task();
+struct sched_thread *sched_default_thread(struct sched_task *task);
+
+void reschedule(struct registers *regs, void *ptr);
+
+extern char sched_lock;
 
 #define CURRENT_TASK ({ \
-	translate_pid(CORE_LOCAL->pid); \
+	sched_translate_pid(CORE_LOCAL->pid); \
 })
 
 #define CURRENT_THREAD ({ \
-	translate_tid(CORE_LOCAL->pid, CORE_LOCAL->tid); \
+	sched_translate_tid(CORE_LOCAL->pid, CORE_LOCAL->tid); \
 })
+
+#define TASK_RUNNING 0
+#define TASK_WAITING 1
+#define TASK_YIELD 2
+
+#define THREAD_KERNEL_STACK_SIZE 0x2000

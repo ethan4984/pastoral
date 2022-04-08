@@ -124,6 +124,18 @@ static inline void set_user_gs(uintptr_t addr) {
 	wrmsr(KERNEL_GS_BASE, addr);
 }
 
+static inline uint64_t get_user_gs() {
+	return rdmsr(KERNEL_GS_BASE);
+}
+
+static inline void set_user_fs(uint64_t addr) {
+    wrmsr(MSR_FS_BASE, addr);
+}
+
+static inline uint64_t get_user_fs() {
+	return rdmsr(MSR_FS_BASE);
+}
+
 static inline void invlpg(uint64_t vaddr) {
 	asm volatile ("invlpg %0" :: "m"(vaddr) : "memory");
 }

@@ -2,6 +2,7 @@
 #include <cpu.h>
 #include <int/apic.h>
 #include <int/idt.h>
+#include <sched/sched.h>
 
 struct idt_descriptor {
 	uint16_t offset_low;
@@ -111,6 +112,9 @@ void idt_init() {
 	for(int i = 0; i < 48; i++) {
 		interrupt_vectors[i].reserved = 1;
 	}
+
+    interrupt_vectors[32].handler = reschedule;
+    interrupt_vectors[32].ptr = NULL;
 
 	extern void isr0();
 	extern void isr1();

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <mm/slab.h>
 #include <debug.h>
+#include <stivale.h>
 
 static size_t fb_pitch;
 static size_t fb_width;
@@ -18,8 +19,8 @@ static uint32_t *double_buffer;
 struct tty *current_tty;
 
 #define DEFAULT_TAB_SIZE 4
-#define DEFAULT_TEXT_FG 0xFFC0CB
-#define DEFAULT_TEXT_BG 0xffffff
+#define DEFAULT_TEXT_FG 0xffffff
+#define DEFAULT_TEXT_BG 0x000000
 #define DEFAULT_CURSOR_FG DEFAULT_TEXT_FG
 
 static inline void fb_set_pixel(size_t x, size_t y, uint32_t colour) {
@@ -146,7 +147,7 @@ void fb_flush(uint32_t colour) {
 	}
 }
 
-void tty_init(struct stivale_struct *stivale_struct) {
+void tty_init() {
 	fb_pitch = stivale_struct->framebuffer_pitch;
 	fb_width = stivale_struct->framebuffer_width;
 	fb_height = stivale_struct->framebuffer_height;

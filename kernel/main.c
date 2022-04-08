@@ -16,6 +16,7 @@
 #include <drivers/pit.h>
 #include <drivers/iommu/intel/vtd.h>
 #include <fs/vfs.h>
+#include <sched/sched.h>
 
 static uint8_t stack[8192];
 
@@ -29,13 +30,24 @@ static struct stivale_header stivale_hdr = {
 	.entry_point = 0
 };
 
-void pastoral_entry(struct stivale_struct *stivale_struct) {
+struct stivale_struct *stivale_struct;
+
+void pastoral_thread() {
+    print("Greetings from pastorals kernel thread\n");
+
+    for(;;)
+        asm ("hlt");
+}
+
+void pastoral_entry(uintptr_t stivale_addr) {
 	print("Pastoral unleashes the real power of the cpu\n");
+
+    stivale_struct = (struct stivale_struct*)stivale_addr;
 
 	init_cpu_features();
 
-	pmm_init(stivale_struct);
-	vmm_init(stivale_struct);
+	pmm_init();
+	vmm_init();
 
 	slab_cache_create(NULL, 32);
 	slab_cache_create(NULL, 64);
@@ -48,7 +60,7 @@ void pastoral_entry(struct stivale_struct *stivale_struct) {
 	slab_cache_create(NULL, 8192);
 	slab_cache_create(NULL, 16384);
 
-	tty_init(stivale_struct);
+	tty_init();
 
 	gdt_init();
 	idt_init();
@@ -69,14 +81,27 @@ void pastoral_entry(struct stivale_struct *stivale_struct) {
 	apic_init();
 	boot_aps();
 	pci_init();
-	ehfi_init();
-	vtd_init();
-	pit_init(stivale_struct);
+	pit_init();
 
 	apic_timer_init(100);
+
+    struct sched_task *kernel_task = sched_default_task();
+    struct sched_thread *kernel_thread = sched_default_thread(kernel_task);
+
+    kernel_thread->regs.cs = 0x8;
+    kernel_thread->regs.ss = 0x10;
+    kernel_thread->regs.rip = (uintptr_t)pastoral_thread;
+    kernel_thread->regs.rflags = 0x202;
+    kernel_thread->regs.rsp = kernel_thread->kernel_stack;
+
+    kernel_task->page_table = alloc(sizeof(struct page_table));
+    vmm_default_table(kernel_task->page_table);
+
+    kernel_task->status = TASK_WAITING;
+    kernel_thread->status = TASK_WAITING;
 
 	asm ("sti");
 
 	for(;;)
-		asm ("hlt");
+        asm ("hlt");
 }
