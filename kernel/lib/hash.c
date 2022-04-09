@@ -1,7 +1,8 @@
 #include <hash.h>
 #include <string.h>
+#include <mm/slab.h>
 
-uint64_t fnv_hash(char *data, size_t byte_cnt) {
+static uint64_t fnv_hash(char *data, size_t byte_cnt) {
     uint64_t hash = 0xcbf29ce484222325;
 
     for(size_t i = 0; i < byte_cnt; i++) {
@@ -13,17 +14,17 @@ uint64_t fnv_hash(char *data, size_t byte_cnt) {
 }
 
 void *hash_table_search(struct hash_table *table, void *key, size_t key_size) {
-    uint64_t hash = fnv_hash(key, key_size);
-
-    size_t index = hash & table->capacity;
-
-    if(memcmp(table->keys.elements[index], key, key_size) == 0) {
-        return table->data.elements[index];
+    if(table->capacity == 0) {
+        return NULL;
     }
 
-    for(; table->keys.elements[index] != NULL && index < table->capacity; index++) {
-        if(memcmp(table->keys.elements[index], key, key_size) == 0) {
-            return table->data.elements[index];
+    uint64_t hash = fnv_hash(key, key_size);
+
+    size_t index = hash & (table->capacity - 1);
+
+    for(; index < table->capacity; index++) {
+        if(table->keys[index] != NULL && memcmp(table->keys[index], key, key_size) == 0) {
+            return table->data[index];
         }
     }
 
@@ -31,47 +32,55 @@ void *hash_table_search(struct hash_table *table, void *key, size_t key_size) {
 }
 
 void hash_table_push(struct hash_table *table, void *key, void *data, size_t key_size) {
-    uint64_t hash = fnv_hash(key, key_size);
+    if(table->capacity == 0) {
+        table->capacity = 16;
 
-    size_t index = hash & table->capacity;
-
-    if(table->keys.elements[index] == NULL) {
-        table->keys.elements[index] = key;
-        table->data.elements[index] = data;
-        return;
+        table->data = alloc(table->capacity * sizeof(void*));
+        table->keys = alloc(table->capacity * sizeof(void*));
     }
 
+    uint64_t hash = fnv_hash(key, key_size);
+
+    size_t index = hash & (table->capacity - 1);
+
     for(; index < table->capacity; index++) {
-        if(table->keys.elements[index] == NULL) {
-            table->keys.elements[index] = key;
-            table->data.elements[index] = data;
+        if(table->keys[index] == NULL) {
+            table->keys[index] = key;
+            table->data[index] = data;
             return;
         }
     }
 
-    table->capacity *= 2;
+    struct hash_table expanded_table = {
+        .capacity = table->capacity * 2,
+        .keys = alloc(table->capacity * sizeof(void*)),
+        .data = alloc(table->capacity * sizeof(void*))
+    };
 
-    VECTOR_INIT(table->data, table->capacity);
-    VECTOR_INIT(table->keys, table->capacity);
+    for(size_t i = 0; i < table->capacity; i++) {
+        if(table->keys[i] != NULL) {
+            hash_table_push(&expanded_table, table->keys[i], table->data[i], key_size);
+        }
+    }
 
-    hash_table_push(table, key, data, key_size);
+    hash_table_push(&expanded_table, key, data, key_size);
+
+    *table = expanded_table;
 }
 
 void hash_table_delete(struct hash_table *table, void *key, size_t key_size) {
-    uint64_t hash = fnv_hash(key, key_size);
-
-    size_t index = hash & table->capacity;
-
-    if(memcmp(table->keys.elements[index], key, key_size) == 0) {
-        table->keys.elements[index] = NULL;
-        table->data.elements[index] = NULL;
+    if(table->capacity == 0) {
         return;
     }
 
-    for(; table->keys.elements[index] != NULL && index < table->capacity; index++) {
-        if(memcmp(table->keys.elements[index], key, key_size) == 0) {
-            table->keys.elements[index] = NULL;
-            table->data.elements[index] = NULL;
+    uint64_t hash = fnv_hash(key, key_size);
+
+    size_t index = hash & (table->capacity - 1);
+
+    for(; index < table->capacity; index++) {
+        if(table->keys[index] != NULL && memcmp(table->keys[index], key, key_size) == 0) {
+            table->keys[index] = NULL;
+            table->data[index] = NULL;
             return;
         }
     }

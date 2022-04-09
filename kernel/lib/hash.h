@@ -1,11 +1,15 @@
 #pragma once
 
-#include <vector.h>
+#include <stddef.h>
+#include <stdint.h>
 
 struct hash_table {
-    VECTOR(void*) keys;
-    VECTOR(void*) data;
+    void **keys;
+    void **data;
 
-    int hash_modulo;
     int capacity;
 };
+
+void *hash_table_search(struct hash_table *table, void *key, size_t key_size);
+void hash_table_push(struct hash_table *table, void *key, void *data, size_t key_size);
+void hash_table_delete(struct hash_table *table, void *key, size_t key_size);
