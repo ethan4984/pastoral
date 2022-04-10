@@ -24,7 +24,7 @@ struct vfs_node {
 };
 
 struct filesystem {
-	struct vfs_node (*create)(struct vfs_node *parent, const char *name, int mode);
+	struct vfs_node *(*create)(struct vfs_node *parent, const char *name, int mode);
 };
 
 struct vfs_node *vfs_create_node_deep(struct vfs_node *parent, struct asset *asset, struct filesystem *filesystem, const char *str);

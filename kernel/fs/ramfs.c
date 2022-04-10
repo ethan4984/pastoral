@@ -1,33 +1,19 @@
 #include <fs/ramfs.h>
 #include <fs/vfs.h>
+#include <hash.h>
 #include <vector.h>
 #include <cpu.h>
 #include <time.h>
 #include <string.h>
 
-struct ramfs_handle {
-	size_t inode;
-	void *buffer;
+struct hash_table ramfs_node_list;
+
+struct filesystem ramfs_filesystem = {
+    .create = ramfs_create
 };
 
-static VECTOR(struct ramfs_handle*) ramfs_node_list;
-static size_t inode_cnt;
-static char ramfs_lock;
-
-struct ramfs_handle *ramfs_inode2node(size_t inode_number) {
-	spinlock(&ramfs_lock);
-
-	for(size_t i = 0; i < ramfs_node_list.element_cnt; i++) {
-		if(ramfs_node_list.elements[i]->inode == inode_number) {
-			spinrelease(&ramfs_lock);
-			return ramfs_node_list.elements[i];
-		}
-	}
-
-	spinrelease(&ramfs_lock);
-
-	return NULL;
-}
+size_t ramfs_inode_cnt;
+char ramfs_lock;
 
 struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, int mode) {
 	struct asset *asset = vfs_default_asset(mode);
@@ -36,7 +22,7 @@ struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, int mod
 	asset->write = ramfs_write;
 	asset->resize = ramfs_resize;
 
-	asset->stat->st_ino = inode_cnt++;
+	asset->stat->st_ino = ramfs_inode_cnt++;
 	asset->stat->st_blksize = 512;
 	asset->stat->st_nlink = 1;
 	asset->stat->st_mode = mode;
@@ -47,7 +33,10 @@ struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, int mod
 
 	struct ramfs_handle *ramfs_handle = alloc(sizeof(struct ramfs_handle));
 	ramfs_handle->inode = asset->stat->st_ino;
-	VECTOR_PUSH(ramfs_node_list, ramfs_handle);
+
+    spinlock(&ramfs_lock);
+    hash_table_push(&ramfs_node_list, &ramfs_handle->inode, ramfs_handle, sizeof(ramfs_handle->inode));
+    spinrelease(&ramfs_lock);
 
 	struct vfs_node *vfs_node = vfs_create_node(parent, asset, parent->filesystem, name, 0);
 
@@ -59,7 +48,10 @@ ssize_t ramfs_read(struct asset *asset, void*, off_t offset, off_t cnt, void *bu
 
 	struct stat *stat = asset->stat;
 
-	struct ramfs_handle *ramfs_handle = ramfs_inode2node(stat->st_ino);
+    spinlock(&ramfs_lock);
+	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
+    spinrelease(&ramfs_lock);
+
 	if(ramfs_handle == NULL) {
 		spinrelease(&asset->lock);
 		return -1;
@@ -90,7 +82,10 @@ ssize_t ramfs_write(struct asset *asset, void*, off_t offset, off_t cnt, const v
 
 	struct stat *stat = asset->stat;
 
-	struct ramfs_handle *ramfs_handle = ramfs_inode2node(stat->st_ino);
+    spinlock(&ramfs_lock);
+	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
+    spinrelease(&ramfs_lock);
+
 	if(ramfs_handle == NULL) {
 		spinrelease(&asset->lock);
 		return -1;
@@ -117,7 +112,10 @@ int ramfs_resize(struct asset *asset, void*, off_t cnt) {
 
 	struct stat *stat = asset->stat;
 
-	struct ramfs_handle *ramfs_handle = ramfs_inode2node(stat->st_ino);
+    spinlock(&ramfs_lock);
+	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
+    spinrelease(&ramfs_lock);
+
 	if(ramfs_handle == NULL) {
 		spinrelease(&asset->lock);
 		return -1;

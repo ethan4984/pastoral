@@ -1,6 +1,7 @@
 #pragma once
 
 #include <types.h>
+#include <hash.h>
 
 #define VMM_FLAGS_P (1 << 0)
 #define VMM_FLAGS_RW (1 << 1)
@@ -20,10 +21,18 @@
 #define VMM_PAT_WB 6
 #define VMM_PAT_UCM 7
 
+struct mmap_region {
+    uintptr_t base;
+    size_t limit;
+    int flags;
+    int prot;
+};
+
 struct page_table {
 	void (*map_page)(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags);
 	size_t (*unmap_page)(struct page_table *page_table, uintptr_t vaddr);
 
+    struct hash_table mmap_region;
 	uint64_t *pml_high;
 };
 

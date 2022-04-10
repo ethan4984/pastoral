@@ -10,23 +10,16 @@
 static char fd_lock;
 
 struct fd_handle *fd_translate(int index) {
-	spinlock(&fd_lock);
-
 	struct sched_task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
 		return NULL;
 	}
 
-	for(size_t i = 0; i < current_task->fd_list.element_cnt; i++) {
-		if(current_task->fd_list.elements[i]->fd_number == index) {
-			spinrelease(&fd_lock);
-			return current_task->fd_list.elements[i];
-		}
-	}
-
+	spinlock(&fd_lock);
+    struct fd_handle *handle = hash_table_search(&current_task->fd_list, &index, sizeof(index));
 	spinrelease(&fd_lock);
 
-	return NULL;
+	return handle;
 }
 
 off_t fd_seek(int fd, off_t offset, int whence) {
@@ -125,13 +118,9 @@ int fd_open(const char *path, int flags) {
 	}
 
 	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path);
-	if(vfs_node == NULL) {
-		set_errno(ENOENT);
-		return -1;
-	}
 
 	if(flags & O_CREAT && vfs_node == NULL) {
-		// TODO create
+        /* TODO */
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
@@ -140,13 +129,19 @@ int fd_open(const char *path, int flags) {
 	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
 
 	*new_handle = (struct fd_handle) {
-		.asset = NULL,
+		.asset = vfs_node->asset,
 		.fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap),
 		.flags = flags,
 		.position = 0
 	};
 
-	VECTOR_PUSH(CURRENT_TASK->fd_list, new_handle);
+	struct sched_task *current_task = CURRENT_TASK;
+	if(current_task == NULL) {
+		set_errno(ENOENT);
+		return -1;
+	}
+
+    hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 
 	return new_handle->fd_number;
 }

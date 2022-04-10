@@ -176,6 +176,7 @@ struct sched_task *sched_default_task() {
 
     task->pid = bitmap_alloc(&pid_bitmap);
     task->status = TASK_YIELD;
+    task->fd_bitmap.resizable = true;
 
     task->tid_bitmap = (struct bitmap) {
         .data = NULL,

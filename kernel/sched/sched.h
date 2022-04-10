@@ -6,6 +6,7 @@
 #include <mm/vmm.h>
 #include <cpu.h>
 #include <bitmap.h>
+#include <hash.h>
 
 struct sched_thread {
 	tid_t tid;
@@ -25,7 +26,7 @@ struct sched_thread {
 }; 
 
 struct sched_task {
-	VECTOR(struct fd_handle*) fd_list;
+    struct hash_table fd_list;
 	struct bitmap fd_bitmap;
 
 	VECTOR(struct sched_thread*) thread_list;

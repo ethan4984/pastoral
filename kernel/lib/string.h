@@ -93,6 +93,17 @@ static inline size_t strlen(const char *str) {
 	return len;
 }
 
+static inline uint64_t octal_to_decimal(const char *str) {
+    uint64_t ret = 0;
+
+    while(*str) {
+        ret *= 8;
+        ret += (uint64_t)(*str++) - 0x30;
+    }
+    
+    return ret;
+}
+
 int strcmp(const char *str0, const char *str1);
 int strncmp(const char *str0, const char *str1, size_t n);
 int sprint(char *str, const char *format, ...);

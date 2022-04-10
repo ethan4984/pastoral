@@ -16,7 +16,9 @@
 #include <drivers/pit.h>
 #include <drivers/iommu/intel/vtd.h>
 #include <fs/vfs.h>
+#include <fs/initramfs.h>
 #include <sched/sched.h>
+#include <hash.h>
 
 static uint8_t stack[8192];
 
@@ -34,6 +36,8 @@ struct stivale_struct *stivale_struct;
 
 void pastoral_thread() {
     print("Greetings from pastorals kernel thread\n");
+
+    initramfs();
 
     for(;;)
         asm ("hlt");
