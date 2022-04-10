@@ -29,7 +29,7 @@ struct sched_task {
     struct hash_table fd_list;
 	struct bitmap fd_bitmap;
 
-	VECTOR(struct sched_thread*) thread_list;
+    struct hash_table thread_list;
 	struct bitmap tid_bitmap;
 
 	pid_t pid;

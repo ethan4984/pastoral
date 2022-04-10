@@ -6,7 +6,7 @@
 #include <string.h>
 #include <debug.h>
 
-static VECTOR(struct sched_task*) task_list;
+static struct hash_table task_list;
 
 struct bitmap pid_bitmap = {
     .data = NULL,
@@ -18,13 +18,7 @@ char sched_lock;
 
 // does not lock **remember** 
 struct sched_task *sched_translate_pid(pid_t pid) {
-	for(size_t i = 0; i < task_list.element_cnt; i++) {
-		if(task_list.elements[i]->pid == pid) {
-			return task_list.elements[i];
-		}
-	}
-
-	return NULL;
+    return hash_table_search(&task_list, &pid, sizeof(pid));
 }
 
 // does not lock **remember** 
@@ -33,21 +27,19 @@ struct sched_thread *sched_translate_tid(pid_t pid, tid_t tid) {
 	if(task == NULL) {
 		return NULL;
 	}
-	
-	for(size_t i = 0; i < task->thread_list.element_cnt; i++) {
-		if(task->thread_list.elements[i]->tid == tid) {
-			return task->thread_list.elements[i];
-		}
-	}
 
-	return NULL;
+    return hash_table_search(&task->thread_list, &tid, sizeof(tid));
 }
 
 struct sched_thread *find_next_thread(struct sched_task *task) {
     struct sched_thread *ret = NULL;
 
-    for(size_t i = 0, cnt = 0; i < task->thread_list.element_cnt; i++) {
-        struct sched_thread *next_thread = task->thread_list.elements[i];
+    for(size_t i = 0, cnt = 0; i < task->thread_list.capacity; i++) {
+        if(task->thread_list.data[i] == NULL) {
+            continue;
+        }
+
+        struct sched_thread *next_thread = task->thread_list.data[i];
         next_thread->idle_cnt++;
 
         if(next_thread->status == TASK_WAITING && cnt < next_thread->idle_cnt) {
@@ -62,8 +54,12 @@ struct sched_thread *find_next_thread(struct sched_task *task) {
 struct sched_task *find_next_task() {
     struct sched_task *ret = NULL;
 
-    for(size_t i = 0, cnt = 0; i < task_list.element_cnt; i++) {
-        struct sched_task *next_task = task_list.elements[i];
+    for(size_t i = 0, cnt = 0; i < task_list.capacity; i++) {
+        if(task_list.data[i] == NULL) {
+            continue;
+        }
+
+        struct sched_task *next_task = task_list.data[i];
         next_task->idle_cnt++;
 
         if(next_task->status == TASK_WAITING && cnt < next_task->idle_cnt) {
@@ -190,7 +186,7 @@ struct sched_task *sched_default_task() {
         task->ppid = -1;
     }
 
-    VECTOR_PUSH(task_list, task);
+    hash_table_push(&task_list, &task->pid, task, sizeof(task->pid));
 
     return task;
 }
@@ -205,7 +201,7 @@ struct sched_thread *sched_default_thread(struct sched_task *task) {
     thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + HIGH_VMA;
     thread->kernel_stack_size = THREAD_KERNEL_STACK_SIZE;
 
-    VECTOR_PUSH(task->thread_list, thread);
+    hash_table_push(&task->thread_list, &thread->tid, thread, sizeof(thread->tid));
 
     return thread;
 }
