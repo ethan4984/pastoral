@@ -3,6 +3,7 @@
 #include <debug.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>
+#include <mm/mmap.h>
 #include <mm/slab.h>
 #include <int/apic.h>
 #include <int/gdt.h>

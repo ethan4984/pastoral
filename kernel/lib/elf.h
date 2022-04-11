@@ -1,8 +1,9 @@
 #pragma once
 
-#include <types.h>
+#include <mm/vmm.h>
 
 #define ELF_SIGNATURE 0x464C457F
+#define ELF_ELF64 0x2
 
 #define ELF_EI_CLASS 0x4
 #define ELF_EI_DATA 0x5
@@ -80,3 +81,5 @@ struct elf64_shdr {
     uint64_t sh_addr_align;
     uint64_t sh_entsize;
 };
+
+int elf_load(struct page_table *page_table, struct aux *aux, int fd, uint64_t base, char **ld);

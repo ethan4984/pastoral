@@ -1,7 +1,7 @@
 #pragma once
 
 #include <types.h>
-#include <hash.h>
+#include <vector.h>
 
 #define VMM_FLAGS_P (1 << 0)
 #define VMM_FLAGS_RW (1 << 1)
@@ -26,13 +26,21 @@ struct mmap_region {
     size_t limit;
     int flags;
     int prot;
+    int fd;
+    off_t offset;
+
+    struct mmap_region *left;
+    struct mmap_region *right;
+    struct mmap_region *parent;
 };
 
 struct page_table {
 	void (*map_page)(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags);
 	size_t (*unmap_page)(struct page_table *page_table, uintptr_t vaddr);
 
-    struct hash_table mmap_region;
+    struct mmap_region *mmap_region_root;
+    uint64_t mmap_bump_base;
+
 	uint64_t *pml_high;
 };
 

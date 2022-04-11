@@ -9,5 +9,10 @@
 #define MMAP_MAP_ANONYMOUS 0x8
 #define MMAP_MAP_MIN_ADDR 0x10000
 
+#define MMAP_PROT_NONE 0x0
+#define MMAP_PROT_READ 0x1
+#define MMAP_PROT_WRITE 0x2
+#define MMAP_PROT_EXEC 0x4
+
 void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, int flags, int fd, off_t offset);
 int munmap(struct page_table *page_table, void *addr, size_t length);
