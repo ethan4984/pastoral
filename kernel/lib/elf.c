@@ -64,7 +64,7 @@ int elf_load(struct page_table *page_table, struct aux *aux, int fd, uint64_t ba
         mmap(   page_table,
                 (void*)(phdr[i].p_vaddr + base),
                 page_cnt * PAGE_SIZE,
-                MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_EXEC,
+                MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_EXEC | MMAP_PROT_USER,
                 MMAP_MAP_FIXED,
                 -1,
                 -1

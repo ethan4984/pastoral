@@ -7,6 +7,7 @@
 #include <cpu.h>
 #include <bitmap.h>
 #include <hash.h>
+#include <elf.h>
 
 struct sched_thread {
 	tid_t tid;
@@ -41,10 +42,20 @@ struct sched_task {
 	struct page_table *page_table;
 };
 
+struct sched_arguments {
+    int envp_cnt;
+    int argv_cnt;
+
+    char **argv;
+    char **envp;
+};
+
 struct sched_task *sched_translate_pid(pid_t pid);
 struct sched_thread *sched_translate_tid(pid_t pid, tid_t tid);
 struct sched_task *sched_default_task();
 struct sched_thread *sched_default_thread(struct sched_task *task);
+struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments);
+struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, uint16_t cs, struct aux *aux, struct sched_arguments *arguments);
 
 void reschedule(struct registers *regs, void *ptr);
 
@@ -63,3 +74,4 @@ extern char sched_lock;
 #define TASK_YIELD 2
 
 #define THREAD_KERNEL_STACK_SIZE 0x2000
+#define THREAD_USER_STACK_SIZE 0x8000

@@ -4,14 +4,15 @@
 
 static ssize_t validate_region(struct page_table *page_table, uint64_t base, uint64_t length) {
     struct mmap_region *root = page_table->mmap_region_root;
-    struct mmap_region *parent = NULL;
 
     if(root == NULL) {
         return -1;
     }
 
     while(root) {
-        parent = root;
+        if(root->base <= base && (root->base + root->limit) > base) {
+            return root->base + root->limit - base + length;
+        }
 
         if(root->base > base) {
             root = root->left;
@@ -20,17 +21,11 @@ static ssize_t validate_region(struct page_table *page_table, uint64_t base, uin
         }
     }
 
-    struct mmap_region *region = parent->parent;
-
-    if(region->base <= base && (region->base + region->limit) >= base) {
-        return -1;
-    }
-
-    return region->base + region->limit - base + length;
+    return -1;
 }
 
 void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
-    uint64_t base = MMAP_MAP_MIN_ADDR;
+    uint64_t base = 0;
 
     if(flags & MMAP_MAP_FIXED) {
         base = (uintptr_t)addr;
@@ -47,6 +42,7 @@ void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, i
             base += conflict_offset;
         }
 
+        page_table->mmap_bump_base = base;
         page_table->mmap_bump_base += length;
     }
 

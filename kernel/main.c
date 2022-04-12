@@ -40,6 +40,25 @@ void pastoral_thread() {
 
     initramfs();
 
+    char *argv[] = { NULL };
+    char *envp[] = {
+        "HOME=/",
+        "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TERM=linux",
+        NULL
+    };
+
+    struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
+
+    *arguments = (struct sched_arguments) {
+        .argv = argv,
+        .envp = envp,
+        .envp_cnt = 3,
+        .argv_cnt = 0
+    };
+
+    sched_task_exec("/sysroot/program", 0x23, arguments);
+
     for(;;)
         asm ("hlt");
 }

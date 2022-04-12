@@ -229,11 +229,20 @@ void vmm_default_table(struct page_table *page_table) {
 			phys += 0x200000;
 		}
 	}
+
+    page_table->mmap_bump_base = MMAP_MAP_MIN_ADDR;
 }
 
-void vmm_pf_handler(struct registers *, void *status) {
+void vmm_pf_handler(struct registers *regs, void *status) {
+    if(regs->cs & 0x3) {
+        swapgs();
+    }
+
     struct sched_task *task = CURRENT_TASK;
     if(task == NULL) {
+        if(regs->cs & 0x3) {
+            swapgs();
+        }
         return;
     }
 
@@ -241,9 +250,11 @@ void vmm_pf_handler(struct registers *, void *status) {
     asm volatile ("mov %%cr2, %0" : "=a"(faulting_address));
 
     struct mmap_region *root = task->page_table->mmap_region_root;
-    //struct mmap_region *parent = NULL;
 
     if(root == NULL) {
+        if(regs->cs & 0x3) {
+            swapgs();
+        }
         return;
     }
 
@@ -252,6 +263,8 @@ void vmm_pf_handler(struct registers *, void *status) {
             uint64_t flags = VMM_FLAGS_P | VMM_FLAGS_NX;
 
             if(root->prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
+            if(root->prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;
+            if(root->prot & MMAP_PROT_EXEC) flags &= ~(VMM_FLAGS_NX);
             if(root->prot & MMAP_PROT_NONE) flags &= ~(VMM_FLAGS_P);
 
             size_t misalignment = faulting_address & (PAGE_SIZE - 1);
@@ -259,6 +272,10 @@ void vmm_pf_handler(struct registers *, void *status) {
             vmm_map_range(task->page_table, faulting_address - misalignment, 1, flags);
 
             *(int*)status = 1;
+
+            if(regs->cs & 0x3) {
+                swapgs();
+            }
 
             return;
         }
@@ -270,27 +287,7 @@ void vmm_pf_handler(struct registers *, void *status) {
         }
     }
 
-    /*struct mmap_region *region = parent;
-    if(region == NULL) {
-        region = parent;
+    if(regs->cs & 0x3) {
+        swapgs();
     }
-
-    if(parent->left == NULL && parent->right == NULL) {
-        region = parent;
-    }*/
-
-    /*print("death %x %x\n", region->base, region->limit);
-
-    if(region->base <= faulting_address && ) {
-        uint64_t flags = VMM_FLAGS_P | VMM_FLAGS_NX;
-
-        if(region->prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
-        if(region->prot & MMAP_PROT_NONE) flags &= ~(VMM_FLAGS_P);
-
-        size_t misalignment = faulting_address & (PAGE_SIZE - 1);
-
-        vmm_map_range(task->page_table, faulting_address - misalignment, 1, flags);
-
-        *(int*)status = 1;
-    }*/
 }

@@ -5,6 +5,8 @@
 #include <mm/pmm.h>
 #include <string.h>
 #include <debug.h>
+#include <elf.h>
+#include <mm/mmap.h>
 
 static struct hash_table task_list;
 
@@ -127,6 +129,7 @@ void reschedule(struct registers *regs, void*) {
     CORE_LOCAL->user_stack = next_thread->user_stack;
 
     CORE_LOCAL->page_table = next_task->page_table;
+
     vmm_init_page_table(CORE_LOCAL->page_table);
 
     next_thread->idle_cnt = 0;
@@ -199,9 +202,150 @@ struct sched_thread *sched_default_thread(struct sched_task *task) {
     thread->status = TASK_YIELD;
 
     thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + HIGH_VMA;
-    thread->kernel_stack_size = THREAD_KERNEL_STACK_SIZE;
 
     hash_table_push(&task->thread_list, &thread->tid, thread, sizeof(thread->tid));
 
     return thread;
+}
+
+static uint64_t sched_arg_placement(struct sched_arguments *arguments, uint64_t *ptr, struct aux *aux) {
+    uint64_t rsp = (uint64_t)ptr;
+
+    for(size_t i = 0; i < arguments->envp_cnt; i++) {
+        char *element = arguments->envp[i];
+        ptr = (uint64_t*)((void*)ptr - strlen(element) + 1);
+        strcpy((void*)ptr, element);
+    }
+
+    for(size_t i = 0; i < arguments->argv_cnt; i++) {
+        char *element = arguments->argv[i];
+        ptr = (uint64_t*)((void*)ptr - strlen(element) + 1);
+        strcpy((void*)ptr, element);
+    }
+
+    ptr = (uint64_t*)((uintptr_t)ptr - ((uintptr_t)ptr & 0xf)); // align 16
+
+    if((arguments->argv_cnt + arguments->envp_cnt) & 1) {
+        ptr--;
+    }
+
+    ptr -= 10;
+
+    ptr[0] = ELF_AT_PHNUM; ptr[1] = aux->at_phnum;
+    ptr[2] = ELF_AT_PHENT; ptr[3] = aux->at_phent;
+    ptr[4] = ELF_AT_PHDR;  ptr[5] = aux->at_phdr;
+    ptr[6] = ELF_AT_ENTRY; ptr[7] = aux->at_entry;
+    ptr[8] = 0; ptr[9] = 0;
+
+    *(--ptr) = 0;
+    ptr -= arguments->envp_cnt;
+
+    for(size_t i = 0; i < arguments->envp_cnt; i++) {
+        rsp -= strlen(arguments->envp[i]) + 1;
+        ptr[i] = rsp;
+    }
+
+    *(--ptr) = 0;
+    ptr -= arguments->argv_cnt;
+
+    for(size_t i = 0; i < arguments->argv_cnt; i++) {
+        rsp -= strlen(arguments->argv[i]) + 1;
+        ptr[i] = rsp;
+    }
+
+    *(--ptr) = arguments->argv_cnt;
+
+    return (uint64_t)ptr;
+}
+
+struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, uint16_t cs, struct aux *aux, struct sched_arguments *arguments) {
+    struct sched_thread *thread = sched_default_thread(task);
+
+    thread->regs.rip = rip;
+    thread->regs.cs = cs;
+    thread->regs.rflags = 0x202;
+
+    thread->user_gs_base = 0;
+    thread->user_fs_base = 0;
+
+    if(cs & 0x3) {
+        thread->regs.ss = cs - 8;
+        thread->user_stack = (uint64_t)mmap(    task->page_table,
+                                                NULL,
+                                                THREAD_USER_STACK_SIZE,
+                                                MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_USER,
+                                                MMAP_MAP_ANONYMOUS,
+                                                0,
+                                                0
+                                           ) + THREAD_USER_STACK_SIZE;
+        thread->regs.rsp = sched_arg_placement(arguments, (void*)thread->user_stack, aux);
+    } else {
+        thread->regs.ss = cs + 8;
+        thread->regs.rsp = thread->kernel_stack;
+    }
+
+    return thread;
+}
+
+struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments) {
+    spinlock(&sched_lock);
+
+    struct sched_task *task = sched_default_task();
+
+    task->page_table = alloc(sizeof(struct page_table));
+    vmm_default_table(task->page_table);
+
+    vmm_init_page_table(task->page_table);
+
+    struct sched_task *current_task = CURRENT_TASK;
+    CORE_LOCAL->pid = task->pid;
+
+    int fd = fd_open(path, 0);
+    if(fd == -1) {
+        spinrelease(&sched_lock); 
+        return NULL;
+    }
+
+    char *ld_path = NULL;
+
+    struct aux aux;
+    if(elf_load(task->page_table, &aux, fd, 0, &ld_path) == -1) { 
+        spinrelease(&sched_lock); 
+        return NULL;
+    }
+
+    uint64_t entry_point = aux.at_entry;
+
+    if(ld_path) {
+        int ld_fd = fd_open(ld_path, 0);
+        if(ld_fd == -1) {
+            spinrelease(&sched_lock); 
+            return NULL;
+        }
+
+        struct aux ld_aux;
+        if(elf_load(task->page_table, &ld_aux, ld_fd, 0x40000000, NULL) == -1) { 
+            spinrelease(&sched_lock); 
+            return NULL;
+        }
+
+        entry_point = ld_aux.at_entry;
+    }
+
+    struct sched_thread *thread = sched_thread_exec(task, entry_point, cs, &aux, arguments);
+
+    if(thread == NULL) {
+        spinrelease(&sched_lock);
+        return NULL;
+    }
+
+    CORE_LOCAL->pid = current_task->pid;
+    vmm_init_page_table(current_task->page_table);
+
+    spinrelease(&sched_lock);
+
+    task->status = TASK_WAITING;
+    thread->status = TASK_WAITING;
+
+    return task;
 }
