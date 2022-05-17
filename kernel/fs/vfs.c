@@ -95,6 +95,12 @@ void vfs_init() {
 }
 
 struct vfs_node *vfs_search_relative(struct vfs_node *parent, const char *name) {
+	if(strcmp(name, ".") == 0) {
+		return parent;
+	} else if(strcmp(name, "..") == 0) {
+		return parent->parent;
+	}
+
 	for(size_t i = 0; i < parent->children.element_cnt; i++) {
 		struct vfs_node *node = parent->children.elements[i]; 
 
