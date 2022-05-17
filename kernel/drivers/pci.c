@@ -156,51 +156,51 @@ static void pci_scan_bus(uint8_t bus) {
 }
 
 int pci_device_get_bar(struct pci_device *device, struct pci_bar *ret, int num) {
-    if(GET_HEADER_TYPE(device->bus, device->dev, device->func) != 0) {
-        return -1;
+	if(GET_HEADER_TYPE(device->bus, device->dev, device->func) != 0) {
+		return -1;
 	}
 
-    if(num > 5) {
-        return -1;
+	if(num > 5) {
+		return -1;
 	}
 
-    size_t bar_off = 0x10 + num * 4;
-    size_t bar_low = pci_device_read(device, 4, bar_off);
-    size_t is_mmio = !(bar_low & 1);
+	size_t bar_off = 0x10 + num * 4;
+	size_t bar_low = pci_device_read(device, 4, bar_off);
+	size_t is_mmio = !(bar_low & 1);
 
 	pci_device_write(device, 4, bar_off, ~0);
-    size_t bar_size_low = pci_device_read(device, 4, bar_off);
+	size_t bar_size_low = pci_device_read(device, 4, bar_off);
 	pci_device_write(device, 4, bar_off, bar_low);
 
-    if(((bar_low >> 1) & 0b11) == 0b10) { // is 64 bit
-        size_t bar_high = pci_device_read(device, 4, bar_off + 4);
+	if(((bar_low >> 1) & 0b11) == 0b10) { // is 64 bit
+		size_t bar_high = pci_device_read(device, 4, bar_off + 4);
 
-        pci_device_write(device, 4, bar_off + 4, ~0);
-        size_t bar_size_high = pci_device_read(device, 4, bar_off + 4);
-        pci_device_write(device, 4, bar_off + 4, bar_high); 
+		pci_device_write(device, 4, bar_off + 4, ~0);
+		size_t bar_size_high = pci_device_read(device, 4, bar_off + 4);
+		pci_device_write(device, 4, bar_off + 4, bar_high); 
 
-        size_t size = ((bar_size_high << 32) | bar_size_low) & ~(is_mmio ? 0b1111 : 0b11);
-        size = ~size + 1;
+		size_t size = ((bar_size_high << 32) | bar_size_low) & ~(is_mmio ? 0b1111 : 0b11);
+		size = ~size + 1;
 
-        size_t base = ((bar_high << 32) | bar_low) & ~(is_mmio ? 0b1111 : 0b11);
+		size_t base = ((bar_high << 32) | bar_low) & ~(is_mmio ? 0b1111 : 0b11);
 
-        *ret = (struct pci_bar) {
+		*ret = (struct pci_bar) {
 			.base = base,
 			.size = size
 		};
 
-        return 0;
-    }
+		return 0;
+	}
 
-    size_t size = bar_size_low & is_mmio ? 0b1111 : 0b11;
-    size = ~size + 1; 
+	size_t size = bar_size_low & is_mmio ? 0b1111 : 0b11;
+	size = ~size + 1; 
 
 	*ret = (struct pci_bar) {
 		.base = bar_low,
 		.size = size
 	};
 
-    return 0;
+	return 0;
 }
 
 int pci_device_set_msix(struct pci_device *device, uint8_t vec) {

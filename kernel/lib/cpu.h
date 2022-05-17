@@ -129,7 +129,7 @@ static inline uint64_t get_user_gs() {
 }
 
 static inline void set_user_fs(uint64_t addr) {
-    wrmsr(MSR_FS_BASE, addr);
+	wrmsr(MSR_FS_BASE, addr);
 }
 
 static inline uint64_t get_user_fs() {

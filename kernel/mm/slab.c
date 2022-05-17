@@ -90,7 +90,7 @@ static void *slab_alloc(struct slab *slab) {
 		if(!BIT_TEST(slab->bitmap, i)) {
 			BIT_SET(slab->bitmap, i);
 			slab->available_objects--;
-            memset8(slab->buffer + (i * slab->cache->object_size), 0, slab->cache->object_size);
+			memset8(slab->buffer + (i * slab->cache->object_size), 0, slab->cache->object_size);
 			return slab->buffer + (i * slab->cache->object_size);
 		}
 	}

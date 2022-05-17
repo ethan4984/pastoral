@@ -9,7 +9,7 @@
 struct hash_table ramfs_node_list;
 
 struct filesystem ramfs_filesystem = {
-    .create = ramfs_create
+	.create = ramfs_create
 };
 
 size_t ramfs_inode_cnt;
@@ -34,9 +34,9 @@ struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, int mod
 	struct ramfs_handle *ramfs_handle = alloc(sizeof(struct ramfs_handle));
 	ramfs_handle->inode = asset->stat->st_ino;
 
-    spinlock(&ramfs_lock);
-    hash_table_push(&ramfs_node_list, &ramfs_handle->inode, ramfs_handle, sizeof(ramfs_handle->inode));
-    spinrelease(&ramfs_lock);
+	spinlock(&ramfs_lock);
+	hash_table_push(&ramfs_node_list, &ramfs_handle->inode, ramfs_handle, sizeof(ramfs_handle->inode));
+	spinrelease(&ramfs_lock);
 
 	struct vfs_node *vfs_node = vfs_create_node(parent, asset, parent->filesystem, name, 0);
 
@@ -48,9 +48,9 @@ ssize_t ramfs_read(struct asset *asset, void*, off_t offset, off_t cnt, void *bu
 
 	struct stat *stat = asset->stat;
 
-    spinlock(&ramfs_lock);
+	spinlock(&ramfs_lock);
 	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
-    spinrelease(&ramfs_lock);
+	spinrelease(&ramfs_lock);
 
 	if(ramfs_handle == NULL) {
 		spinrelease(&asset->lock);
@@ -82,9 +82,9 @@ ssize_t ramfs_write(struct asset *asset, void*, off_t offset, off_t cnt, const v
 
 	struct stat *stat = asset->stat;
 
-    spinlock(&ramfs_lock);
+	spinlock(&ramfs_lock);
 	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
-    spinrelease(&ramfs_lock);
+	spinrelease(&ramfs_lock);
 
 	if(ramfs_handle == NULL) {
 		spinrelease(&asset->lock);
@@ -112,9 +112,9 @@ int ramfs_resize(struct asset *asset, void*, off_t cnt) {
 
 	struct stat *stat = asset->stat;
 
-    spinlock(&ramfs_lock);
+	spinlock(&ramfs_lock);
 	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
-    spinrelease(&ramfs_lock);
+	spinrelease(&ramfs_lock);
 
 	if(ramfs_handle == NULL) {
 		spinrelease(&asset->lock);

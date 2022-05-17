@@ -33,14 +33,14 @@ struct pci_bar {
 };
 
 struct pci_device {
-    uint8_t bus;
-    uint8_t dev;
-    uint8_t func;
-    uint8_t class_code;
-    uint8_t sub_class;
-    uint8_t prog_if;
-    uint16_t device_id;
-    uint16_t vendor_id;
+	uint8_t bus;
+	uint8_t dev;
+	uint8_t func;
+	uint8_t class_code;
+	uint8_t sub_class;
+	uint8_t prog_if;
+	uint16_t device_id;
+	uint16_t vendor_id;
 
 	int msi_offset;
 	int msix_offset;

@@ -23,8 +23,8 @@ typedef int64_t time_t;
 typedef int64_t clockid_t;
 
 struct timespec {
-    time_t tv_sec;
-    long tv_nsec;
+	time_t tv_sec;
+	long tv_nsec;
 };
 
 #define S_IFMT 0x0f000
@@ -90,19 +90,19 @@ struct timespec {
 #define SEEK_SET 3
 
 struct stat {
-    dev_t st_dev;
-    ino_t st_ino;
-    mode_t st_mode;
-    nlink_t st_nlink;
-    uid_t st_uid;
-    gid_t st_gid;
-    dev_t st_rdev;
-    off_t st_size;
-    struct timespec st_atim;
-    struct timespec st_mtim;
-    struct timespec st_ctim;
-    blksize_t st_blksize;
-    blkcnt_t st_blocks;
+	dev_t st_dev;
+	ino_t st_ino;
+	mode_t st_mode;
+	nlink_t st_nlink;
+	uid_t st_uid;
+	gid_t st_gid;
+	dev_t st_rdev;
+	off_t st_size;
+	struct timespec st_atim;
+	struct timespec st_mtim;
+	struct timespec st_ctim;
+	blksize_t st_blksize;
+	blkcnt_t st_blocks;
 };
 
 struct asset {

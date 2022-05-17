@@ -4,8 +4,8 @@
 #include <hash.h>
 
 struct ramfs_handle {
-    size_t inode;
-    void *buffer;
+	size_t inode;
+	void *buffer;
 };
 
 extern size_t ramfs_inode_cnt;

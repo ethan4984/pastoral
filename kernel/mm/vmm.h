@@ -22,24 +22,24 @@
 #define VMM_PAT_UCM 7
 
 struct mmap_region {
-    uintptr_t base;
-    size_t limit;
-    int flags;
-    int prot;
-    int fd;
-    off_t offset;
+	uintptr_t base;
+	size_t limit;
+	int flags;
+	int prot;
+	int fd;
+	off_t offset;
 
-    struct mmap_region *left;
-    struct mmap_region *right;
-    struct mmap_region *parent;
+	struct mmap_region *left;
+	struct mmap_region *right;
+	struct mmap_region *parent;
 };
 
 struct page_table {
 	void (*map_page)(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags);
 	size_t (*unmap_page)(struct page_table *page_table, uintptr_t vaddr);
 
-    struct mmap_region *mmap_region_root;
-    uint64_t mmap_bump_base;
+	struct mmap_region *mmap_region_root;
+	uint64_t mmap_bump_base;
 
 	uint64_t *pml_high;
 };

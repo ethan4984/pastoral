@@ -87,14 +87,14 @@ const char *exception_messages[] = {
 extern void vmm_pf_handler(struct registers*, void*);
 
 extern void isr_handler_main(struct registers *regs) {
-    if(regs->isr_number == 0xe) {
-        int status = 0;
-        vmm_pf_handler(regs, &status);
-        if(status) {
-            xapic_write(XAPIC_EOI_OFF, 0);
-            return;
-        }
-    }
+	if(regs->isr_number == 0xe) {
+		int status = 0;
+		vmm_pf_handler(regs, &status);
+		if(status) {
+			xapic_write(XAPIC_EOI_OFF, 0);
+			return;
+		}
+	}
 
 	if(regs->isr_number < 32) {
 		uint64_t cr2;
@@ -124,8 +124,8 @@ void idt_init() {
 		interrupt_vectors[i].reserved = 1;
 	}
 
-    interrupt_vectors[32].handler = reschedule;
-    interrupt_vectors[32].ptr = NULL;
+	interrupt_vectors[32].handler = reschedule;
+	interrupt_vectors[32].ptr = NULL;
 
 	extern void isr0();
 	extern void isr1();

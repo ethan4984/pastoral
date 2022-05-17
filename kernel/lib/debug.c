@@ -27,10 +27,7 @@ static void serial_print_number(size_t number, int base) {
 	}
 }
 
-void print(const char *str, ...) {
-	va_list arg;
-	va_start(arg, str);
-
+static void print_internal(const char *str, va_list arg) {
 	for(size_t i = 0; i < strlen(str); i++) {
 		if(str[i] != '%') {
 			serial_write(str[i]);
@@ -69,6 +66,29 @@ void print(const char *str, ...) {
 			}
 		}
 	}
+}
+
+void print(const char *str, ...) {
+	va_list arg;
+	va_start(arg, str);
+
+	print_internal(str, arg);
 
 	va_end(arg);
+}
+
+void panic(const char *str, ...) {
+	print("KERNEL PANIC: < ");
+
+	va_list arg;
+	va_start(arg, str);
+
+	print_internal(str, arg);
+
+	va_end(arg);
+
+	print(" > HALTING\n");
+	
+	for(;;)
+		asm volatile ("cli\nhlt");
 }

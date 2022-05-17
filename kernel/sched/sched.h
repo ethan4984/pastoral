@@ -27,10 +27,10 @@ struct sched_thread {
 }; 
 
 struct sched_task {
-    struct hash_table fd_list;
+	struct hash_table fd_list;
 	struct bitmap fd_bitmap;
 
-    struct hash_table thread_list;
+	struct hash_table thread_list;
 	struct bitmap tid_bitmap;
 
 	pid_t pid;
@@ -43,11 +43,11 @@ struct sched_task {
 };
 
 struct sched_arguments {
-    int envp_cnt;
-    int argv_cnt;
+	int envp_cnt;
+	int argv_cnt;
 
-    char **argv;
-    char **envp;
+	char **argv;
+	char **envp;
 };
 
 struct sched_task *sched_translate_pid(pid_t pid);

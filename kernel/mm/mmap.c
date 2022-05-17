@@ -3,84 +3,84 @@
 #include <vector.h>
 
 static ssize_t validate_region(struct page_table *page_table, uint64_t base, uint64_t length) {
-    struct mmap_region *root = page_table->mmap_region_root;
+	struct mmap_region *root = page_table->mmap_region_root;
 
-    if(root == NULL) {
-        return -1;
-    }
+	if(root == NULL) {
+		return -1;
+	}
 
-    while(root) {
-        if(root->base <= base && (root->base + root->limit) > base) {
-            return root->base + root->limit - base + length;
-        }
+	while(root) {
+		if(root->base <= base && (root->base + root->limit) > base) {
+			return root->base + root->limit - base + length;
+		}
 
-        if(root->base > base) {
-            root = root->left;
-        } else {
-            root = root->right;
-        }
-    }
+		if(root->base > base) {
+			root = root->left;
+		} else {
+			root = root->right;
+		}
+	}
 
-    return -1;
+	return -1;
 }
 
 void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
-    uint64_t base = 0;
+	uint64_t base = 0;
 
-    if(flags & MMAP_MAP_FIXED) {
-        base = (uintptr_t)addr;
-    } else {
-        base = page_table->mmap_bump_base;
+	if(flags & MMAP_MAP_FIXED) {
+		base = (uintptr_t)addr;
+	} else {
+		base = page_table->mmap_bump_base;
 
-        for(;;) {
-            ssize_t conflict_offset = validate_region(page_table, base, length);
+		for(;;) {
+			ssize_t conflict_offset = validate_region(page_table, base, length);
 
-            if(conflict_offset == -1) {
-                break;
-            }
+			if(conflict_offset == -1) {
+				break;
+			}
 
-            base += conflict_offset;
-        }
+			base += conflict_offset;
+		}
 
-        page_table->mmap_bump_base = base;
-        page_table->mmap_bump_base += length;
-    }
+		page_table->mmap_bump_base = base;
+		page_table->mmap_bump_base += length;
+	}
 
-    struct mmap_region *region = alloc(sizeof(struct mmap_region));
+	struct mmap_region *region = alloc(sizeof(struct mmap_region));
 
-    *region = (struct mmap_region) {
-        .base = base,
-        .limit = length,
-        .prot = prot,
-        .flags = flags,
-        .fd = fd,
-        .offset = offset
-    };
+	*region = (struct mmap_region) {
+		.base = base,
+		.limit = length,
+		.prot = prot,
+		.flags = flags,
+		.fd = fd,
+		.offset = offset
+	};
 
-    struct mmap_region *root = page_table->mmap_region_root;
-    struct mmap_region *parent = NULL;
+	struct mmap_region *root = page_table->mmap_region_root;
+	struct mmap_region *parent = NULL;
 
-    while(root) {
-        parent = root;
+	while(root) {
+		parent = root;
 
-        if(root->base > region->base) {
-            root = root->left;
-        } else {
-            root = root->right;
-        }
-    }
+		if(root->base > region->base) {
+			root = root->left;
+		} else {
+			root = root->right;
+		}
+	}
 
-    region->parent = parent;
+	region->parent = parent;
 
-    if(parent == NULL) {
-        page_table->mmap_region_root = region;
-    } else if(parent->base > region->base) {
-        parent->left = region;
-    } else {
-        parent->right = region;
-    }
+	if(parent == NULL) {
+		page_table->mmap_region_root = region;
+	} else if(parent->base > region->base) {
+		parent->left = region;
+	} else {
+		parent->right = region;
+	}
 
-    return (void*)base;
+	return (void*)base;
 }
 
 /*int munmap(struct page_table *page_table, void *addr, size_t length) {

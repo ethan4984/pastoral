@@ -36,37 +36,39 @@ static struct stivale_header stivale_hdr = {
 struct stivale_struct *stivale_struct;
 
 void pastoral_thread() {
-    print("Greetings from pastorals kernel thread\n");
+	print("Greetings from pastorals kernel thread\n");
 
-    initramfs();
+	if(initramfs() == -1) {
+		panic("initramfs: unable to initialise");
+	}
 
-    char *argv[] = { NULL };
-    char *envp[] = {
-        "HOME=/",
-        "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        "TERM=linux",
-        NULL
-    };
+	char *argv[] = { NULL };
+	char *envp[] = {
+		"HOME=/",
+		"PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+		"TERM=linux",
+		NULL
+	};
 
-    struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
+	struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
 
-    *arguments = (struct sched_arguments) {
-        .argv = argv,
-        .envp = envp,
-        .envp_cnt = 3,
-        .argv_cnt = 0
-    };
+	*arguments = (struct sched_arguments) {
+		.argv = argv,
+		.envp = envp,
+		.envp_cnt = 3,
+		.argv_cnt = 0
+	};
 
-    sched_task_exec("/sysroot/program", 0x23, arguments);
+	sched_task_exec("/sysroot/program", 0x23, arguments);
 
-    for(;;)
-        asm ("hlt");
+	for(;;)
+		asm ("hlt");
 }
 
 void pastoral_entry(uintptr_t stivale_addr) {
 	print("Pastoral unleashes the real power of the cpu\n");
 
-    stivale_struct = (struct stivale_struct*)stivale_addr;
+	stivale_struct = (struct stivale_struct*)stivale_addr;
 
 	init_cpu_features();
 
@@ -109,23 +111,23 @@ void pastoral_entry(uintptr_t stivale_addr) {
 
 	apic_timer_init(100);
 
-    struct sched_task *kernel_task = sched_default_task();
-    struct sched_thread *kernel_thread = sched_default_thread(kernel_task);
+	struct sched_task *kernel_task = sched_default_task();
+	struct sched_thread *kernel_thread = sched_default_thread(kernel_task);
 
-    kernel_thread->regs.cs = 0x8;
-    kernel_thread->regs.ss = 0x10;
-    kernel_thread->regs.rip = (uintptr_t)pastoral_thread;
-    kernel_thread->regs.rflags = 0x202;
-    kernel_thread->regs.rsp = kernel_thread->kernel_stack;
+	kernel_thread->regs.cs = 0x8;
+	kernel_thread->regs.ss = 0x10;
+	kernel_thread->regs.rip = (uintptr_t)pastoral_thread;
+	kernel_thread->regs.rflags = 0x202;
+	kernel_thread->regs.rsp = kernel_thread->kernel_stack;
 
-    kernel_task->page_table = alloc(sizeof(struct page_table));
-    vmm_default_table(kernel_task->page_table);
+	kernel_task->page_table = alloc(sizeof(struct page_table));
+	vmm_default_table(kernel_task->page_table);
 
-    kernel_task->status = TASK_WAITING;
-    kernel_thread->status = TASK_WAITING;
+	kernel_task->status = TASK_WAITING;
+	kernel_thread->status = TASK_WAITING;
 
 	asm ("sti");
 
 	for(;;)
-        asm ("hlt");
+		asm ("hlt");
 }

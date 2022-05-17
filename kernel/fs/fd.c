@@ -16,7 +16,7 @@ struct fd_handle *fd_translate(int index) {
 	}
 
 	spinlock(&fd_lock);
-    struct fd_handle *handle = hash_table_search(&current_task->fd_list, &index, sizeof(index));
+	struct fd_handle *handle = hash_table_search(&current_task->fd_list, &index, sizeof(index));
 	spinrelease(&fd_lock);
 
 	return handle;
@@ -120,7 +120,7 @@ int fd_open(const char *path, int flags) {
 	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path);
 
 	if(flags & O_CREAT && vfs_node == NULL) {
-        /* TODO */
+		/* TODO */
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
@@ -141,7 +141,7 @@ int fd_open(const char *path, int flags) {
 		return -1;
 	}
 
-    hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 
 	return new_handle->fd_number;
 }

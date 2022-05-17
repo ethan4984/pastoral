@@ -22,21 +22,21 @@ static inline size_t pow2_roundup(size_t a) {
 }
 
 static inline ssize_t pow(ssize_t base, ssize_t exp) {
-    ssize_t result = 1;
+	ssize_t result = 1;
 
-    for(;;) { 
-        if(exp & 1)
-            result *= base;
+	for(;;) { 
+		if(exp & 1)
+			result *= base;
 
-        exp >>= 1;
+		exp >>= 1;
 
-        if(exp <= 0)
-            break;
+		if(exp <= 0)
+			break;
 
-        base *= base;
-    }
+		base *= base;
+	}
 
-    return result;
+	return result;
 }
 
 static inline void memset8(uint8_t *src, uint8_t data, size_t n) {
@@ -94,14 +94,14 @@ static inline size_t strlen(const char *str) {
 }
 
 static inline uint64_t octal_to_decimal(const char *str) {
-    uint64_t ret = 0;
+	uint64_t ret = 0;
 
-    while(*str) {
-        ret *= 8;
-        ret += (uint64_t)(*str++) - 0x30;
-    }
-    
-    return ret;
+	while(*str) {
+		ret *= 8;
+		ret += (uint64_t)(*str++) - 0x30;
+	}
+	
+	return ret;
 }
 
 int strcmp(const char *str0, const char *str1);

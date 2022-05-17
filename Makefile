@@ -1,4 +1,5 @@
 DISK_IMAGE = pastoral.img
+INITRAMFS = initramfs.tar
 
 .PHONY: all
 all: $(DISK_IMAGE)
@@ -31,7 +32,10 @@ limine:
 kernel:
 	$(MAKE) -C kernel
 
-$(DISK_IMAGE): limine kernel
+$(INITRAMFS):
+	cd sysroot && tar -cf ../initramfs.tar .
+
+$(DISK_IMAGE): $(INITRAMFS) limine kernel 
 	rm -rf pastoral.img
 	dd if=/dev/zero bs=1M count=0 seek=512 of=pastoral.img
 	parted -s pastoral.img mklabel msdos
@@ -45,6 +49,7 @@ $(DISK_IMAGE): limine kernel
 	sudo cp kernel/pastoral.elf disk_image/boot/
 	sudo cp kernel/limine.cfg disk_image/
 	sudo cp limine/limine.sys disk_image/boot/
+	sudo cp initramfs.tar disk_image/boot/
 	sync
 	sudo umount disk_image/
 	sudo losetup -d `cat loopback_dev`
@@ -53,7 +58,7 @@ $(DISK_IMAGE): limine kernel
 
 .PHONY: clean
 clean:
-	rm -f $(DISK_IMAGE) serial.log qemu.log
+	rm -f $(DISK_IMAGE) $(INITRAMFS) serial.log qemu.log
 	$(MAKE) -C kernel clean 
 
 .PHONY: distclean

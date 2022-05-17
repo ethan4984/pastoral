@@ -191,7 +191,7 @@ void vmm_init_page_table(struct page_table *page_table) {
 }
 
 void vmm_init() {
-    vmm_default_table(&kernel_mappings);
+	vmm_default_table(&kernel_mappings);
 	vmm_init_page_table(&kernel_mappings);
 }
 
@@ -230,64 +230,64 @@ void vmm_default_table(struct page_table *page_table) {
 		}
 	}
 
-    page_table->mmap_bump_base = MMAP_MAP_MIN_ADDR;
+	page_table->mmap_bump_base = MMAP_MAP_MIN_ADDR;
 }
 
 void vmm_pf_handler(struct registers *regs, void *status) {
-    if(regs->cs & 0x3) {
-        swapgs();
-    }
+	if(regs->cs & 0x3) {
+		swapgs();
+	}
 
-    struct sched_task *task = CURRENT_TASK;
-    if(task == NULL) {
-        if(regs->cs & 0x3) {
-            swapgs();
-        }
-        return;
-    }
+	struct sched_task *task = CURRENT_TASK;
+	if(task == NULL) {
+		if(regs->cs & 0x3) {
+			swapgs();
+		}
+		return;
+	}
 
-    uint64_t faulting_address;
-    asm volatile ("mov %%cr2, %0" : "=a"(faulting_address));
+	uint64_t faulting_address;
+	asm volatile ("mov %%cr2, %0" : "=a"(faulting_address));
 
-    struct mmap_region *root = task->page_table->mmap_region_root;
+	struct mmap_region *root = task->page_table->mmap_region_root;
 
-    if(root == NULL) {
-        if(regs->cs & 0x3) {
-            swapgs();
-        }
-        return;
-    }
+	if(root == NULL) {
+		if(regs->cs & 0x3) {
+			swapgs();
+		}
+		return;
+	}
 
-    while(root) {
-        if(root->base <= faulting_address && (root->base + root->limit) >= faulting_address) {
-            uint64_t flags = VMM_FLAGS_P | VMM_FLAGS_NX;
+	while(root) {
+		if(root->base <= faulting_address && (root->base + root->limit) >= faulting_address) {
+			uint64_t flags = VMM_FLAGS_P | VMM_FLAGS_NX;
 
-            if(root->prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
-            if(root->prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;
-            if(root->prot & MMAP_PROT_EXEC) flags &= ~(VMM_FLAGS_NX);
-            if(root->prot & MMAP_PROT_NONE) flags &= ~(VMM_FLAGS_P);
+			if(root->prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
+			if(root->prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;
+			if(root->prot & MMAP_PROT_EXEC) flags &= ~(VMM_FLAGS_NX);
+			if(root->prot & MMAP_PROT_NONE) flags &= ~(VMM_FLAGS_P);
 
-            size_t misalignment = faulting_address & (PAGE_SIZE - 1);
+			size_t misalignment = faulting_address & (PAGE_SIZE - 1);
 
-            vmm_map_range(task->page_table, faulting_address - misalignment, 1, flags);
+			vmm_map_range(task->page_table, faulting_address - misalignment, 1, flags);
 
-            *(int*)status = 1;
+			*(int*)status = 1;
 
-            if(regs->cs & 0x3) {
-                swapgs();
-            }
+			if(regs->cs & 0x3) {
+				swapgs();
+			}
 
-            return;
-        }
+			return;
+		}
 
-        if(root->base > faulting_address) {
-            root = root->left;
-        } else {
-            root = root->right;
-        }
-    }
+		if(root->base > faulting_address) {
+			root = root->left;
+		} else {
+			root = root->right;
+		}
+	}
 
-    if(regs->cs & 0x3) {
-        swapgs();
-    }
+	if(regs->cs & 0x3) {
+		swapgs();
+	}
 }

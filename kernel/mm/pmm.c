@@ -150,7 +150,7 @@ void pmm_init() {
 		}
 	}
 
-    print("pmm: initialised\n");
+	print("pmm: initialised\n");
 }
 
 
