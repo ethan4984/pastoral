@@ -59,7 +59,7 @@ void pastoral_thread() {
 		.argv_cnt = 0
 	};
 
-	sched_task_exec("/sysroot/program", 0x23, arguments);
+	sched_task_exec("/bruh", 0x23, arguments);
 
 	for(;;)
 		asm ("hlt");
