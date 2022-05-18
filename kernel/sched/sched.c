@@ -140,8 +140,6 @@ void reschedule(struct registers *regs, void*) {
 	set_user_fs(next_thread->user_fs_base);
 	set_user_gs(next_thread->user_gs_base);
 
-	print("rescheduling %x %d\n", next_thread->regs.rip, next_task->pid);
-
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
 	}
