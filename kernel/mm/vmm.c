@@ -20,6 +20,12 @@ struct pml_indices {
 	uint16_t pml1_index;
 };
 
+struct vmm_cow_page {
+	VECTOR(struct sched_task*) task_list;
+};
+
+static struct hash_table vmm_cow_list;
+
 static struct pml_indices compute_table_indices(uintptr_t vaddr) {
 	struct pml_indices ret;
 
@@ -231,6 +237,36 @@ void vmm_default_table(struct page_table *page_table) {
 	}
 
 	page_table->mmap_bump_base = MMAP_MAP_MIN_ADDR;
+}
+
+int vmm_cow_push_task(uint64_t address, struct sched_task *task) {
+	struct vmm_cow_page *cow = hash_table_search(&vmm_cow_list, &address, sizeof(address));
+	if(cow == NULL) {
+		return -1;
+	}
+
+	VECTOR_PUSH(cow->task_list, task);
+
+	return 0;
+}
+
+int vmm_cow_remove_task(uint64_t address, struct sched_task *task) {
+	struct vmm_cow_page *cow = hash_table_search(&vmm_cow_list, &address, sizeof(address));
+	if(cow == NULL) {
+		return -1;
+	}
+
+	VECTOR_REMOVE_BY_VALUE(cow->task_list, task);
+
+	return 0;
+}
+
+int vmm_cow_push_address(uint64_t address) {
+	struct vmm_cow_page *cow = alloc(sizeof(struct vmm_cow_page));
+
+	hash_table_push(&vmm_cow_list, &address, cow, sizeof(address));
+
+	return 0;
 }
 
 void vmm_pf_handler(struct registers *regs, void *status) {
