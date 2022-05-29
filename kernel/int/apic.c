@@ -54,17 +54,32 @@ void apic_timer_init(uint32_t ms) {
 	xapic_write(XAPIC_TIMER_INITAL_COUNT_OFF, ticks);
 }
 
-int ioapic_set_irq_redirection(uint32_t lapic_id, uint8_t vector, uint8_t irq) {
+int ioapic_set_irq_redirection(uint32_t lapic_id, uint8_t vector, uint8_t irq, bool mask) {
+	uint8_t flags = 0;
+
 	for(size_t i = 0; i < madt_ent2_list.element_cnt; i++) {
 		struct madt_ent2 *madt2 = &madt_ent2_list.elements[i];
 
-		if(madt2->irq_src == irq) {
-			irq = madt2->gsi;
-			break;
+		if(madt2->irq_src != irq) {
+			continue;
 		}
+
+		if(madt2->flags & (1 << 1)) { // edge triggered
+			flags |= IOAPIC_INTPOL;
+		} else if(madt2->flags & (1 << 3)) { // level triggered
+			flags |= IOAPIC_TRIGGER_MODE;
+		}
+
+		irq = madt2->gsi;
+		
+		break;
 	}
 
-	uint64_t entry = vector | ((uint64_t)lapic_id << 56);
+	if(mask) {
+		flags |= IOAPIC_INT_MASK;
+	}
+
+	uint64_t entry = vector | flags | ((uint64_t)lapic_id << 56);
 
 	for(size_t i = 0; i < ioapic_list.element_cnt; i++) { 
 		struct ioapic *ioapic = &ioapic_list.elements[i]; 
@@ -149,31 +164,8 @@ void apic_init() {
 	outb(0xa1, 0xff);
 	outb(0x21, 0xff);
 
-	for(size_t i = 0; i < madt_ent2_list.element_cnt; i++) {
-		struct madt_ent2 *madt2 = &madt_ent2_list.elements[i];
-
-		uint64_t entry = (madt2->irq_src + 32) | (1 << 16);
-
-		if(madt2->flags & (1 << 1)) { // egde triggered
-			entry |= IOAPIC_INTPOL;
-		} else if(madt2->flags & (1 << 3)) { // level triggered
-			entry |= IOAPIC_TRIGGER_MODE;
-		}
-
-		entry |= (uint64_t)xapic_read(XAPIC_ID_REG_OFF) << 56;
-
-		print("ioapic: mapping gsi %x to legacy irq %x\n", madt2->gsi, madt2->irq_src);
-
-		for(size_t i = 0; i < ioapic_list.element_cnt; i++) {
-			struct ioapic *ioapic = &ioapic_list.elements[i];
-			if(madt2->gsi <= ioapic->maximum_redirection_entry && madt2->gsi >= ioapic->madt1->gsi_base) {
-				ioapic_write_redirection_table(ioapic, (madt2->gsi - ioapic->madt1->gsi_base) * 2, entry);
-			}
-		}
-	}
-
 	for(size_t i = 0; i < 16; i++) {
-		ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), i + 32, i);
+		ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), i + 32, i, true);
 	}
 
 	kernel_mappings.map_page(&kernel_mappings, (rdmsr(MSR_LAPIC_BASE) & 0xfffff000) + HIGH_VMA, (rdmsr(MSR_LAPIC_BASE) & 0xfffff000), VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_G | VMM_FLAGS_PS);

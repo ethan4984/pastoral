@@ -113,6 +113,9 @@ extern void syscall_handler(struct registers *regs) {
 	if(syscall_list[syscall_number].handler != NULL) {
 		syscall_list[syscall_number].handler(regs);
 	} else {
+		if(strcmp(syscall_list[syscall_number].name, "ioctl") == 0) {
+			return;	
+		}
 		panic("null syscall %s", syscall_list[syscall_number].name);
 	}
 
