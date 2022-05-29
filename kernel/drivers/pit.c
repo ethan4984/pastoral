@@ -32,7 +32,7 @@ void pit_init() {
 
 	int vector = idt_alloc_vector(pit_handler, NULL);
 
-	ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), vector, 0);
+	ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), vector, 0, false);
 
 	clock_realtime = (struct timespec) { .tv_sec = stivale_struct->epoch, .tv_nsec = 0 };
 	clock_monotonic = (struct timespec) { .tv_sec = stivale_struct->epoch, .tv_nsec = 0 };
