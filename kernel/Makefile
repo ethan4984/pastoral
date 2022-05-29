@@ -41,15 +41,12 @@ HEADER_DEPS := $(CFILES:.c=.d)
 .PHONY: all
 all: $(KERNEL)
 
-stivale.h:
-	curl https://raw.githubusercontent.com/stivale/stivale/master/stivale.h -o $@
-
 $(KERNEL): $(BINS) $(OBJ)
 	$(LD) $(OBJ) $(LDFLAGS) $(INTERNALLDFLAGS) -o $@
 
 -include $(HEADER_DEPS)
 
-%.o: %.c stivale.h
+%.o: %.c
 	$(CC) $(CFLAGS) $(INTERNALCFLAGS) -c $< -o $@
 
 %.o: %.asm
@@ -61,7 +58,3 @@ $(KERNEL): $(BINS) $(OBJ)
 .PHONY: clean
 clean:
 	rm -rf $(KERNEL) $(OBJ) $(HEADER_DEPS) $(BINS)
-
-.PHONY: distclean
-distclean: clean
-	rm -f stivale.h

@@ -14,6 +14,7 @@ extern void syscall_read(struct registers*);
 extern void syscall_write(struct registers*);
 extern void syscall_seek(struct registers*);
 extern void syscall_mmap(struct registers*);
+extern void syscall_munmap(struct registers*);
 extern void syscall_stat(struct registers*);
 extern void syscall_statat(struct registers*);
 extern void syscall_getpid(struct registers*);
@@ -81,7 +82,7 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_dup, .name = "dup" },
 	{ .handler = syscall_dup2, .name = "dup2" },
 	{ .handler = syscall_mmap, .name = "mmap" },
-	{ .handler = NULL, .name = "munamp" },
+	{ .handler = syscall_munmap, .name = "munamp" },
 	{ .handler = syscall_set_fs_base, .name = "set_fs_base" },
 	{ .handler = syscall_get_fs_base, .name = "get_fs_base" },
 	{ .handler = syscall_set_gs_base, .name = "set_gs_base" },
