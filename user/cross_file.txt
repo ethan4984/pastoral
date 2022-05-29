@@ -1,0 +1,12 @@
+[binaries]
+c = 'x86_64-pastoral-gcc'
+cpp = 'x86_64-pastoral-g++'
+ar = 'x86_64-pastoral-ar'
+strip = 'x86_64-pastoral-strip'
+pkgconfig = 'pkg-config'
+
+[host_machine]
+system = 'pastoral'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
