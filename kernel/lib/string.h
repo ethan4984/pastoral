@@ -98,7 +98,8 @@ static inline uint64_t octal_to_decimal(const char *str) {
 
 	while(*str) {
 		ret *= 8;
-		ret += (uint64_t)(*str++) - 0x30;
+		ret += (uint64_t)(*str) - 0x30;
+		str++;
 	}
 	
 	return ret;

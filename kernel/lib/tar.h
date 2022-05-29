@@ -17,7 +17,7 @@ struct ustar_header {
 	char devmajor[8];
 	char devminor[8];
 	char prefix[155];
-};
+} __attribute__((packed));
 
 #define USTAR_REGTYPE '0'
 #define USTAR_AREGTYPE '\0'
@@ -30,5 +30,3 @@ struct ustar_header {
 #define USTAR_CONTTYPE '7'
 
 #define USTAR_MAGIC "ustar"
-
-int ustar_next_header(struct ustar_header **header);

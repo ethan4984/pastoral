@@ -2,6 +2,7 @@
 
 #include <stivale.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 struct tty {
 	uint32_t cursor_foreground;
@@ -14,6 +15,9 @@ struct tty {
 
 	size_t rows;
 	size_t cols;
+
+	volatile bool new_key;
+	volatile char last_char;
 
 	char *char_grid;
 };

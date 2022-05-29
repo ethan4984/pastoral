@@ -1,6 +1,7 @@
 #include <hash.h>
 #include <string.h>
-#include <mm/slab.h>
+#include <mm/pmm.h>
+#include <cpu.h>
 
 static uint64_t fnv_hash(char *data, size_t byte_cnt) {
 	uint64_t hash = 0xcbf29ce484222325;
@@ -35,8 +36,8 @@ void hash_table_push(struct hash_table *table, void *key, void *data, size_t key
 	if(table->capacity == 0) {
 		table->capacity = 16;
 
-		table->data = alloc(table->capacity * sizeof(void*));
-		table->keys = alloc(table->capacity * sizeof(void*));
+		table->data = (void*)(pmm_alloc(DIV_ROUNDUP(table->capacity * sizeof(void*), PAGE_SIZE), 1) + HIGH_VMA);
+		table->keys = (void*)(pmm_alloc(DIV_ROUNDUP(table->capacity * sizeof(void*), PAGE_SIZE), 1) + HIGH_VMA);
 	}
 
 	uint64_t hash = fnv_hash(key, key_size);
@@ -53,8 +54,8 @@ void hash_table_push(struct hash_table *table, void *key, void *data, size_t key
 
 	struct hash_table expanded_table = {
 		.capacity = table->capacity * 2,
-		.keys = alloc(table->capacity * sizeof(void*)),
-		.data = alloc(table->capacity * sizeof(void*))
+		.data = (void*)(pmm_alloc(DIV_ROUNDUP(table->capacity * sizeof(void*) * 2, PAGE_SIZE), 1) + HIGH_VMA),
+		.keys = (void*)(pmm_alloc(DIV_ROUNDUP(table->capacity * sizeof(void*) * 2, PAGE_SIZE), 1) + HIGH_VMA)
 	};
 
 	for(size_t i = 0; i < table->capacity; i++) {
@@ -62,6 +63,9 @@ void hash_table_push(struct hash_table *table, void *key, void *data, size_t key
 			hash_table_push(&expanded_table, table->keys[i], table->data[i], key_size);
 		}
 	}
+
+	pmm_free((uintptr_t)table->keys - HIGH_VMA, DIV_ROUNDUP(table->capacity * sizeof(void*), PAGE_SIZE));
+	pmm_free((uintptr_t)table->data - HIGH_VMA, DIV_ROUNDUP(table->capacity * sizeof(void*), PAGE_SIZE));
 
 	hash_table_push(&expanded_table, key, data, key_size);
 

@@ -182,6 +182,10 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path) 
 		VECTOR_PUSH(subpath_list, subpath);
 	}
 
+	if(subpath_list.element_cnt == 0) {
+		return vfs_root;
+	}
+
 	size_t i;
 	for(i = 0; i < (subpath_list.element_cnt - 1); i++) {
 		parent = vfs_search_relative(parent, subpath_list.elements[i]);

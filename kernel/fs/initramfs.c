@@ -23,11 +23,11 @@ int initramfs() {
 
 	struct ustar_header *ustar_header = (void*)module->begin;
 
-	if(strncmp(ustar_header->magic, USTAR_MAGIC, 5) != 0) {
-		return -1;
-	}
-
 	for(;;) {
+		if(strncmp(ustar_header->magic, "ustar", 5) != 0) {
+			break;
+		}
+
 		struct ramfs_handle *ramfs_handle = alloc(sizeof(struct ramfs_handle));
 
 		*ramfs_handle = (struct ramfs_handle) {
@@ -62,7 +62,9 @@ int initramfs() {
 
 		vfs_create_node_deep(NULL, asset, &ramfs_filesystem, ustar_header->name);
 
-		if(ustar_next_header(&ustar_header) == -1) {
+		ustar_header = (void*)ustar_header + 512 + ALIGN_UP(stat->st_size, 512);
+
+		if((uintptr_t)ustar_header >= module->begin + (module->end - module->begin)) {
 			break;
 		}
 	}

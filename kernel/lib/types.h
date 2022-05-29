@@ -27,6 +27,13 @@ struct timespec {
 	long tv_nsec;
 };
 
+#define O_ACCMODE 0x0007
+#define O_EXEC    1
+#define O_RDONLY  2
+#define O_RDWR    3
+#define O_SEARCH  4
+#define O_WRONLY  5
+
 #define S_IFMT 0x0f000
 #define S_IFBLK 0x06000
 #define S_IFCHR 0x02000

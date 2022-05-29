@@ -1,12 +1,14 @@
 #pragma once
 
 #include <types.h>
+#include <fs/vfs.h>
 
 struct fd_handle {
 	struct asset *asset;
 	int fd_number;
 	int flags;
 	off_t position;
+	struct vfs_node *vfs_node;
 };
 
 struct fd_handle *fd_translate(int index);

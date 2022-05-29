@@ -7,6 +7,7 @@
 #include <debug.h>
 #include <elf.h>
 #include <mm/mmap.h>
+#include <types.h>
 
 static struct hash_table task_list;
 
@@ -177,6 +178,10 @@ struct sched_task *sched_default_task() {
 	task->status = TASK_YIELD;
 	task->fd_bitmap.resizable = true;
 
+	bitmap_alloc(&task->fd_bitmap); // STDIN
+	bitmap_alloc(&task->fd_bitmap); // STDOUT
+	bitmap_alloc(&task->fd_bitmap); // STDERR
+
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,
 		.size = 0,
@@ -213,19 +218,19 @@ static uint64_t sched_arg_placement(struct sched_arguments *arguments, uint64_t 
 
 	for(size_t i = 0; i < arguments->envp_cnt; i++) {
 		char *element = arguments->envp[i];
-		ptr = (uint64_t*)((void*)ptr - strlen(element) + 1);
+		ptr = (uint64_t*)((void*)ptr - (strlen(element) + 1));
 		strcpy((void*)ptr, element);
 	}
 
 	for(size_t i = 0; i < arguments->argv_cnt; i++) {
 		char *element = arguments->argv[i];
-		ptr = (uint64_t*)((void*)ptr - strlen(element) + 1);
+		ptr = (uint64_t*)((void*)ptr - (strlen(element) + 1));
 		strcpy((void*)ptr, element);
 	}
 
 	ptr = (uint64_t*)((uintptr_t)ptr - ((uintptr_t)ptr & 0xf)); // align 16
 
-	if((arguments->argv_cnt + arguments->envp_cnt) & 1) {
+	if((arguments->argv_cnt + arguments->envp_cnt + 1) & 1) {
 		ptr--;
 	}
 
@@ -287,6 +292,9 @@ struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, ui
 	return thread;
 }
 
+ssize_t tty_read(struct asset *, void*, off_t, off_t cnt, void *buffer);
+ssize_t tty_write(struct asset *, void*, off_t, off_t cnt, const void *buffer);
+
 struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments) {
 	spinlock(&sched_lock);
 
@@ -332,6 +340,49 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		entry_point = ld_aux.at_entry;
 	}
 
+	struct fd_handle *stdin_handle = alloc(sizeof(struct fd_handle));
+
+	*stdin_handle = (struct fd_handle) { 
+		.asset = alloc(sizeof(struct asset)),
+		.fd_number = 0,
+		.flags = O_RDONLY,
+		.position = 0
+	};
+
+	stdin_handle->asset->stat = alloc(sizeof(struct stat));
+	stdin_handle->asset->stat->st_mode = S_IRUSR | S_IWUSR;
+	stdin_handle->asset->read = tty_read;
+
+	struct fd_handle *stdout_handle = alloc(sizeof(struct fd_handle));
+
+	*stdout_handle = (struct fd_handle) { 
+		.asset = alloc(sizeof(struct asset)),
+		.fd_number = 1,
+		.flags = O_WRONLY,
+		.position = 0
+	};
+
+	stdout_handle->asset->stat = alloc(sizeof(struct stat));
+	stdout_handle->asset->stat->st_mode = S_IWUSR | S_IRUSR;
+	stdout_handle->asset->write = tty_write;
+
+	struct fd_handle *stderr_handle = alloc(sizeof(struct fd_handle));
+
+	*stderr_handle = (struct fd_handle) { 
+		.asset = alloc(sizeof(struct asset)),
+		.fd_number = 2,
+		.flags = O_WRONLY,
+		.position = 0
+	};
+
+	stderr_handle->asset->stat = alloc(sizeof(struct stat));
+	stderr_handle->asset->stat->st_mode = S_IWUSR | S_IRUSR;
+	stderr_handle->asset->write = tty_write;
+
+	hash_table_push(&task->fd_list, &stdin_handle->fd_number, stdin_handle, sizeof(stdin_handle->fd_number));
+	hash_table_push(&task->fd_list, &stdout_handle->fd_number, stdout_handle, sizeof(stdout_handle->fd_number));
+	hash_table_push(&task->fd_list, &stderr_handle->fd_number, stderr_handle, sizeof(stderr_handle->fd_number));
+
 	struct sched_thread *thread = sched_thread_exec(task, entry_point, cs, &aux, arguments);
 
 	if(thread == NULL) {
@@ -348,4 +399,16 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	thread->status = TASK_WAITING;
 
 	return task;
+}
+
+void syscall_getpid(struct registers *regs) {
+	regs->rax = CORE_LOCAL->pid;
+}
+
+void syscall_getppid(struct registers *regs) {
+	regs->rax = CURRENT_TASK->ppid;
+}
+
+void syscall_gettid(struct registers *regs) {
+	regs->rax = CORE_LOCAL->tid;
 }

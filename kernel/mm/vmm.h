@@ -21,7 +21,7 @@
 #define VMM_PAT_WB 6
 #define VMM_PAT_UCM 7
 
-#define VMM_COW_FLAG (1 << 52)
+#define VMM_COW_FLAG (1ull << 52)
 
 struct mmap_region {
 	uintptr_t base;
@@ -39,6 +39,7 @@ struct mmap_region {
 struct page_table {
 	void (*map_page)(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags);
 	size_t (*unmap_page)(struct page_table *page_table, uintptr_t vaddr);
+	uint64_t *(*lowest_level)(struct page_table *page_table, uintptr_t vaddr);
 
 	struct mmap_region *mmap_region_root;
 	uint64_t mmap_bump_base;
@@ -53,8 +54,3 @@ void vmm_init_page_table(struct page_table *page_table);
 void vmm_map_range(struct page_table *page_table, uintptr_t vaddr, uint64_t cnt, uint64_t flags);
 void vmm_unmap_range(struct page_table *page_table, uintptr_t vaddr, uint64_t cnt);
 void vmm_default_table(struct page_table *page_table);
-
-struct sched_task;
-
-int vmm_cow_push_task(uint64_t address, struct sched_task *task);
-int vmm_cow_remove_task(uint64_t address, struct sched_task *task);

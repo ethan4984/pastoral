@@ -1,6 +1,8 @@
 #include <mm/mmap.h>
 #include <mm/vmm.h>
 #include <vector.h>
+#include <sched/sched.h>
+#include <debug.h>
 
 static ssize_t validate_region(struct page_table *page_table, uint64_t base, uint64_t length) {
 	struct mmap_region *root = page_table->mmap_region_root;
@@ -86,3 +88,24 @@ void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, i
 /*int munmap(struct page_table *page_table, void *addr, size_t length) {
 
 }*/
+
+extern void syscall_mmap(struct registers *regs) {
+	struct sched_task *current_task = CURRENT_TASK;
+	if(current_task == NULL) {
+		panic("cant find current task");
+	}
+	
+	struct page_table *page_table = current_task->page_table;
+	void *addr = (void*)regs->rdi;
+	size_t length = regs->rsi;
+	int prot = regs->rdx;
+	int flags = regs->r10;
+	int fd = regs->r8;
+	off_t offset = regs->r9;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: mmap: addr {%x}, length {%x}, prot {%x}, flags {%x}, fd {%x}, offset {%x}\n", (uintptr_t)addr, length, prot, flags, fd, offset);
+#endif
+
+	regs->rax = (uint64_t)mmap(page_table, addr, length, prot | MMAP_PROT_USER, flags, fd, offset);
+}

@@ -172,6 +172,10 @@ void apic_init() {
 		}
 	}
 
+	for(size_t i = 0; i < 16; i++) {
+		ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), i + 32, i);
+	}
+
 	kernel_mappings.map_page(&kernel_mappings, (rdmsr(MSR_LAPIC_BASE) & 0xfffff000) + HIGH_VMA, (rdmsr(MSR_LAPIC_BASE) & 0xfffff000), VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_G | VMM_FLAGS_PS);
 
 	xapic_write(XAPIC_TPR_OFF, 0);

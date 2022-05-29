@@ -42,11 +42,11 @@ void pastoral_thread() {
 		panic("initramfs: unable to initialise");
 	}
 
-	char *argv[] = { NULL };
+	char *argv[] = { "/usr/bin/bash", NULL };
 	char *envp[] = {
-		"HOME=/",
-		"PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-		"TERM=linux",
+        "HOME=/",
+        "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TERM=linux",
 		NULL
 	};
 
@@ -56,10 +56,10 @@ void pastoral_thread() {
 		.argv = argv,
 		.envp = envp,
 		.envp_cnt = 3,
-		.argv_cnt = 0
+		.argv_cnt = 1 
 	};
 
-	sched_task_exec("/bruh", 0x23, arguments);
+	sched_task_exec("/usr/bin/bash", 0x23, arguments);
 
 	for(;;)
 		asm ("hlt");
@@ -119,6 +119,7 @@ void pastoral_entry(uintptr_t stivale_addr) {
 	kernel_thread->regs.rip = (uintptr_t)pastoral_thread;
 	kernel_thread->regs.rflags = 0x202;
 	kernel_thread->regs.rsp = kernel_thread->kernel_stack;
+	kernel_thread->cwd = NULL;
 
 	kernel_task->page_table = alloc(sizeof(struct page_table));
 	vmm_default_table(kernel_task->page_table);

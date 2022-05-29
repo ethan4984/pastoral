@@ -127,6 +127,11 @@ void idt_init() {
 	interrupt_vectors[32].handler = reschedule;
 	interrupt_vectors[32].ptr = NULL;
 
+void ps2_keyboard(struct registers*, void*);
+
+	interrupt_vectors[33].handler = ps2_keyboard;
+	interrupt_vectors[33].ptr = NULL;
+
 	extern void isr0();
 	extern void isr1();
 	extern void isr2();

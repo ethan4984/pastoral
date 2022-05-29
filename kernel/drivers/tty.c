@@ -147,6 +147,82 @@ void fb_flush(uint32_t colour) {
 	}
 }
 
+void ps2_keyboard(struct registers*, void*) {
+	static char keymap[] = {	'\0', '\0', '1', '2', '3',	'4', '5', '6',	'7', '8', '9', '0',
+								'-', '=', '\b', '\t', 'q',	'w', 'e', 'r',	't', 'y', 'u', 'i',
+								'o', 'p', '[', ']', '\0',  '\0', 'a', 's',	'd', 'f', 'g', 'h',
+								'j', 'k', 'l', ';', '\'', '`', '\0', '\\', 'z', 'x', 'c', 'v',
+								'b', 'n', 'm', ',', '.',  '/', '\0', '\0', '\0', ' '
+						   };
+
+	static char cap_keymap[] = {	'\0', '\e', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
+									'_', '+', '\b', '\t', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I',
+									'O', 'P', '{', '}', '\0', '\0', 'A', 'S', 'D', 'F', 'G', 'H',
+									'J', 'K', 'L', ':', '\'', '~', '\0', '\\', 'Z', 'X', 'C', 'V',
+									'B', 'N', 'M', '<', '>',  '?', '\0', '\0', '\0', ' '
+							  };
+
+	static bool upkey = false;
+
+	uint8_t keycode = inb(0x60);
+	char character = '\0';
+
+	switch(keycode) {
+		case 0xaa: // left shift release
+			upkey = false;
+			return;
+		case 0x2a: // left shift press
+			upkey = true;
+			return;
+		case 0xf: // tab
+			character = '\t';
+			break;
+		case 0xe: // backspace
+			character = '\b';
+			break;
+		case 0x1c: // enter
+			character = '\n';
+			break;
+		default:
+			if(keycode <= 128) {
+				if(upkey) {
+					character = cap_keymap[keycode];
+				} else {
+					character = keymap[keycode];
+				}
+			}
+	}
+
+	tty_putchar(current_tty, character);
+
+	current_tty->last_char = character;
+	current_tty->new_key = true;
+}
+
+ssize_t tty_read(struct asset *, void*, off_t, off_t cnt, void *buffer) {
+	char *stream = buffer;
+
+	asm volatile ("sti");
+	
+	while(!current_tty->new_key);
+
+	*stream = current_tty->last_char;
+
+	current_tty->new_key = false;
+	
+	return cnt;
+}
+
+ssize_t tty_write(struct asset *, void*, off_t, off_t cnt, const void *buffer) {
+	const char *str = buffer;
+
+	for(size_t i = 0; i < cnt; i++) {
+		tty_putchar(current_tty, str[i]);
+	}
+
+	return cnt;
+}
+
 void tty_init() {
 	fb_pitch = stivale_struct->framebuffer_pitch;
 	fb_width = stivale_struct->framebuffer_width;
@@ -165,6 +241,8 @@ void tty_init() {
 		.cursor_foreground = DEFAULT_CURSOR_FG,
 		.rows = fb_height / FONT_HEIGHT,
 		.cols = fb_width / FONT_WIDTH,
+		.new_key = false,
+		.last_char = '\0',
 		.char_grid = alloc((fb_height / FONT_HEIGHT) * (fb_width / FONT_WIDTH))
 	};
 

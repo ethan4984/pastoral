@@ -24,8 +24,6 @@ struct vmm_cow_page {
 	VECTOR(struct sched_task*) task_list;
 };
 
-static struct hash_table vmm_cow_list;
-
 static struct pml_indices compute_table_indices(uintptr_t vaddr) {
 	struct pml_indices ret;
 
@@ -90,12 +88,78 @@ static size_t pml4_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
 		return 0x200000;
 	}
 
+	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
+		return 0;
+	}
+
 	uint64_t *pml1 = (uint64_t*)((pml2[pml_indices.pml2_index] & ~(0xfff)) + HIGH_VMA);
 
 	pml1[pml_indices.pml1_index] &= ~(VMM_FLAGS_P);
 	invlpg(vaddr);
 
 	return 0x1000;
+}
+
+static uint64_t *pml4_lowest_level(struct page_table *page_table, uintptr_t vaddr) {
+	struct pml_indices pml_indices = compute_table_indices(vaddr);
+
+	if((page_table->pml_high[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
+		return NULL;
+	}
+
+	uint64_t *pml3 = (uint64_t*)((page_table->pml_high[pml_indices.pml4_index] & ~(0xfff)) + HIGH_VMA);
+
+	if((pml3[pml_indices.pml3_index] & VMM_FLAGS_P) == 0) {
+		return NULL;
+	}
+
+	uint64_t *pml2 = (uint64_t*)((pml3[pml_indices.pml3_index] & ~(0xfff)) + HIGH_VMA);
+
+	if(pml2[pml_indices.pml2_index] & VMM_FLAGS_PS) {
+		return &pml2[pml_indices.pml2_index];
+	}
+
+	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
+		return NULL;
+	} 
+
+	uint64_t *pml1 = (uint64_t*)((pml2[pml_indices.pml2_index] & ~(0xfff)) + HIGH_VMA);
+
+	return &pml1[pml_indices.pml1_index];
+}
+
+static uint64_t *pml5_lowest_level(struct page_table *page_table, uintptr_t vaddr) {
+	struct pml_indices pml_indices = compute_table_indices(vaddr);
+
+	if((page_table->pml_high[pml_indices.pml5_index] & VMM_FLAGS_P) == 0) {
+		return NULL;
+	}
+
+	uint64_t *pml4 = (uint64_t*)((page_table->pml_high[pml_indices.pml5_index] & ~(0xfff)) + HIGH_VMA);
+
+	if((pml4[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
+		return NULL;
+	}
+
+	uint64_t *pml3 = (uint64_t*)((pml4[pml_indices.pml4_index] & ~(0xfff)) + HIGH_VMA);
+
+	if((pml3[pml_indices.pml3_index] & VMM_FLAGS_P) == 0) {
+		return NULL;
+	}
+
+	uint64_t *pml2 = (uint64_t*)((pml3[pml_indices.pml3_index] & ~(0xfff)) + HIGH_VMA);
+
+	if(pml2[pml_indices.pml2_index] & VMM_FLAGS_PS) {
+		return &pml2[pml_indices.pml2_index];
+	}
+
+	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
+		return NULL;
+	}
+
+	uint64_t *pml1 = (uint64_t*)((pml2[pml_indices.pml2_index] & ~(0xfff)) + HIGH_VMA);
+
+	return &pml1[pml_indices.pml1_index];
 }
 
 static void pml5_map_page(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags) {
@@ -160,6 +224,10 @@ static size_t pml5_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
 		return 0x200000;
 	}
 
+	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
+		return 0;
+	}
+
 	uint64_t *pml1 = (uint64_t*)((pml2[pml_indices.pml2_index] & ~(0xfff)) + HIGH_VMA);
 
 	pml1[pml_indices.pml1_index] &= ~(VMM_FLAGS_P);
@@ -207,9 +275,11 @@ void vmm_default_table(struct page_table *page_table) {
 	if(cpuid_state.rcx & (1 << 16)) {
 		page_table->map_page = pml5_map_page;
 		page_table->unmap_page = pml5_unmap_page;
+		page_table->lowest_level = pml5_lowest_level;
 	} else {
 		page_table->map_page = pml4_map_page;
 		page_table->unmap_page = pml4_unmap_page;
+		page_table->lowest_level = pml4_lowest_level;
 	}
 
 	page_table->pml_high = (uint64_t*)(pmm_alloc(1, 1) + HIGH_VMA);
@@ -237,36 +307,6 @@ void vmm_default_table(struct page_table *page_table) {
 	}
 
 	page_table->mmap_bump_base = MMAP_MAP_MIN_ADDR;
-}
-
-int vmm_cow_push_task(uint64_t address, struct sched_task *task) {
-	struct vmm_cow_page *cow = hash_table_search(&vmm_cow_list, &address, sizeof(address));
-	if(cow == NULL) {
-		return -1;
-	}
-
-	VECTOR_PUSH(cow->task_list, task);
-
-	return 0;
-}
-
-int vmm_cow_remove_task(uint64_t address, struct sched_task *task) {
-	struct vmm_cow_page *cow = hash_table_search(&vmm_cow_list, &address, sizeof(address));
-	if(cow == NULL) {
-		return -1;
-	}
-
-	VECTOR_REMOVE_BY_VALUE(cow->task_list, task);
-
-	return 0;
-}
-
-int vmm_cow_push_address(uint64_t address) {
-	struct vmm_cow_page *cow = alloc(sizeof(struct vmm_cow_page));
-
-	hash_table_push(&vmm_cow_list, &address, cow, sizeof(address));
-
-	return 0;
 }
 
 void vmm_pf_handler(struct registers *regs, void *status) {
@@ -322,6 +362,8 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 			root = root->right;
 		}
 	}
+
+	panic("page fault: unable to map address %x\n", faulting_address);
 
 	if(regs->cs & 0x3) {
 		swapgs();

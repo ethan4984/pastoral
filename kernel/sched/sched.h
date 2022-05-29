@@ -23,6 +23,8 @@ struct sched_thread {
 	size_t user_stack_size;
 	size_t errno;
 
+	struct vfs_node *cwd;
+
 	struct registers regs;
 }; 
 
