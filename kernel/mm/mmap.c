@@ -4,6 +4,7 @@
 #include <sched/sched.h>
 #include <debug.h>
 #include <errno.h>
+#include <bst.h>
 
 static ssize_t validate_region(struct page_table *page_table, uint64_t base, uint64_t length) {
 	struct mmap_region *root = page_table->mmap_region_root;
@@ -43,76 +44,6 @@ static struct mmap_region *mmap_search_region(struct page_table *page_table, uin
 	}
 
 	return root;
-}
-
-static void mmap_insert_region(struct page_table *page_table, struct mmap_region *region) {
-	if(region == NULL) {
-		return;
-	}
-
-	struct mmap_region *root = page_table->mmap_region_root;
-	struct mmap_region *parent = NULL;
-
-	while(root) {
-		parent = root;
-
-		if(root->base > region->base) {
-			root = root->left;
-		} else {
-			root = root->right;
-		}
-	}
-
-	region->parent = parent;
-
-	if(parent == NULL) {
-		page_table->mmap_region_root = region;
-	} else if(parent->base > region->base) {
-		parent->left = region;
-	} else {
-		parent->right = region;
-	}
-}
-
-static void mmap_remove_region(struct page_table *page_table, struct mmap_region *region) {
-	struct mmap_region *parent = region->parent;
-
-	if(region->left == NULL && region->right == NULL) {
-		if(parent == NULL) { 
-			page_table->mmap_region_root = NULL;
-		}
-
-		if(parent->left == region) {
-			parent->left = NULL;
-		} else {
-			parent->right = NULL;
-		}
-
-		return;
-	}
-
-	if(region->left && region->right == NULL) { 
-		if(parent->left == region) {
-			parent->left = region->left;
-		} else {
-			parent->right = region->left;
-		}
-	} else if(region->right && region->left == NULL) {
-		if(parent->left == region) {
-			parent->left = region->right;
-		} else {
-			parent->right = region->right;
-		}
-	} else {
-		if(parent->left == region) {
-			parent->left = NULL;
-		} else {
-			parent->right = NULL;
-		}
-
-		mmap_insert_region(page_table, region->right);
-		mmap_insert_region(page_table, region->left);
-	}
 }
 
 void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
@@ -158,7 +89,7 @@ void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, i
 		.offset = offset
 	};
 
-	mmap_insert_region(page_table, region);
+	BST_GENERIC_INSERT(page_table->mmap_region_root, base, region);
 
 	return (void*)base;
 }
@@ -216,9 +147,9 @@ int munmap(struct page_table *page_table, void *addr, size_t length) {
 		};
 	}
 
-	mmap_remove_region(page_table, region);
-	mmap_insert_region(page_table, lower_split);
-	mmap_insert_region(page_table, upper_split);
+	BST_GENERIC_DELETE(page_table->mmap_region_root, base, region);
+	BST_GENERIC_INSERT(page_table->mmap_region_root, base, lower_split);
+	BST_GENERIC_INSERT(page_table->mmap_region_root, base, upper_split);
 
 	for(size_t i = 0; i < region->limit / PAGE_SIZE; i++) {
 		page_table->unmap_page(page_table, base);
