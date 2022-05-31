@@ -23,6 +23,13 @@
 
 #define VMM_COW_FLAG (1 << 9)
 
+struct page {
+	uint64_t physical_frame;
+	uint64_t page_size;
+
+	int reference;
+};
+
 struct mmap_region {
 	uintptr_t base;
 	size_t limit;
@@ -30,6 +37,8 @@ struct mmap_region {
 	int prot;
 	int fd;
 	off_t offset;
+
+	struct hash_table *pages;
 
 	struct mmap_region *left;
 	struct mmap_region *right;
@@ -40,6 +49,8 @@ struct page_table {
 	void (*map_page)(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags);
 	size_t (*unmap_page)(struct page_table *page_table, uintptr_t vaddr);
 	uint64_t *(*lowest_level)(struct page_table *page_table, uintptr_t vaddr);
+
+	struct hash_table *memory_object;
 
 	struct mmap_region *mmap_region_root;
 	uint64_t mmap_bump_base;

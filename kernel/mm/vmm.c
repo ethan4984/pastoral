@@ -352,29 +352,42 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 	} else if(regs->error_code & VMM_FLAGS_RW) { // cow
 		uint64_t *lowest_level = task->page_table->lowest_level(task->page_table, faulting_address);
 		uint64_t pmll_entry = *lowest_level;
+		uint64_t faulting_page = faulting_address & ~(0xfff);
 
-		if(pmll_entry & VMM_COW_FLAG) { // perfect implementation, apart from the fact that it does not create a new table
-			uint64_t new_frame = pmm_alloc(1, 1);
-			uint64_t original_frame = pmll_entry & ~(0xfff);
+		if(pmll_entry & VMM_COW_FLAG) {
+			int memory_object_hash = (pmll_entry << 52 & 0x7FF) | ((pmll_entry << 10 & 0b11) >> 11);
 
-			memcpy64((uint64_t*)(new_frame + HIGH_VMA), (uint64_t*)(original_frame + HIGH_VMA), PAGE_SIZE / 8);
+			struct mmap_region *memory_object = hash_table_search(task->page_table->memory_object, &memory_object_hash, sizeof(memory_object_hash));
+			if(memory_object == NULL) {
+				return;
+			}
 
-			size_t ref_cnt = (pmll_entry << 52) & 0x3f;
+			struct page *page = hash_table_search(memory_object->pages, &faulting_page, sizeof(faulting_page));
+			if(page == NULL) {
+				return;
+			}
 
-			pmll_entry &= ~(0x3full << 52);
-			pmll_entry |= --ref_cnt << 52;
+			page->reference--;
 
-			if(ref_cnt == 0) {
+			if(page->reference <= 0) {
 				pmll_entry &= ~VMM_COW_FLAG;
 				pmll_entry |= VMM_FLAGS_RW;
 
 				*lowest_level = pmll_entry;
 
+				*(int*)status = 1;
+
 				return;
 			}
 
+			uint64_t new_frame = pmm_alloc(1, 1);
+			uint64_t original_frame = pmll_entry & ~(0xfff);
+
+			memcpy64((uint64_t*)(new_frame + HIGH_VMA), (uint64_t*)(original_frame + HIGH_VMA), PAGE_SIZE / 8);
+
 			uint64_t entry = new_frame | (pmll_entry & 0x1ff) | (VMM_FLAGS_RW);
-			*lowest_level = entry; // bad
+
+			*lowest_level = entry;
 
 			*(int*)status = 1;
 		}
