@@ -53,7 +53,7 @@ struct registers {
 	uint64_t rbx;
 	uint64_t rax;
 	uint64_t isr_number;
-	uint64_t err_code;
+	uint64_t error_code;
 	uint64_t rip;
 	uint64_t cs; 
 	uint64_t rflags; 

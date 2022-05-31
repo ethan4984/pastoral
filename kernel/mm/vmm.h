@@ -21,7 +21,7 @@
 #define VMM_PAT_WB 6
 #define VMM_PAT_UCM 7
 
-#define VMM_COW_FLAG (1ull << 52)
+#define VMM_COW_FLAG (1 << 9)
 
 struct mmap_region {
 	uintptr_t base;

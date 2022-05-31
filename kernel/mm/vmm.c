@@ -310,62 +310,73 @@ void vmm_default_table(struct page_table *page_table) {
 }
 
 void vmm_pf_handler(struct registers *regs, void *status) {
-	if(regs->cs & 0x3) {
-		swapgs();
-	}
-
 	struct sched_task *task = CURRENT_TASK;
 	if(task == NULL) {
-		if(regs->cs & 0x3) {
-			swapgs();
-		}
 		return;
 	}
 
 	uint64_t faulting_address;
 	asm volatile ("mov %%cr2, %0" : "=a"(faulting_address));
 
-	struct mmap_region *root = task->page_table->mmap_region_root;
+	if((regs->error_code & VMM_FLAGS_P) == 0) { // anon mmap
+		struct mmap_region *root = task->page_table->mmap_region_root;
 
-	if(root == NULL) {
-		if(regs->cs & 0x3) {
-			swapgs();
-		}
-		return;
-	}
-
-	while(root) {
-		if(root->base <= faulting_address && (root->base + root->limit) >= faulting_address) {
-			uint64_t flags = VMM_FLAGS_P | VMM_FLAGS_NX;
-
-			if(root->prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
-			if(root->prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;
-			if(root->prot & MMAP_PROT_EXEC) flags &= ~(VMM_FLAGS_NX);
-			if(root->prot & MMAP_PROT_NONE) flags &= ~(VMM_FLAGS_P);
-
-			size_t misalignment = faulting_address & (PAGE_SIZE - 1);
-
-			vmm_map_range(task->page_table, faulting_address - misalignment, 1, flags);
-
-			*(int*)status = 1;
-
-			if(regs->cs & 0x3) {
-				swapgs();
-			}
-
+		if(root == NULL) {
 			return;
 		}
 
-		if(root->base > faulting_address) {
-			root = root->left;
-		} else {
-			root = root->right;
+		while(root) {
+			if(root->base <= faulting_address && (root->base + root->limit) >= faulting_address) {
+				uint64_t flags = VMM_FLAGS_P | VMM_FLAGS_NX;
+
+				if(root->prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
+				if(root->prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;
+				if(root->prot & MMAP_PROT_EXEC) flags &= ~(VMM_FLAGS_NX);
+				if(root->prot & MMAP_PROT_NONE) flags &= ~(VMM_FLAGS_P);
+
+				size_t misalignment = faulting_address & (PAGE_SIZE - 1);
+
+				vmm_map_range(task->page_table, faulting_address - misalignment, 1, flags);
+
+				*(int*)status = 1;
+
+				return;
+			}
+
+			if(root->base > faulting_address) {
+				root = root->left;
+			} else {
+				root = root->right;
+			}
 		}
-	}
+	} else if(regs->error_code & VMM_FLAGS_RW) { // cow
+		uint64_t *lowest_level = task->page_table->lowest_level(task->page_table, faulting_address);
+		uint64_t pmll_entry = *lowest_level;
 
-	panic("page fault: unable to map address %x\n", faulting_address);
+		if(pmll_entry & VMM_COW_FLAG) { // perfect implementation, apart from the fact that it does not create a new table
+			uint64_t new_frame = pmm_alloc(1, 1);
+			uint64_t original_frame = pmll_entry & ~(0xfff);
 
-	if(regs->cs & 0x3) {
-		swapgs();
+			memcpy64((uint64_t*)(new_frame + HIGH_VMA), (uint64_t*)(original_frame + HIGH_VMA), PAGE_SIZE / 8);
+
+			size_t ref_cnt = (pmll_entry << 52) & 0x3f;
+
+			pmll_entry &= ~(0x3full << 52);
+			pmll_entry |= --ref_cnt << 52;
+
+			if(ref_cnt == 0) {
+				pmll_entry &= ~VMM_COW_FLAG;
+				pmll_entry |= VMM_FLAGS_RW;
+
+				*lowest_level = pmll_entry;
+
+				return;
+			}
+
+			uint64_t entry = new_frame | (pmll_entry & 0x1ff) | (VMM_FLAGS_RW);
+			*lowest_level = entry; // bad
+
+			*(int*)status = 1;
+		}
 	}
 }
