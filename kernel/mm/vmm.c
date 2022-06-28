@@ -38,7 +38,7 @@ static struct pml_indices compute_table_indices(uintptr_t vaddr) {
 
 struct page_table kernel_mappings;
 
-static void pml4_map_page(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags) {
+static uint64_t *pml4_map_page(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags) {
 	struct pml_indices pml_indices = compute_table_indices(vaddr);
 
 	if((page_table->pml_high[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
@@ -55,7 +55,7 @@ static void pml4_map_page(struct page_table *page_table, uintptr_t vaddr, uint64
 
 	if(flags & VMM_FLAGS_PS) {
 		pml2[pml_indices.pml2_index] = paddr | flags;
-		return;
+		return NULL;
 	}
 
 	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
@@ -65,6 +65,8 @@ static void pml4_map_page(struct page_table *page_table, uintptr_t vaddr, uint64
 	uint64_t *pml1 = (uint64_t*)((pml2[pml_indices.pml2_index] & ~(0xfff)) + HIGH_VMA);
 
 	pml1[pml_indices.pml1_index] = paddr | flags;
+
+	return &pml1[pml_indices.pml1_index];
 }
 
 static size_t pml4_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
@@ -162,7 +164,7 @@ static uint64_t *pml5_lowest_level(struct page_table *page_table, uintptr_t vadd
 	return &pml1[pml_indices.pml1_index];
 }
 
-static void pml5_map_page(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags) {
+static uint64_t *pml5_map_page(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags) {
 	struct pml_indices pml_indices = compute_table_indices(vaddr);
 
 	if((page_table->pml_high[pml_indices.pml5_index] & VMM_FLAGS_P) == 0) {
@@ -185,7 +187,7 @@ static void pml5_map_page(struct page_table *page_table, uintptr_t vaddr, uint64
 
 	if(flags & VMM_FLAGS_PS) {
 		pml2[pml_indices.pml2_index] = paddr | flags;
-		return;
+		return NULL;
 	}
 
 	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
@@ -195,6 +197,8 @@ static void pml5_map_page(struct page_table *page_table, uintptr_t vaddr, uint64
 	uint64_t *pml1 = (uint64_t*)((pml2[pml_indices.pml2_index] & ~(0xfff)) + HIGH_VMA);
 
 	pml1[pml_indices.pml1_index] = paddr | flags;
+
+	return &pml1[pml_indices.pml1_index];
 }
 
 static size_t pml5_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
@@ -283,6 +287,7 @@ void vmm_default_table(struct page_table *page_table) {
 	}
 
 	page_table->pml_high = (uint64_t*)(pmm_alloc(1, 1) + HIGH_VMA);
+	page_table->pages = alloc(sizeof(struct hash_table));
 
 	size_t phys = 0;
 	for(size_t i = 0; i < 0x400; i++) {
@@ -307,6 +312,31 @@ void vmm_default_table(struct page_table *page_table) {
 	}
 
 	page_table->mmap_bump_base = MMAP_MAP_MIN_ADDR;
+}
+
+struct page_table *vmm_fork_page_table(struct page_table *source_table) {
+	struct page_table *new_table = alloc(sizeof(struct page_table));
+
+	vmm_default_table(new_table);
+
+	for(size_t i = 0; i < source_table->pages->capacity; i++) {
+		struct page *page = source_table->pages->keys[i];
+
+		if(page) {
+			page->reference++;
+			page->flags = (page->flags & ~(VMM_FLAGS_RW)) | VMM_COW_FLAG;
+			*page->pml_entry = (*page->pml_entry & ~(VMM_FLAGS_RW)) | VMM_COW_FLAG;
+
+			struct page *new_page = alloc(sizeof(struct page));
+			*new_page = *page;
+
+			hash_table_push(new_table->pages, new_page, &new_page->vaddr, sizeof(new_page->vaddr));
+
+			new_page->pml_entry = new_table->map_page(new_table, page->vaddr, page->paddr, page->flags);
+		}
+	}
+
+	return new_table;
 }
 
 void vmm_pf_handler(struct registers *regs, void *status) {
@@ -336,7 +366,20 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 
 				size_t misalignment = faulting_address & (PAGE_SIZE - 1);
 
-				vmm_map_range(task->page_table, faulting_address - misalignment, 1, flags);
+				uint64_t paddr = pmm_alloc(1, 1);
+				uint64_t vaddr = faulting_address - misalignment;
+
+				struct page *new_page = alloc(sizeof(struct page));
+				*new_page = (struct page) {
+					.vaddr = vaddr, 
+					.paddr = paddr,
+					.size = PAGE_SIZE,
+					.flags = flags,
+					.pml_entry = task->page_table->map_page(task->page_table, vaddr, paddr, flags),
+					.reference = 0
+				};
+
+				hash_table_push(task->page_table->pages, new_page, &new_page->vaddr, sizeof(new_page->vaddr));
 
 				*(int*)status = 1;
 
@@ -349,47 +392,40 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 				root = root->right;
 			}
 		}
-	} else if(regs->error_code & VMM_FLAGS_RW) { // cow
-		uint64_t *lowest_level = task->page_table->lowest_level(task->page_table, faulting_address);
-		uint64_t pmll_entry = *lowest_level;
-		uint64_t faulting_page = faulting_address & ~(0xfff);
+	}
 
-		if(pmll_entry & VMM_COW_FLAG) {
-			int memory_object_hash = (pmll_entry << 52 & 0x7FF) | ((pmll_entry << 10 & 0b11) >> 11);
+	uint64_t *lowest_level = task->page_table->lowest_level(task->page_table, faulting_address);
+	uint64_t pmll_entry = *lowest_level;
+	uint64_t faulting_page = faulting_address & ~(0xfff);
 
-			struct mmap_region *memory_object = hash_table_search(task->page_table->memory_object, &memory_object_hash, sizeof(memory_object_hash));
-			if(memory_object == NULL) {
-				return;
-			}
+	if(pmll_entry & VMM_COW_FLAG) {
+		struct page *page = hash_table_search(task->page_table->pages, &faulting_page, sizeof(faulting_page));
+		if(page == NULL) {
+			return;
+		}
 
-			struct page *page = hash_table_search(memory_object->pages, &faulting_page, sizeof(faulting_page));
-			if(page == NULL) {
-				return;
-			}
+		page->reference--;
 
-			page->reference--;
+		if(page->reference <= 0) {
+			pmll_entry &= ~VMM_COW_FLAG;
+			pmll_entry |= VMM_FLAGS_RW;
 
-			if(page->reference <= 0) {
-				pmll_entry &= ~VMM_COW_FLAG;
-				pmll_entry |= VMM_FLAGS_RW;
-
-				*lowest_level = pmll_entry;
-
-				*(int*)status = 1;
-
-				return;
-			}
-
-			uint64_t new_frame = pmm_alloc(1, 1);
-			uint64_t original_frame = pmll_entry & ~(0xfff);
-
-			memcpy64((uint64_t*)(new_frame + HIGH_VMA), (uint64_t*)(original_frame + HIGH_VMA), PAGE_SIZE / 8);
-
-			uint64_t entry = new_frame | (pmll_entry & 0x1ff) | (VMM_FLAGS_RW);
-
-			*lowest_level = entry;
+			*lowest_level = pmll_entry;
 
 			*(int*)status = 1;
+
+			return;
 		}
+
+		uint64_t new_frame = pmm_alloc(1, 1);
+		uint64_t original_frame = pmll_entry & ~(0xfff);
+
+		memcpy64((uint64_t*)(new_frame + HIGH_VMA), (uint64_t*)(original_frame + HIGH_VMA), PAGE_SIZE / 8);
+
+		uint64_t entry = new_frame | (pmll_entry & 0x1ff) | (VMM_FLAGS_RW);
+
+		*lowest_level = entry;
+
+		*(int*)status = 1;
 	}
 }
