@@ -23,6 +23,7 @@ extern void syscall_gettid(struct registers*);
 extern void syscall_dup(struct registers*);
 extern void syscall_dup2(struct registers*);
 extern void syscall_fcntl(struct registers*);
+extern void syscall_fork(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -97,7 +98,7 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_stat, .name = "fstat" },
 	{ .handler = syscall_statat, .name = "fstatat" },
 	{ .handler = NULL, .name = "ioctl" },
-	{ .handler = NULL, .name = "fork" },
+	{ .handler = syscall_fork, .name = "fork" },
 	{ .handler = NULL, .name = "waitpid" },
 	{ .handler = NULL, .name = "readdir" },
 	{ .handler = NULL, .name = "execve" }
@@ -124,5 +125,7 @@ extern void syscall_handler(struct registers *regs) {
 		set_errno(0);
 	}
 
-	print("SYSCALL: %s returning %x with errno %d\n", syscall_list[syscall_number].name, regs->rax, get_errno());
+#ifndef SYSCALL_DEBUG
+	print("syscall: %s returning %x with errno %d\n", syscall_list[syscall_number].name, regs->rax, get_errno());
+#endif
 }

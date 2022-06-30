@@ -42,7 +42,28 @@ void pastoral_thread() {
 		panic("initramfs: unable to initialise");
 	}
 
-	char *argv[] = { "/usr/bin/bash", NULL };
+	/*char *argv[] = { "/usr/bin/bash", NULL };
+	char *envp[] = {
+        "HOME=/",
+        "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TERM=linux",
+		NULL
+	};
+
+	struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
+
+	*arguments = (struct sched_arguments) {
+		.argv = argv,
+		.envp = envp,
+		.envp_cnt = 3,
+		.argv_cnt = 1 
+	};
+	
+	sched_task_exec("/usr/bin/bash", 0x23, arguments);
+
+	for(;;);*/
+
+	char *argv[] = { "/init", NULL };
 	char *envp[] = {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -59,7 +80,7 @@ void pastoral_thread() {
 		.argv_cnt = 1 
 	};
 
-	sched_task_exec("/usr/bin/bash", 0x23, arguments);
+	sched_task_exec("/init", 0x23, arguments);
 
 	for(;;)
 		asm ("hlt");

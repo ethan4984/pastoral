@@ -87,21 +87,20 @@ const char *exception_messages[] = {
 extern void vmm_pf_handler(struct registers*, void*);
 
 extern void isr_handler_main(struct registers *regs) {
+	if(regs->cs & 0x3) {
+		swapgs();
+	}
+
 	if(regs->isr_number == 0xe) {
 		int status = 0;
-		
-		if(regs->cs & 0x3) {
-			swapgs();
-		}
 
 		vmm_pf_handler(regs, &status);
 
-		if(regs->cs & 0x3) {
-			swapgs();
-		}
-
 		if(status) {
 			xapic_write(XAPIC_EOI_OFF, 0);
+			if(regs->cs & 0x3) {
+				swapgs();
+			}
 			return;
 		}
 	}
@@ -110,7 +109,11 @@ extern void isr_handler_main(struct registers *regs) {
 		uint64_t cr2;
 		asm volatile ("mov %%cr2, %0" : "=a"(cr2));
 
+		uint64_t cr3;
+		asm volatile ("mov %%cr3, %0" : "=a"(cr3));
+
 		print("debug: Kowalski analysis: \"%s\", Error: %x\n", exception_messages[regs->isr_number], regs->error_code);
+		print("debug: pid: %x | tid: %x | apic_id: %x | cr3: %x\n", CORE_LOCAL->pid, CORE_LOCAL->tid, CORE_LOCAL->apic_id, cr3);
 		print("debug: RAX: %x | RBX: %x | RCX: %x | RDX: %x\n", regs->rax, regs->rbx, regs->rcx, regs->rdx);
 		print("debug: RSI: %x | RDI: %x | RBP: %x | RSP: %x\n", regs->rsi, regs->rdi, regs->rbp, regs->rsp);
 		print("debug: r8:  %x | r9:  %x | r10: %x | r11: %x\n", regs->r8, regs->r9, regs->r10, regs->r11);
@@ -124,6 +127,10 @@ extern void isr_handler_main(struct registers *regs) {
 
 	if(interrupt_vectors[regs->isr_number].handler != NULL) {
 		interrupt_vectors[regs->isr_number].handler(regs, interrupt_vectors[regs->isr_number].ptr);
+	}
+
+	if(regs->cs & 0x3) {
+		swapgs();
 	}
 
 	xapic_write(XAPIC_EOI_OFF, 0);

@@ -31,7 +31,7 @@ struct page {
 
 	uint64_t *pml_entry;
 
-	int reference;
+	int *reference;
 };
 
 struct mmap_region {
@@ -58,6 +58,8 @@ struct page_table {
 	struct hash_table *pages;
 
 	uint64_t *pml_high;
+
+	char lock;
 };
 
 extern struct page_table kernel_mappings;
@@ -67,3 +69,5 @@ void vmm_init_page_table(struct page_table *page_table);
 void vmm_map_range(struct page_table *page_table, uintptr_t vaddr, uint64_t cnt, uint64_t flags);
 void vmm_unmap_range(struct page_table *page_table, uintptr_t vaddr, uint64_t cnt);
 void vmm_default_table(struct page_table *page_table);
+
+struct page_table *vmm_fork_page_table(struct page_table *page_table);

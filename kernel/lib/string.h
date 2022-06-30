@@ -65,7 +65,7 @@ static inline void memset64(uint64_t *src, uint64_t data, size_t n) {
 
 static inline void memcpy8(uint8_t *dest, const uint8_t *src, size_t n) {
 	for(size_t i = 0; i < n; i++) {
-		*dest++ = *src++;
+		dest[i] = src[i];
 	}
 }
 

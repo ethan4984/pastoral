@@ -8,6 +8,7 @@
 #include <elf.h>
 #include <mm/mmap.h>
 #include <types.h>
+#include <fs/fd.h>
 
 static struct hash_table task_list;
 
@@ -75,9 +76,6 @@ struct sched_task *find_next_task() {
 }
 
 #define EXIT_RESCHEDULE() ({ \
-	if(regs->cs & 0x3) { \
-		swapgs(); \
-	} \
 	xapic_write(XAPIC_EOI_OFF, 0); \
 	spinrelease(&sched_lock); \
 	return; \
@@ -86,10 +84,6 @@ struct sched_task *find_next_task() {
 void reschedule(struct registers *regs, void*) {
 	if(__atomic_test_and_set(&sched_lock, __ATOMIC_ACQUIRE)) {
 		return;
-	}
-
-	if(regs->cs & 0x3) {
-		swapgs();
 	}
 
 	struct sched_task *next_task = find_next_task();
@@ -206,7 +200,7 @@ struct sched_thread *sched_default_thread(struct sched_task *task) {
 	thread->tid = bitmap_alloc(&task->tid_bitmap);
 	thread->status = TASK_YIELD;
 
-	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + HIGH_VMA;
+	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
 
 	hash_table_push(&task->thread_list, &thread->tid, thread, sizeof(thread->tid));
 
@@ -399,6 +393,68 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	thread->status = TASK_WAITING;
 
 	return task;
+}
+
+void syscall_fork(struct registers *regs) {
+	spinlock(&sched_lock);
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: fork\n");
+#endif
+
+	struct sched_task *current_task = CURRENT_TASK;
+	if(current_task == NULL) {
+		panic("");
+	}
+
+	struct sched_thread *current_thread = CURRENT_THREAD;
+	if(current_thread == NULL) {
+		panic("");
+	}
+
+	struct sched_task *task = alloc(sizeof(struct sched_task));
+	struct sched_thread *thread = alloc(sizeof(struct sched_thread));
+
+	task->pid = bitmap_alloc(&pid_bitmap);
+	task->ppid = current_task->pid;
+	task->status = TASK_WAITING;
+	task->page_table = vmm_fork_page_table(current_task->page_table);
+
+	task->tid_bitmap = (struct bitmap) {
+		.data = NULL,
+		.size = 0,
+		.resizable = true
+	};
+
+	for(size_t i = 0; i < current_task->fd_list.capacity; i++) {
+		struct fd_handle *handle = current_task->fd_list.data[i];
+		if(handle) {
+			struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
+			*new_handle = *handle;
+
+			hash_table_push(&task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+		}
+	}
+
+	bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
+
+	thread->regs = *regs;
+	thread->regs.rax = 0;
+	thread->user_gs_base = current_thread->user_gs_base;
+	thread->user_fs_base = current_thread->user_fs_base;
+	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->user_stack = current_thread->user_stack;
+	thread->cwd = current_thread->cwd;
+	thread->status = TASK_WAITING;
+	thread->tid = bitmap_alloc(&task->tid_bitmap);
+	thread->pid = task->pid;
+
+	hash_table_push(&task_list, &task->pid, task, sizeof(task->pid));
+	hash_table_push(&task->thread_list, &thread->tid, thread, sizeof(thread->tid));
+
+	regs->rax = task->pid;
+
+	spinrelease(&sched_lock);
 }
 
 void syscall_getpid(struct registers *regs) {

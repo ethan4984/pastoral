@@ -14,3 +14,4 @@ struct bitmap {
 ssize_t bitmap_alloc(struct bitmap *bitmap);
 void bitmap_free(struct bitmap *bitmap, size_t index);
 void bitmap_init(struct bitmap *bitmap, bool resizable, size_t size);
+void bitmap_dup(struct bitmap *bitmap, struct bitmap *dest);

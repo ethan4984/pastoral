@@ -33,3 +33,11 @@ void bitmap_free(struct bitmap *bitmap, size_t index) {
 
 	BIT_CLEAR(bitmap->data, index);
 }
+
+void bitmap_dup(struct bitmap *bitmap, struct bitmap *dest) {
+	dest->size = bitmap->size;
+	dest->resizable = bitmap->resizable;
+	dest->data = alloc(DIV_ROUNDUP(bitmap->size, 8));
+
+	memcpy8(dest->data, bitmap->data, DIV_ROUNDUP(bitmap->size, 8));
+}

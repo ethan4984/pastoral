@@ -137,7 +137,7 @@ static inline uint64_t get_user_fs() {
 }
 
 static inline void invlpg(uint64_t vaddr) {
-	asm volatile ("invlpg %0" :: "m"(vaddr) : "memory");
+	asm volatile ("invlpg %0" :: "m"((*((int(*)[])((void*)vaddr)))) : "memory");
 }
 
 static inline void spinlock(void *lock) {
