@@ -439,7 +439,6 @@ void syscall_fork(struct registers *regs) {
 	bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
 
 	thread->regs = *regs;
-	thread->regs.rax = 0;
 	thread->user_gs_base = current_thread->user_gs_base;
 	thread->user_fs_base = current_thread->user_fs_base;
 	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
@@ -453,6 +452,7 @@ void syscall_fork(struct registers *regs) {
 	hash_table_push(&task->thread_list, &thread->tid, thread, sizeof(thread->tid));
 
 	regs->rax = task->pid;
+	thread->regs.rax = 0;
 
 	spinrelease(&sched_lock);
 }
