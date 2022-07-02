@@ -294,8 +294,8 @@ void pci_init() {
 		pci_scan_bus(i);
 	}
 
-	for(size_t i = 0; i < pci_device_list.element_cnt; i++) {
-		struct pci_device *device = pci_device_list.elements[i];
+	for(size_t i = 0; i < pci_device_list.length; i++) {
+		struct pci_device *device = pci_device_list.data[i];
 
 		print("pci: %x:%x:%x: class %x: subclass %x: progif: %x: vendor_id: %x: device_id: %x\n",
 				device->bus,
@@ -330,8 +330,8 @@ void pci_init() {
 }
 
 struct pci_device *pci_search_device(uint8_t bus, uint8_t dev, uint8_t func) {
-	for(size_t i = 0; i < pci_device_list.element_cnt; i++) {
-		struct pci_device *device = pci_device_list.elements[i];
+	for(size_t i = 0; i < pci_device_list.length; i++) {
+		struct pci_device *device = pci_device_list.data[i];
 
 		if(device->bus == bus && device->dev == dev && device->func == func) {
 			return device;

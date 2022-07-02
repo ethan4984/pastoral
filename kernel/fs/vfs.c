@@ -101,8 +101,8 @@ struct vfs_node *vfs_search_relative(struct vfs_node *parent, const char *name) 
 		return parent->parent;
 	}
 
-	for(size_t i = 0; i < parent->children.element_cnt; i++) {
-		struct vfs_node *node = parent->children.elements[i]; 
+	for(size_t i = 0; i < parent->children.length; i++) {
+		struct vfs_node *node = parent->children.data[i]; 
 
 		if(strcmp(node->name, name) == 0) {
 			return node;
@@ -134,8 +134,8 @@ struct vfs_node *vfs_create_node_deep(struct vfs_node *parent, struct asset *ass
 	}
 
 	size_t i = 0;
-	for(; i < subpath_list.element_cnt; i++) {
-		struct vfs_node *node = vfs_search_relative(parent, subpath_list.elements[i]);
+	for(; i < subpath_list.length; i++) {
+		struct vfs_node *node = vfs_search_relative(parent, subpath_list.data[i]);
 		if(node == NULL) {
 			break;
 		}
@@ -147,18 +147,18 @@ struct vfs_node *vfs_create_node_deep(struct vfs_node *parent, struct asset *ass
 		}
 	}
 
-	if(i >= subpath_list.element_cnt) {
+	if(i >= subpath_list.length) {
 		return parent;
 	}
 	
-	for(; i < (subpath_list.element_cnt - 1); i++) {
-		parent = vfs_create_node(parent, vfs_default_asset(S_IFDIR), parent->filesystem, subpath_list.elements[i], 0);
+	for(; i < (subpath_list.length - 1); i++) {
+		parent = vfs_create_node(parent, vfs_default_asset(S_IFDIR), parent->filesystem, subpath_list.data[i], 0);
 		if(parent->mountpoint) {
 			parent = parent->mountpoint;
 		} 
 	}
 
-	return vfs_create_node(parent, asset, filesystem, subpath_list.elements[i], 0);
+	return vfs_create_node(parent, asset, filesystem, subpath_list.data[i], 0);
 }
 
 struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path) {
@@ -182,13 +182,13 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path) 
 		VECTOR_PUSH(subpath_list, subpath);
 	}
 
-	if(subpath_list.element_cnt == 0) {
+	if(subpath_list.length == 0) {
 		return vfs_root;
 	}
 
 	size_t i;
-	for(i = 0; i < (subpath_list.element_cnt - 1); i++) {
-		parent = vfs_search_relative(parent, subpath_list.elements[i]);
+	for(i = 0; i < (subpath_list.length - 1); i++) {
+		parent = vfs_search_relative(parent, subpath_list.data[i]);
 		if(parent == NULL) {
 			return NULL;
 		}
@@ -202,7 +202,7 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path) 
 		}
 	}
 
-	return vfs_search_relative(parent, subpath_list.elements[i]);
+	return vfs_search_relative(parent, subpath_list.data[i]);
 }
 
 const char *vfs_absolute_path(struct vfs_node *node) {
@@ -219,11 +219,11 @@ const char *vfs_absolute_path(struct vfs_node *node) {
 
 	char *ret = alloc(MAX_PATH_LENGTH);
 
-	for(size_t i = node_list.element_cnt; i-- > 0;) {
-		if(S_ISDIR(node_list.elements[i]->asset->stat->st_mode)) {
-			sprint(ret + strlen(ret), "%s/", node_list.elements[i]->name);
+	for(size_t i = node_list.length; i-- > 0;) {
+		if(S_ISDIR(node_list.data[i]->asset->stat->st_mode)) {
+			sprint(ret + strlen(ret), "%s/", node_list.data[i]->name);
 		} else {
-			sprint(ret + strlen(ret), "%s", node_list.elements[i]->name);
+			sprint(ret + strlen(ret), "%s", node_list.data[i]->name);
 		}
 	}
 

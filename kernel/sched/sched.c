@@ -8,6 +8,7 @@
 #include <elf.h>
 #include <mm/mmap.h>
 #include <types.h>
+#include <errno.h>
 #include <fs/fd.h>
 
 static struct hash_table task_list;
@@ -75,11 +76,16 @@ struct sched_task *find_next_task() {
 	return ret;
 }
 
-#define EXIT_RESCHEDULE() ({ \
-	xapic_write(XAPIC_EOI_OFF, 0); \
-	spinrelease(&sched_lock); \
-	return; \
-})
+void sched_idle() {
+	xapic_write(XAPIC_EOI_OFF, 0);
+	spinrelease(&sched_lock);
+
+	asm volatile ("sti");
+
+	for(;;) {
+		asm volatile ("hlt");
+	}
+}
 
 void reschedule(struct registers *regs, void*) {
 	if(__atomic_test_and_set(&sched_lock, __ATOMIC_ACQUIRE)) {
@@ -88,27 +94,32 @@ void reschedule(struct registers *regs, void*) {
 
 	struct sched_task *next_task = find_next_task();
 	if(next_task == NULL) {
-		EXIT_RESCHEDULE();
+		sched_idle();
 	}
 
 	struct sched_thread *next_thread = find_next_thread(next_task);
 	if(next_thread == NULL) {
-		EXIT_RESCHEDULE();
+		sched_idle();
 	}
 
 	if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
 		struct sched_task *last_task = sched_translate_pid(CORE_LOCAL->pid);		 
 		if(last_task == NULL) {
-			EXIT_RESCHEDULE();
+			sched_idle();
 		}
 
 		struct sched_thread *last_thread = sched_translate_tid(CORE_LOCAL->pid, CORE_LOCAL->tid);
 		if(last_thread == NULL) {
-			EXIT_RESCHEDULE();
+			sched_idle();
 		}
 
-		last_thread->status = TASK_WAITING;
-		last_task->status = TASK_WAITING;
+		if(last_thread->status != TASK_YIELD) {
+			last_thread->status = TASK_WAITING;
+		}
+
+		if(last_task->status != TASK_YIELD) {
+			last_task->status = TASK_WAITING;
+		}
 
 		last_thread->errno = CORE_LOCAL->errno;
 		last_thread->regs = *regs;
@@ -134,6 +145,8 @@ void reschedule(struct registers *regs, void*) {
 
 	set_user_fs(next_thread->user_fs_base);
 	set_user_gs(next_thread->user_gs_base);
+
+	spinrelease(&next_task->pending_event); 
 
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
@@ -163,6 +176,67 @@ void reschedule(struct registers *regs, void*) {
 		"iretq\n\t"
 		:: "r" (&next_thread->regs)
 	);
+}
+
+void sched_dequeue(struct sched_task *task, struct sched_thread *thread) {
+	spinlock(&sched_lock);
+
+	task->status = TASK_YIELD;
+	thread->status = TASK_YIELD;
+
+	spinrelease(&sched_lock);
+}
+
+
+void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *thread) {
+	asm volatile ("cli");
+
+	sched_dequeue(task, thread);
+
+	xapic_write(XAPIC_ICR_OFF + 0x10, CORE_LOCAL->apic_id << 24);
+	xapic_write(XAPIC_ICR_OFF, 32);
+
+	asm volatile ("sti");
+
+	for(;;) {
+		asm volatile ("hlt");
+	}
+}
+
+void sched_requeue(struct sched_task *task, struct sched_thread *thread) {
+	spinlock(&sched_lock);
+
+	task->status = TASK_WAITING;
+	task->idle_cnt = TASK_MAX_PRIORITY;
+
+	thread->status = TASK_WAITING;
+	thread->idle_cnt = TASK_MAX_PRIORITY;
+
+	spinrelease(&sched_lock);
+}
+
+void sched_requeue_and_yield(struct sched_task *task, struct sched_thread *thread) {
+	asm volatile ("cli");
+
+	sched_requeue(task, thread);
+
+	xapic_write(XAPIC_ICR_OFF + 0x10, CORE_LOCAL->apic_id << 24);
+	xapic_write(XAPIC_ICR_OFF, 32);
+
+	asm volatile ("sti");
+
+	for(;;) {
+		asm volatile ("hlt");
+	}
+}
+
+void sched_yield() {
+	xapic_write(XAPIC_ICR_OFF + 0x10, CORE_LOCAL->apic_id << 24);
+	xapic_write(XAPIC_ICR_OFF, 32);
+
+	for(;;) {
+		asm volatile ("hlt");
+	}
 }
 
 struct sched_task *sched_default_task() {
@@ -289,7 +363,7 @@ struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, ui
 ssize_t tty_read(struct asset *, void*, off_t, off_t cnt, void *buffer);
 ssize_t tty_write(struct asset *, void*, off_t, off_t cnt, const void *buffer);
 
-struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments) {
+struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status) {
 	spinlock(&sched_lock);
 
 	struct sched_task *task = sched_default_task();
@@ -389,10 +463,253 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	spinrelease(&sched_lock);
 
-	task->status = TASK_WAITING;
-	thread->status = TASK_WAITING;
+	task->status = status;
+	thread->status = status;
 
 	return task;
+}
+
+void event_listen(struct event *event) {
+	spinlock(&event->lock);
+
+	struct event_listener *listener = alloc(sizeof(struct event_listener));
+	*listener = (struct event_listener) {
+		.task = CURRENT_TASK,
+		.thread = CURRENT_THREAD
+	};
+
+	VECTOR_PUSH(event->listeners, listener);
+
+	spinrelease(&event->lock);
+}
+
+void event_wait() {
+	spinlock(&CURRENT_TASK->pending_event);
+
+	spinlock(&CURRENT_TASK->pending_event);
+	spinrelease(&CURRENT_TASK->pending_event);
+}
+
+void event_listen_and_wait() {
+	asm volatile ("cli");
+
+	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
+
+	asm volatile ("sti");
+
+	event_wait();
+}
+
+void event_trigger(struct event *event) {
+	spinlock(&event->lock);
+
+	asm volatile ("cli");
+
+	for(size_t i = 0; i < event->listeners.length; i++) { 
+		struct event_listener *listener = event->listeners.data[i];
+		struct sched_task *task = listener->task;
+
+		listener->agent_task = CURRENT_TASK;
+		listener->agent_thread = CURRENT_THREAD;
+	
+		task->last_listen = listener;
+
+		sched_requeue(listener->task, listener->thread);
+	}
+
+	asm volatile ("sti");
+	
+	spinrelease(&event->lock);
+}
+
+void syscall_waitpid(struct registers *regs) {
+	int pid = regs->rdi;
+	int *status = (int*)regs->rsi;
+	int options = regs->rdx;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: waitpid: pid {%x}, status {%x}, options {%x}\n", pid, (uintptr_t)status, options);
+#endif
+
+	VECTOR(struct sched_task*) process_list = { 0 };
+
+	if(pid < -1) {
+		// TODO implement process groups
+	} else if(pid == -1) {
+		for(size_t i = 0; i < CURRENT_TASK->children.length; i++) {
+			VECTOR_PUSH(process_list, CURRENT_TASK->children.data[i]);
+		}
+	} else if(pid == 0) {
+		// TODO implement process groups
+	} else if(pid > 0) {
+		VECTOR_PUSH(process_list, sched_translate_pid(pid));
+	}
+
+	for(size_t i = 0; i < process_list.length; i++) {
+		struct sched_task *task = process_list.data[i];
+		event_listen(&task->event);
+	}
+
+	event_listen_and_wait();
+
+	struct event_listener *listen = CURRENT_TASK->last_listen;
+	struct sched_task *agent = listen->agent_task;
+
+	*status = agent->process_status;
+	regs->rax = agent->pid;
+}
+
+void syscall_exit(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: exit\n");
+#endif
+
+	struct sched_task *task = CURRENT_TASK;
+	if(task == NULL) {
+		panic("");
+	}
+
+	for(size_t i = 0; i < task->fd_bitmap.size; i++) {
+		if(BIT_TEST(task->fd_bitmap.data, i)) {
+			fd_close(i);
+		}
+	}
+
+	for(size_t i = 0; i < task->thread_list.capacity; i++) {
+		struct sched_thread *thread = task->thread_list.data[i];
+
+		if(thread) {
+			thread->status = TASK_YIELD;
+			hash_table_delete(&task->thread_list, &thread->tid, sizeof(thread->tid));
+		}
+	}
+
+	struct page_table *page_table = task->page_table;
+
+	/* TODO leaks inner pt levels */
+	for(size_t i = 0; i < page_table->pages->capacity; i++) {
+		struct page *page = page_table->pages->data[i];
+
+		if(page) {
+			hash_table_delete(page_table->pages, &page->vaddr, sizeof(page->vaddr));
+
+			if((*page->reference) <= 1) { // shared page
+				(*page->reference)--;
+				continue;	
+			}
+
+			pmm_free(page->paddr, 1);
+		}
+	}
+	
+	int status = regs->rdi;
+
+	if(task->ppid != -1) {
+		struct sched_task *parent = sched_translate_pid(task->ppid);
+
+		VECTOR_REMOVE_BY_VALUE(parent->children, task);
+
+		for(size_t i = 0; i < task->children.length; i++) {
+			VECTOR_PUSH(parent->children, task->children.data[i]);
+		}
+
+		task->process_status = status | 0x200;
+		event_trigger(&task->event);
+	}
+
+	task->status = TASK_YIELD;
+
+	bitmap_free(&pid_bitmap, task->pid);
+	hash_table_delete(&task_list, &task->pid, sizeof(task->pid));
+
+	CORE_LOCAL->pid = -1;
+	CORE_LOCAL->tid = -1;
+
+	sched_yield();
+}
+
+void syscall_execve(struct registers *regs) {
+	char *_path = (char*)regs->rdi;
+	char **_argv = (char**)regs->rsi;
+	char **_envp = (char**)regs->rdx;
+
+	int envp_cnt = 0;
+	for(;;envp_cnt++) {
+		if(_envp[envp_cnt] == NULL) {
+			break;
+		}
+	}
+
+	int argv_cnt = 0;
+	for(;;argv_cnt++) {
+		if(_argv[argv_cnt] == NULL) {
+			break;
+		}
+	}
+
+	char *path = alloc(strlen(_path) + 1);
+	char **argv = alloc(sizeof(char*) * argv_cnt);
+	char **envp = alloc(sizeof(char*) * envp_cnt);
+
+	strcpy(path, _path);
+
+	for(size_t i = 0; i < envp_cnt; i++) {
+		envp[i] = alloc(strlen(_envp[i]));
+		strcpy(envp[i], _envp[i]);
+	}
+
+	for(size_t i = 0; i < argv_cnt; i++) {
+		argv[i] = alloc(strlen(_argv[i]));
+		strcpy(argv[i], _argv[i]);
+	}
+
+	struct sched_arguments arguments = {
+		.envp_cnt = envp_cnt,
+		.argv_cnt = argv_cnt,
+		.argv = argv,
+		.envp = envp
+	};
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: execve: path {%s}, argv {", path);
+
+	for(size_t i = 0; i < argv_cnt; i++) {
+		print("%s, ", argv[i]);
+	}
+
+	print("\b\b}, envp {");
+
+	for(size_t i = 0; i < envp_cnt; i++) {
+		print("%s, ", envp[i]);
+	}
+
+	print("\b\b}\n");
+#endif
+	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path);
+	if(vfs_node == NULL) {
+		set_errno(ENOENT);
+		regs->rax = -1;
+		return;
+	}
+
+	struct sched_task *current_task = CURRENT_TASK;
+	struct sched_thread *current_thread = CURRENT_THREAD;
+	struct sched_task *new_task = sched_task_exec(path, 0x23, &arguments, TASK_WAITING);
+
+	hash_table_delete(&task_list, &current_task->pid, sizeof(current_task->pid));
+	hash_table_delete(&task_list, &new_task->pid, sizeof(new_task->pid));
+
+	new_task->cwd = current_task->cwd;
+	new_task->pid = current_task->pid;
+	new_task->ppid= current_task->ppid;
+	new_task->event = current_task->event;
+
+	CORE_LOCAL->pid = -1;
+	CORE_LOCAL->tid = -1;
+
+	hash_table_push(&task_list, &new_task->pid, new_task, sizeof(new_task->pid));
+
+	sched_yield();
 }
 
 void syscall_fork(struct registers *regs) {
@@ -419,6 +736,7 @@ void syscall_fork(struct registers *regs) {
 	task->ppid = current_task->pid;
 	task->status = TASK_WAITING;
 	task->page_table = vmm_fork_page_table(current_task->page_table);
+	task->cwd = current_task->cwd;
 
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,
@@ -443,7 +761,6 @@ void syscall_fork(struct registers *regs) {
 	thread->user_fs_base = current_thread->user_fs_base;
 	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
 	thread->user_stack = current_thread->user_stack;
-	thread->cwd = current_thread->cwd;
 	thread->status = TASK_WAITING;
 	thread->tid = bitmap_alloc(&task->tid_bitmap);
 	thread->pid = task->pid;
@@ -453,6 +770,8 @@ void syscall_fork(struct registers *regs) {
 
 	regs->rax = task->pid;
 	thread->regs.rax = 0;
+
+	VECTOR_PUSH(current_task->children, task);
 
 	spinrelease(&sched_lock);
 }

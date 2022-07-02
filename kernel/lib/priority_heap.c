@@ -6,8 +6,8 @@
 #define HEAP_PARENT(heap, index) ({ \
 	struct priority_heap_node *_child = NULL; \
 	int _index = (index) / 2 - 1; \
-	if(_index < (heap)->nodes.element_cnt) { \
-		_child = (heap)->nodes.elements[_index]; \
+	if(_index < (heap)->nodes.length) { \
+		_child = (heap)->nodes.data[_index]; \
 	} \
 	_child; \
 })
@@ -15,8 +15,8 @@
 #define HEAP_LEFT(heap, index) ({ \
 	struct priority_heap_node *_child = NULL; \
 	int _index = (index) * 2 - 1; \
-	if(_index < (heap)->nodes.element_cnt) { \
-		_child = (heap)->nodes.elements[_index]; \
+	if(_index < (heap)->nodes.length) { \
+		_child = (heap)->nodes.data[_index]; \
 	} \
 	_child; \
 })
@@ -24,14 +24,14 @@
 #define HEAP_RIGHT(heap, index) ({ \
 	struct priority_heap_node *_child = NULL; \
 	int _index = (index) * 2; \
-	if(_index < (heap)->nodes.element_cnt) { \
-		_child = (heap)->nodes.elements[_index]; \
+	if(_index < (heap)->nodes.length) { \
+		_child = (heap)->nodes.data[_index]; \
 	} \
 	_child; \
 })
 
 static void max_heapify(struct priority_heap *heap, int index) {
-	struct priority_heap_node *root = heap->nodes.elements[index - 1];
+	struct priority_heap_node *root = heap->nodes.data[index - 1];
 
 	struct priority_heap_node *left = HEAP_LEFT(heap, index);
 	struct priority_heap_node *right = HEAP_RIGHT(heap, index);
@@ -69,5 +69,5 @@ void priority_heap_delete(struct priority_heap *heap, struct priority_heap_node 
 
 void priority_heap_insert(struct priority_heap *heap, struct priority_heap_node *node) {
 	VECTOR_PUSH(heap->nodes, node);
-	max_heapify(heap, heap->nodes.element_cnt);
+	max_heapify(heap, heap->nodes.length);
 }

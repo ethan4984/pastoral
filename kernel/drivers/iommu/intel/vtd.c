@@ -95,8 +95,8 @@ int vtd_init() {
 		}
 	}
 
-	for(size_t i = 0; i < remapping_modules.element_cnt; i++) {
-		struct remapping_module *module = remapping_modules.elements[i];
+	for(size_t i = 0; i < remapping_modules.length; i++) {
+		struct remapping_module *module = remapping_modules.data[i];
 
 		drhd_set_global_config(module, 31, false); // ensure remapping is disabled
 
@@ -126,8 +126,8 @@ int vtd_init() {
 			bitmap_alloc(&module->domain_bitmap);				
 		}
 
-		for(size_t i = 0; i < module->devices.element_cnt; i++) {
-			struct device_scope *scope = module->devices.elements[i];
+		for(size_t i = 0; i < module->devices.length; i++) {
+			struct device_scope *scope = module->devices.data[i];
 			struct pci_device *device = scope->device;
 
 			print("drhd: device: %x:%x:%x\n", device->bus, device->dev, device->func);

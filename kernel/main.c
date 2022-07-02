@@ -42,7 +42,7 @@ void pastoral_thread() {
 		panic("initramfs: unable to initialise");
 	}
 
-	/*char *argv[] = { "/usr/bin/bash", NULL };
+	char *argv[] = { "/usr/bin/bash", NULL };
 	char *envp[] = {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -59,11 +59,9 @@ void pastoral_thread() {
 		.argv_cnt = 1 
 	};
 	
-	sched_task_exec("/usr/bin/bash", 0x23, arguments);
+	sched_task_exec("/usr/bin/bash", 0x23, arguments, TASK_WAITING);
 
-	for(;;);*/
-
-	char *argv[] = { "/init", NULL };
+	/*char *argv[] = { "/init", NULL };
 	char *envp[] = {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -80,7 +78,7 @@ void pastoral_thread() {
 		.argv_cnt = 1 
 	};
 
-	sched_task_exec("/init", 0x23, arguments);
+	sched_task_exec("/init", 0x23, arguments, TASK_WAITING);*/
 
 	for(;;)
 		asm ("hlt");
@@ -140,7 +138,7 @@ void pastoral_entry(uintptr_t stivale_addr) {
 	kernel_thread->regs.rip = (uintptr_t)pastoral_thread;
 	kernel_thread->regs.rflags = 0x202;
 	kernel_thread->regs.rsp = kernel_thread->kernel_stack;
-	kernel_thread->cwd = NULL;
+	kernel_task->cwd = NULL;
 
 	kernel_task->page_table = alloc(sizeof(struct page_table));
 	vmm_default_table(kernel_task->page_table);

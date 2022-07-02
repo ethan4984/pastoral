@@ -10,3 +10,5 @@ void time_add_interval(struct timespec *dest, struct timespec *interval) {
 
 	dest->tv_sec += interval->tv_sec;
 }
+
+

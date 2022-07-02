@@ -24,6 +24,9 @@ extern void syscall_dup(struct registers*);
 extern void syscall_dup2(struct registers*);
 extern void syscall_fcntl(struct registers*);
 extern void syscall_fork(struct registers*);
+extern void syscall_exit(struct registers*);
+extern void syscall_waitpid(struct registers*);
+extern void syscall_execve(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -89,7 +92,7 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_set_gs_base, .name = "set_gs_base" },
 	{ .handler = syscall_get_gs_base, .name = "get_gs_base" },
 	{ .handler = syscall_syslog, .name = "syslog" },
-	{ .handler = NULL, .name = "exit" },
+	{ .handler = syscall_exit, .name = "exit" },
 	{ .handler = syscall_getpid, .name = "getpid" },
 	{ .handler = syscall_gettid, .name = "gettid" },
 	{ .handler = syscall_getppid, .name = "getppid" },
@@ -99,9 +102,9 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_statat, .name = "fstatat" },
 	{ .handler = NULL, .name = "ioctl" },
 	{ .handler = syscall_fork, .name = "fork" },
-	{ .handler = NULL, .name = "waitpid" },
+	{ .handler = syscall_waitpid, .name = "waitpid" },
 	{ .handler = NULL, .name = "readdir" },
-	{ .handler = NULL, .name = "execve" }
+	{ .handler = syscall_execve, .name = "execve" }
 };
 
 extern void syscall_handler(struct registers *regs) {

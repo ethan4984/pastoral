@@ -57,8 +57,8 @@ void apic_timer_init(uint32_t ms) {
 int ioapic_set_irq_redirection(uint32_t lapic_id, uint8_t vector, uint8_t irq, bool mask) {
 	uint8_t flags = 0;
 
-	for(size_t i = 0; i < madt_ent2_list.element_cnt; i++) {
-		struct madt_ent2 *madt2 = &madt_ent2_list.elements[i];
+	for(size_t i = 0; i < madt_ent2_list.length; i++) {
+		struct madt_ent2 *madt2 = &madt_ent2_list.data[i];
 
 		if(madt2->irq_src != irq) {
 			continue;
@@ -81,8 +81,8 @@ int ioapic_set_irq_redirection(uint32_t lapic_id, uint8_t vector, uint8_t irq, b
 
 	uint64_t entry = vector | flags | ((uint64_t)lapic_id << 56);
 
-	for(size_t i = 0; i < ioapic_list.element_cnt; i++) { 
-		struct ioapic *ioapic = &ioapic_list.elements[i]; 
+	for(size_t i = 0; i < ioapic_list.length; i++) { 
+		struct ioapic *ioapic = &ioapic_list.data[i]; 
 
 		if(irq <= ioapic->maximum_redirection_entry && irq >= ioapic->madt1->gsi_base) {
 			ioapic_write_redirection_table(ioapic, (irq - ioapic->madt1->gsi_base) * 2, entry);
@@ -124,10 +124,10 @@ void apic_init() {
 		i += entry_size - 3;
 	}
 
-	print("apic: core count %d\n", madt_ent0_list.element_cnt);
+	print("apic: core count %d\n", madt_ent0_list.length);
 
-	for(size_t i = 0; i < madt_ent1_list.element_cnt; i++) {
-		struct madt_ent1 *madt1  = &madt_ent1_list.elements[i];
+	for(size_t i = 0; i < madt_ent1_list.length; i++) {
+		struct madt_ent1 *madt1  = &madt_ent1_list.data[i];
 
 		struct ioapic ioapic = {
 			.ioapic_base = (volatile uint32_t*)((uintptr_t)madt1->ioapic_addr + HIGH_VMA),

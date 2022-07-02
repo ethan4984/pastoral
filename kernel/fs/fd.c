@@ -180,7 +180,7 @@ int fd_stat(int fd, void *buffer) {
 }
 
 int fd_statat(int dirfd, const char *path, void *buffer, int) {
-	struct vfs_node *dir = CURRENT_THREAD->cwd;
+	struct vfs_node *dir = CURRENT_TASK->cwd;
 
 	if(dirfd != 0xFFFFFF9C) {
 		struct fd_handle *fd_handle = fd_translate(dirfd);

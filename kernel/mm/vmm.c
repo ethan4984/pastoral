@@ -383,6 +383,7 @@ struct page_table *vmm_fork_page_table(struct page_table *page_table) {
 		if(page) {
 			*page->pml_entry &= ~(VMM_FLAGS_RW);
 			*page->pml_entry |= VMM_COW_FLAG;
+
 			(*page->reference)++;
 
 			page->flags = (page->flags & ~(VMM_FLAGS_RW)) | VMM_COW_FLAG;
@@ -397,6 +398,10 @@ struct page_table *vmm_fork_page_table(struct page_table *page_table) {
 			hash_table_push(new_table->pages, &new_page->vaddr, new_page, sizeof(new_page->vaddr));
 		}
 	}
+
+	uint64_t cr3;
+	asm volatile ("mov %%cr3, %0" : "=a"(cr3));
+	asm volatile ("mov %0, %%cr3" :: "r"(cr3) : "memory");
 
 	new_table->mmap_region_root = vmm_copy_region_tree(page_table->mmap_region_root);
 
@@ -433,6 +438,8 @@ int vmm_anon_map(struct page_table *page_table, uintptr_t address) {
 				.pml_entry = page_table->map_page(page_table, vaddr, paddr, flags),
 				.reference = alloc(sizeof(int))
 			};
+
+			(*new_page->reference) = 1;
 
 			hash_table_push(page_table->pages, &new_page->vaddr, new_page, sizeof(new_page->vaddr));
 
@@ -477,25 +484,28 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 			EXIT_PF(0);
 		}
 
-		(*page->reference)--;
-
 		uint64_t original_frame = pmll_entry & ~(0xfff) & 0xffffffffff;
+		uint64_t new_frame;
 
-		if(*page->reference < 0) {
-			pmll_entry &= ~VMM_COW_FLAG;
-			pmll_entry |= VMM_FLAGS_RW;
-
-			*lowest_level = pmll_entry;
-
-			EXIT_PF(1);
+		if((*page->reference) <= 1) {
+			new_frame = original_frame;
+		} else {
+			new_frame = pmm_alloc(1, 1);
+			memcpy64((uint64_t*)(new_frame + HIGH_VMA), (uint64_t*)(original_frame + HIGH_VMA), PAGE_SIZE / 8);
 		}
 
-		uint64_t new_frame = pmm_alloc(1, 1);
-		memcpy64((uint64_t*)(new_frame + HIGH_VMA), (uint64_t*)(original_frame + HIGH_VMA), PAGE_SIZE / 8);
-		uint64_t entry = new_frame | ((pmll_entry & 0x1ff) | (VMM_FLAGS_RW));
+		(*page->reference)--;
 
-		invlpg(page->vaddr);
+		//print("cowing page: pid %x | vaddr %x | paddr %x | ref %x\n", task->pid, faulting_address, new_frame, *page->reference + 1);
+
+		uint64_t entry = new_frame | ((pmll_entry & 0x1ff) | (VMM_FLAGS_RW));
 		*lowest_level = entry;
+
+		invlpg(faulting_address);
+
+		page->paddr = new_frame;
+		page->reference = alloc(sizeof(int));
+		(*page->reference) = 1;
 
 		EXIT_PF(1);
 	}

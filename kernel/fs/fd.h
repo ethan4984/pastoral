@@ -16,3 +16,4 @@ ssize_t fd_write(int fd, const void *buf, size_t count);
 ssize_t fd_read(int fd, void *buf, size_t count);
 off_t fd_seek(int fd, off_t offset, int whence);
 int fd_open(const char *path, int flags);
+int fd_close(int fd);
