@@ -36,7 +36,7 @@ static struct stivale_header stivale_hdr = {
 struct stivale_struct *stivale_struct;
 
 void pastoral_thread() {
-	print("Greetings from pastorals kernel thread\n");
+	print("Greetings from pastorals kernel thread %b\n", (1 << 7));
 
 	if(initramfs() == -1) {
 		panic("initramfs: unable to initialise");
@@ -58,7 +58,14 @@ void pastoral_thread() {
 		.envp_cnt = 3,
 		.argv_cnt = 1 
 	};
-	
+
+	struct vfs_node *vfs_node = vfs_root; 
+	print("bruh %x\n", vfs_node);
+	for(size_t i= 0; i < vfs_node->children.length; i++) {
+		struct vfs_node *node = vfs_node->children.data[i];
+		print("%s %x\n", node->name, node->parent);
+	}
+
 	sched_task_exec("/usr/bin/bash", 0x23, arguments, TASK_WAITING);
 
 	/*char *argv[] = { "/init", NULL };

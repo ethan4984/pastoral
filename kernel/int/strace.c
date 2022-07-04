@@ -27,6 +27,10 @@ extern void syscall_fork(struct registers*);
 extern void syscall_exit(struct registers*);
 extern void syscall_waitpid(struct registers*);
 extern void syscall_execve(struct registers*);
+extern void syscall_waitpid(struct registers*);
+extern void syscall_readdir(struct registers*);
+extern void syscall_chdir(struct registers*);
+extern void syscall_getcwd(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -103,8 +107,10 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = NULL, .name = "ioctl" },
 	{ .handler = syscall_fork, .name = "fork" },
 	{ .handler = syscall_waitpid, .name = "waitpid" },
-	{ .handler = NULL, .name = "readdir" },
-	{ .handler = syscall_execve, .name = "execve" }
+	{ .handler = syscall_readdir, .name = "readdir" },
+	{ .handler = syscall_execve, .name = "execve" },
+	{ .handler = syscall_getcwd, .name = "getcwd" },
+	{ .handler = syscall_chdir, .name = "chdir" }
 };
 
 extern void syscall_handler(struct registers *regs) {

@@ -7,6 +7,7 @@ struct fd_handle {
 	struct asset *asset;
 	int fd_number;
 	int flags;
+	int dirent;
 	off_t position;
 	struct vfs_node *vfs_node;
 };

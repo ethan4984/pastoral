@@ -202,7 +202,15 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path) 
 		}
 	}
 
-	return vfs_search_relative(parent, subpath_list.data[i]);
+	for(size_t j = 0; j < parent->children.length; j++) {
+		struct vfs_node *node = parent->children.data[j]; 
+
+		if(strcmp(node->name, subpath_list.data[i]) == 0) {
+			return node;
+		}
+	}
+
+	return NULL;
 }
 
 const char *vfs_absolute_path(struct vfs_node *node) {
@@ -230,6 +238,52 @@ const char *vfs_absolute_path(struct vfs_node *node) {
 	VECTOR_DELETE(node_list);
 
 	return ++ret;
+}
+
+struct vfs_node *vfs_parent_dir(struct vfs_node *parent, const char *path) {
+	if(parent == NULL) {
+		parent = vfs_root;
+	}
+
+	VECTOR(const char*) subpath_list = { 0 };
+
+	char *str = alloc(strlen(path));
+	strcpy(str, path);
+
+	while(*str == '/') *str++ = 0;
+
+	while(*str) {
+		const char *subpath = str;
+
+		while(*str && *str != '/') str++;
+		while(*str == '/') *str++ = 0;
+
+		VECTOR_PUSH(subpath_list, subpath);
+	}
+
+	subpath_list.length--;
+
+	if(subpath_list.length == 0) {
+		return vfs_root;
+	}
+
+	size_t i;
+	for(i = 0; i < (subpath_list.length - 1); i++) {
+		parent = vfs_search_relative(parent, subpath_list.data[i]);
+		if(parent == NULL) {
+			return NULL;
+		}
+
+		if(parent->mountpoint) {
+			parent = parent->mountpoint;
+		} 
+
+		if(!S_ISDIR(parent->asset->stat->st_mode)) {
+			return NULL;	
+		}
+	}
+
+	return vfs_search_relative(parent, subpath_list.data[i]);
 }
 
 int vfs_mount(struct vfs_node *parent, const char *source, const char *target, struct filesystem *filesystem) {

@@ -693,15 +693,14 @@ void syscall_execve(struct registers *regs) {
 	}
 
 	struct sched_task *current_task = CURRENT_TASK;
-	struct sched_thread *current_thread = CURRENT_THREAD;
 	struct sched_task *new_task = sched_task_exec(path, 0x23, &arguments, TASK_WAITING);
 
 	hash_table_delete(&task_list, &current_task->pid, sizeof(current_task->pid));
 	hash_table_delete(&task_list, &new_task->pid, sizeof(new_task->pid));
 
-	new_task->cwd = current_task->cwd;
+	//new_task->cwd = current_task->cwd;
 	new_task->pid = current_task->pid;
-	new_task->ppid= current_task->ppid;
+	new_task->ppid = current_task->ppid;
 	new_task->event = current_task->event;
 
 	CORE_LOCAL->pid = -1;
@@ -736,6 +735,7 @@ void syscall_fork(struct registers *regs) {
 	task->ppid = current_task->pid;
 	task->status = TASK_WAITING;
 	task->page_table = vmm_fork_page_table(current_task->page_table);
+	task->cwd = vfs_root;
 	task->cwd = current_task->cwd;
 
 	task->tid_bitmap = (struct bitmap) {

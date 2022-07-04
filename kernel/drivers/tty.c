@@ -199,7 +199,7 @@ void ps2_keyboard(struct registers*, void*) {
 	current_tty->new_key = true;
 }
 
-ssize_t tty_read(struct asset *, void*, off_t, off_t cnt, void *buffer) {
+ssize_t tty_read(struct asset*, void*, off_t, off_t cnt, void *buffer) {
 	char *stream = buffer;
 
 	asm volatile ("sti");
