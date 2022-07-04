@@ -5,7 +5,7 @@ INITRAMFS = initramfs.tar
 all: $(DISK_IMAGE)
 
 QEMUFLAGS = -m 4G \
-			-smp 4 \
+			-smp 1 \
 			-drive id=disk,file=pastoral.img,if=none \
 			-device ahci,id=ahci \
 			-device ide-hd,drive=disk,bus=ahci.0 \
@@ -25,7 +25,7 @@ int: $(DISK_IMAGE)
 	qemu-system-x86_64 $(QEMUFLAGS) -d int -M smm=off -no-reboot -no-shutdown
 
 limine:
-	git clone https://github.com/limine-bootloader/limine.git --branch=v2.0-branch-binary --depth=1
+	git clone https://github.com/limine-bootloader/limine.git --branch=v3.0-branch-binary --depth=1
 	make -C limine
 
 .PHONY: kernel
@@ -33,11 +33,12 @@ kernel:
 	$(MAKE) -C kernel
 
 $(INITRAMFS):
-	cd sysroot && tar -cf ../initramfs.tar .
+	cd user/build/system-root/ && tar -c --format=posix -f ../../../initramfs.tar .
 
 $(DISK_IMAGE): $(INITRAMFS) limine kernel 
+	cd user && make
 	rm -rf pastoral.img
-	dd if=/dev/zero bs=1M count=0 seek=512 of=pastoral.img
+	dd if=/dev/zero bs=1M count=0 seek=1024 of=pastoral.img
 	parted -s pastoral.img mklabel msdos
 	parted -s pastoral.img mkpart primary 1 100%
 	rm -rf disk_image
@@ -54,7 +55,10 @@ $(DISK_IMAGE): $(INITRAMFS) limine kernel
 	sudo umount disk_image/
 	sudo losetup -d `cat loopback_dev`
 	rm -rf disk_image loopback_dev
-	limine/limine-install-linux-x86_64 pastoral.img 
+	limine/limine-deploy pastoral.img 
+
+rebuild_mlibc:
+	cd user/build && xbstrap install mlibc --rebuild
 
 .PHONY: clean
 clean:
@@ -64,4 +68,3 @@ clean:
 .PHONY: distclean
 distclean: clean
 	rm -rf limine
-	$(MAKE) -C kernel distclean
