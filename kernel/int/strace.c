@@ -8,7 +8,7 @@ struct syscall_handle {
 	const char *name;
 };
 
-extern void syscall_open(struct registers*);
+extern void syscall_openat(struct registers*);
 extern void syscall_close(struct registers*);
 extern void syscall_read(struct registers*);
 extern void syscall_write(struct registers*);
@@ -82,7 +82,7 @@ static void syscall_syslog(struct registers *regs) {
 }
 
 static struct syscall_handle syscall_list[] = {
-	{ .handler = syscall_open, .name = "open" },
+	{ .handler = syscall_openat, .name = "open" },
 	{ .handler = syscall_close, .name = "close" },
 	{ .handler = syscall_read, .name = "read" },
 	{ .handler = syscall_write, .name = "write" },

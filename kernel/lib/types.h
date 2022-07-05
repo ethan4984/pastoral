@@ -102,6 +102,8 @@ struct timespec {
 #define DT_SOCK 12
 #define DT_WHT 14
 
+#define AT_FDCWD 0xffffff9c
+
 #define SEEK_CUR 1
 #define SEEK_END 2
 #define SEEK_SET 3

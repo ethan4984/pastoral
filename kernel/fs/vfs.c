@@ -202,7 +202,9 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path) 
 		}
 	}
 
-	for(size_t j = 0; j < parent->children.length; j++) {
+	return vfs_search_relative(parent, subpath_list.data[i]);
+
+/*	for(size_t j = 0; j < parent->children.length; j++) {
 		struct vfs_node *node = parent->children.data[j]; 
 
 		if(strcmp(node->name, subpath_list.data[i]) == 0) {
@@ -210,7 +212,7 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path) 
 		}
 	}
 
-	return NULL;
+	return NULL;*/
 }
 
 const char *vfs_absolute_path(struct vfs_node *node) {

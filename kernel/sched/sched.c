@@ -376,7 +376,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	struct sched_task *current_task = CURRENT_TASK;
 	CORE_LOCAL->pid = task->pid;
 
-	int fd = fd_open(path, 0);
+	int fd = fd_openat(AT_FDCWD, path, 0);
 	if(fd == -1) {
 		spinrelease(&sched_lock); 
 		return NULL;
@@ -393,7 +393,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	uint64_t entry_point = aux.at_entry;
 
 	if(ld_path) {
-		int ld_fd = fd_open(ld_path, 0);
+		int ld_fd = fd_openat(AT_FDCWD, ld_path, 0);
 		if(ld_fd == -1) {
 			spinrelease(&sched_lock); 
 			return NULL;
@@ -698,7 +698,7 @@ void syscall_execve(struct registers *regs) {
 	hash_table_delete(&task_list, &current_task->pid, sizeof(current_task->pid));
 	hash_table_delete(&task_list, &new_task->pid, sizeof(new_task->pid));
 
-	//new_task->cwd = current_task->cwd;
+	new_task->cwd = current_task->cwd;
 	new_task->pid = current_task->pid;
 	new_task->ppid = current_task->ppid;
 	new_task->event = current_task->event;
@@ -735,7 +735,6 @@ void syscall_fork(struct registers *regs) {
 	task->ppid = current_task->pid;
 	task->status = TASK_WAITING;
 	task->page_table = vmm_fork_page_table(current_task->page_table);
-	task->cwd = vfs_root;
 	task->cwd = current_task->cwd;
 
 	task->tid_bitmap = (struct bitmap) {

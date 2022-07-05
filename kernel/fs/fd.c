@@ -113,16 +113,35 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 	return ret;
 }
 
-int fd_open(const char *path, int flags) {
+int fd_openat(int dirfd, const char *path, int flags) {
 	if(strlen(path) > MAX_PATH_LENGTH) {
 		set_errno(ENAMETOOLONG);
 		return -1;
 	}
 
-	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path);
+	int relative = *path == '/' ? 0 : 1;
+	struct vfs_node *dir;
+
+	if(!relative) {
+		dir = vfs_root;
+	} else {
+		if(dirfd == AT_FDCWD) {
+			dir = CURRENT_TASK->cwd;
+		} else {
+			struct fd_handle *fd_handle = fd_translate(dirfd);
+			if(fd_handle == NULL) {
+				set_errno(EBADF);
+				return -1;
+			}
+
+			dir = fd_handle->vfs_node;
+		}
+	}
+
+	struct vfs_node *vfs_node = vfs_search_absolute(dir, path);
 
 	if(flags & O_CREAT && vfs_node == NULL) {
-		struct vfs_node *parent = vfs_parent_dir(NULL, path);
+		struct vfs_node *parent = vfs_parent_dir(dir, path);
 		if(parent == NULL) {
 			set_errno(ENOENT);
 			return -1;
@@ -145,7 +164,7 @@ int fd_open(const char *path, int flags) {
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
-	} else if (flags & O_CREAT && flags & O_EXEC) {
+	} else if(flags & O_CREAT && flags & O_EXEC) {
 		set_errno(EEXIST);
 		return -1;
 	}
@@ -154,11 +173,12 @@ int fd_open(const char *path, int flags) {
 
 	*new_handle = (struct fd_handle) {
 		.asset = vfs_node->asset,
+		.vfs_node = vfs_node,
 		.fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap),
 		.flags = flags,
-		.dirent = false,
-		.vfs_node = vfs_node,
-		.position = 0
+		.position = 0,
+		.dirent_list = { 0 },
+		.current_dirent = 0
 	};
 
 	struct sched_task *current_task = CURRENT_TASK;
@@ -205,23 +225,28 @@ int fd_stat(int fd, void *buffer) {
 }
 
 int fd_statat(int dirfd, const char *path, void *buffer, int) {
+	int relative = *path == '/' ? 0 : 1;
 	struct vfs_node *dir;
 
-	if(dirfd == 0xffffff9c) {
-		dir = CURRENT_TASK->cwd;
+	if(!relative) {
+		dir = vfs_root;
 	} else {
-		struct fd_handle *fd_handle = fd_translate(dirfd);
-		if(fd_handle == NULL) {
-			set_errno(EBADF);
-			return -1;
-		}
+		if(dirfd == AT_FDCWD) {
+			dir = CURRENT_TASK->cwd;
+		} else {
+			struct fd_handle *fd_handle = fd_translate(dirfd);
+			if(fd_handle == NULL) {
+				set_errno(EBADF);
+				return -1;
+			}
 
-		if(!S_ISDIR(fd_handle->asset->stat->st_mode)) {
-			set_errno(EBADF);
-			return -1;
-		}
+			if(!S_ISDIR(fd_handle->asset->stat->st_mode)) {
+				set_errno(EBADF);
+				return -1;
+			}
 
-		dir = fd_handle->vfs_node;
+			dir = fd_handle->vfs_node;
+		}
 	}
 
 	struct vfs_node *vfs_node = vfs_search_absolute(dir, path);
@@ -353,15 +378,16 @@ void syscall_seek(struct registers *regs) {
 	regs->rax = fd_seek(fd, offset, whence);
 }
 
-void syscall_open(struct registers *regs) {
-	const char *pathname = (const char*)regs->rdi;
-	int flags = regs->rsi;
+void syscall_openat(struct registers *regs) {
+	int dirfd = regs->rdi;
+	const char *pathname = (const char*)regs->rsi;
+	int flags = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: open: pathname {%s}, flags {%x}\n", pathname, flags);
+	print("syscall: open: dirfd {%x}, pathname {%s}, flags {%x}\n", dirfd, pathname, flags);
 #endif
 
-	regs->rax = fd_open(pathname, flags); 
+	regs->rax = fd_openat(dirfd, pathname, flags); 
 }
 
 void syscall_close(struct registers *regs) {
@@ -419,73 +445,70 @@ void syscall_readdir(struct registers *regs) {
 	print("syscall: readdir: fd {%x}, buf {%x}\n", fd, (uintptr_t)buf);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(fd);
-	if(fd_handle == NULL) {
+	struct fd_handle *dir_handle = fd_translate(fd);
+	if(dir_handle == NULL) {
 		set_errno(EBADF);
 		regs->rax = -1;
 		return;
 	}
 
-	struct vfs_node *vfs_node = fd_handle->vfs_node;
+	struct vfs_node *dir = dir_handle->vfs_node;
 
-	if(fd_handle->dirent) {
-		vfs_node = vfs_search_absolute(fd_handle->vfs_node->parent, buf->d_name);
-	} else {
-		vfs_node = fd_handle->vfs_node;
-		fd_handle->dirent = true;
+	if(!S_ISDIR(dir->asset->stat->st_mode)) {
+		set_errno(ENOTDIR);
+		regs->rax = -1;
+		return;
 	}
 
-	struct vfs_node *parent = vfs_node->parent;
-	if(parent == NULL) {
-		parent = vfs_root;
-	}
+	if(!dir_handle->dirent_list.length) {
+		for(size_t i = 0; i < dir->children.length; i++) {
+			struct vfs_node *node = dir->children.data[i];
 
-	struct vfs_node *next_node = NULL;
+			struct dirent *entry = alloc(sizeof(struct dirent));
 
-	for(size_t i = 0; i < parent->children.length; i++) {
-		struct vfs_node *node = parent->children.data[i];
-		if(node == vfs_node && (i + 1) < parent->children.length) {
-			next_node = parent->children.data[i + 1];
-			break;
+			strcpy(entry->d_name, node->name);
+			entry->d_ino = node->asset->stat->st_ino;
+			entry->d_off = 0;
+			entry->d_reclen = sizeof(struct dirent);
+
+			switch(node->asset->stat->st_mode & S_IFMT) {
+				case S_IFCHR:
+					entry->d_type = DT_CHR;
+					break;
+				case S_IFBLK:
+					entry->d_type = DT_BLK;
+					break;
+				case S_IFDIR:
+					entry->d_type = DT_DIR;
+					break;
+				case S_IFLNK:
+					entry->d_type = DT_LNK;
+					break;
+				case S_IFIFO:
+					entry->d_type = DT_FIFO;
+					break;
+				case S_IFREG:
+					entry->d_type = DT_REG;
+					break;
+				case S_IFSOCK:
+					entry->d_type = DT_SOCK;
+					break;
+				default:
+					entry->d_type = DT_UNKNOWN;
+			}
+
+			VECTOR_PUSH(dir_handle->dirent_list, entry);
 		}
 	}
 
-	if(next_node == NULL) {
+	if(dir_handle->current_dirent >= dir_handle->dirent_list.length) {
 		set_errno(0);
 		regs->rax = -1;
 		return;
 	}
 
-	strcpy(buf->d_name, next_node->name);
-	buf->d_ino = next_node->asset->stat->st_ino;
-	buf->d_off = 0; 
-	buf->d_reclen = sizeof(struct dirent);
-
-	switch(next_node->asset->stat->st_mode & S_IFMT) {
-		case S_IFCHR:
-			buf->d_type = DT_CHR;
-			break;
-		case S_IFBLK:
-			buf->d_type = DT_BLK;
-			break;
-		case S_IFDIR:
-			buf->d_type = DT_DIR;
-			break;
-		case S_IFLNK:
-			buf->d_type = DT_LNK;
-			break;
-		case S_IFIFO:
-			buf->d_type = DT_FIFO;
-			break;
-		case S_IFREG:
-			buf->d_type = DT_REG;
-			break;
-		case S_IFSOCK:
-			buf->d_type = DT_SOCK;
-			break;
-		default:
-			buf->d_type = DT_UNKNOWN;
-	}
+	*buf = *dir_handle->dirent_list.data[dir_handle->current_dirent];
+	dir_handle->current_dirent++;
 
 	regs->rax = 0;
 }
