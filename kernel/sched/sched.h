@@ -81,7 +81,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, uint16_t cs, struct aux *aux, struct sched_arguments *arguments);
 
 void reschedule(struct registers *regs, void *ptr);
-void shced_dequeue(struct sched_task *task, struct sched_thread *thread);
+void sched_dequeue(struct sched_task *task, struct sched_thread *thread);
 void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *thread);
 void sched_requeue(struct sched_task *task, struct sched_thread *thread);
 void sched_requeue_and_yield(struct sched_task *task, struct sched_thread *thread);

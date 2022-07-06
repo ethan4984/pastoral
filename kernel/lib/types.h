@@ -9,13 +9,13 @@ typedef int64_t ssize_t;
 
 typedef ssize_t pid_t;
 typedef ssize_t tid_t;
-typedef ssize_t uid_t;
-typedef ssize_t gid_t;
 
 typedef uint64_t dev_t;
 typedef uint64_t ino_t;
 typedef int32_t mode_t;
 typedef int32_t nlink_t;
+typedef int32_t uid_t;
+typedef int32_t gid_t;
 typedef int64_t blksize_t;
 typedef int64_t blkcnt_t;
 
@@ -102,6 +102,12 @@ struct timespec {
 #define DT_SOCK 12
 #define DT_WHT 14
 
+#define AT_EMPTY_PATH 1
+#define AT_SYMLINK_FOLLOW 2
+#define AT_SYMLINK_NOFOLLOW 4
+#define AT_REMOVEDIR 8
+#define AT_EACCESS 512
+
 #define AT_FDCWD 0xffffff9c
 
 #define SEEK_CUR 1
@@ -122,7 +128,7 @@ struct stat {
 	struct timespec st_ctim;
 	blksize_t st_blksize;
 	blkcnt_t st_blocks;
-};
+} __attribute__((packed));
 
 struct dirent {
     ino_t d_ino;
@@ -130,7 +136,7 @@ struct dirent {
     unsigned short d_reclen;
     unsigned char d_type;
     char d_name[1024];
-};
+} __attribute__((packed));
 
 struct asset {
 	ssize_t (*read)(struct asset*, void*, off_t, off_t, void*);

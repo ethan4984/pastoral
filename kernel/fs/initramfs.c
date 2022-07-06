@@ -6,6 +6,7 @@
 #include <types.h>
 #include <string.h>
 #include <debug.h>
+#include <time.h>
 
 int initramfs() {
 	struct stivale_module *module = (void*)stivale_struct->modules;
@@ -44,7 +45,14 @@ int initramfs() {
 		stat->st_gid = octal_to_decimal(ustar_header->gid);
 		stat->st_size = octal_to_decimal(ustar_header->size);
 		stat->st_mode = octal_to_decimal(ustar_header->mode);
+		stat->st_blksize = 512;
+		stat->st_blocks = DIV_ROUNDUP(stat->st_size, stat->st_blksize);
 		stat->st_ino = ramfs_handle->inode;
+		stat->st_nlink = 1;
+
+		stat->st_atim = clock_realtime;
+		stat->st_ctim = clock_realtime;
+		stat->st_mtim = clock_realtime;
 
 		asset->stat = stat;
 		asset->read = ramfs_read;
@@ -58,16 +66,23 @@ int initramfs() {
 			case USTAR_DIRTYPE:
 				stat->st_mode |= S_IFDIR;
 				break;
+			case USTAR_SYMTYPE:
+				stat->st_mode |= S_IFLNK;
+				break;
 		}
 
-		vfs_create_node_deep(NULL, asset, &ramfs_filesystem, ustar_header->name);
+		struct vfs_node *node = vfs_create_node_deep(NULL, asset, &ramfs_filesystem, ustar_header->name);
+
+		if(S_ISLNK(node->asset->stat->st_mode)) {
+			node->symlink = ustar_header->linkname;
+		}
 
 		ustar_header = (void*)ustar_header + 512 + ALIGN_UP(stat->st_size, 512);
 
-		if((uintptr_t)ustar_header >= module->begin + (module->end - module->begin)) {
+		if((uintptr_t)ustar_header >= (module->begin + (module->end - module->begin))) {
 			break;
 		}
 	}
-	
+
 	return 0;
 }

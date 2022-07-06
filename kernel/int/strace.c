@@ -31,6 +31,8 @@ extern void syscall_waitpid(struct registers*);
 extern void syscall_readdir(struct registers*);
 extern void syscall_chdir(struct registers*);
 extern void syscall_getcwd(struct registers*);
+extern void syscall_faccessat(struct registers*);
+extern void syscall_pipe(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -110,7 +112,9 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_readdir, .name = "readdir" },
 	{ .handler = syscall_execve, .name = "execve" },
 	{ .handler = syscall_getcwd, .name = "getcwd" },
-	{ .handler = syscall_chdir, .name = "chdir" }
+	{ .handler = syscall_chdir, .name = "chdir" },
+	{ .handler = syscall_faccessat, .name = "faccessat" },
+	{ .handler = syscall_pipe, .name = "pipe" }
 };
 
 extern void syscall_handler(struct registers *regs) {

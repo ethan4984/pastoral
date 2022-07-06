@@ -61,24 +61,7 @@ void pastoral_thread() {
 
 	sched_task_exec("/usr/bin/bash", 0x23, arguments, TASK_WAITING);
 
-	/*char *argv[] = { "/init", NULL };
-	char *envp[] = {
-        "HOME=/",
-        "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        "TERM=linux",
-		NULL
-	};
-
-	struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
-
-	*arguments = (struct sched_arguments) {
-		.argv = argv,
-		.envp = envp,
-		.envp_cnt = 3,
-		.argv_cnt = 1 
-	};
-
-	sched_task_exec("/init", 0x23, arguments, TASK_WAITING);*/
+	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
 
 	for(;;)
 		asm ("hlt");

@@ -429,6 +429,8 @@ int vmm_anon_map(struct page_table *page_table, uintptr_t address) {
 			uint64_t paddr = pmm_alloc(1, 1);
 			uint64_t vaddr = address - misalignment;
 
+			invlpg(address);
+
 			struct page *new_page = alloc(sizeof(struct page));
 			*new_page = (struct page) {
 				.vaddr = vaddr, 
@@ -496,7 +498,7 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 
 		(*page->reference)--;
 
-		//print("cowing page: pid %x | vaddr %x | paddr %x | ref %x\n", task->pid, faulting_address, new_frame, *page->reference + 1);
+		print("cowing page: pid %x | vaddr %x | paddr %x | ref %x\n", task->pid, faulting_address, new_frame, *page->reference + 1);
 
 		uint64_t entry = new_frame | ((pmll_entry & 0x1ff) | (VMM_FLAGS_RW));
 		*lowest_level = entry;

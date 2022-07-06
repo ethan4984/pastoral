@@ -5,6 +5,7 @@
 #include <debug.h>
 #include <errno.h>
 #include <bst.h>
+#include <string.h>
 
 static ssize_t validate_region(struct page_table *page_table, uint64_t base, uint64_t length) {
 	struct mmap_region *root = page_table->mmap_region_root;
@@ -164,7 +165,7 @@ extern void syscall_mmap(struct registers *regs) {
 	if(current_task == NULL) {
 		panic("cant find current task");
 	}
-	
+
 	struct page_table *page_table = current_task->page_table;
 	void *addr = (void*)regs->rdi;
 	size_t length = regs->rsi;

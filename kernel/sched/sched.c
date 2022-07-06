@@ -94,11 +94,19 @@ void reschedule(struct registers *regs, void*) {
 
 	struct sched_task *next_task = find_next_task();
 	if(next_task == NULL) {
+		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
+			spinrelease(&sched_lock);
+			return;
+		}
 		sched_idle();
 	}
 
 	struct sched_thread *next_thread = find_next_thread(next_task);
 	if(next_thread == NULL) {
+		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
+			spinrelease(&sched_lock);
+			return;
+		}
 		sched_idle();
 	}
 
@@ -146,7 +154,7 @@ void reschedule(struct registers *regs, void*) {
 	set_user_fs(next_thread->user_fs_base);
 	set_user_gs(next_thread->user_gs_base);
 
-	spinrelease(&next_task->pending_event); 
+	spinrelease(&next_task->pending_event);
 
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
@@ -685,7 +693,7 @@ void syscall_execve(struct registers *regs) {
 
 	print("\b\b}\n");
 #endif
-	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path);
+	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path, true);
 	if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		regs->rax = -1;

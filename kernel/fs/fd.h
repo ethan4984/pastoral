@@ -3,6 +3,9 @@
 #include <types.h>
 #include <fs/vfs.h>
 
+struct fd_handle;
+struct pipe;
+
 struct fd_handle {
 	struct vfs_node *vfs_node;
 	struct asset *asset;
@@ -13,6 +16,15 @@ struct fd_handle {
 
 	VECTOR(struct dirent*) dirent_list;
 	int current_dirent;
+
+	struct pipe *pipe;
+};
+
+struct pipe {
+	int fd_pair[2];
+
+	struct fd_handle *read;
+	struct fd_handle *write; 
 };
 
 struct fd_handle *fd_translate(int index);

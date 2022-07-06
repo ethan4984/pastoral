@@ -75,7 +75,12 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		return -1;
 	}
 
-	ssize_t ret = asset->write(asset, NULL, fd_handle->position, count, buf);
+	ssize_t ret;
+	if(S_ISFIFO(stat->st_mode) && fd_handle->pipe) {
+		ret = asset->write(asset, fd_handle->pipe, fd_handle->position, count, buf);
+	} else {
+		ret = asset->write(asset, NULL, fd_handle->position, count, buf);
+	}
 
 	if(ret != -1) {
 		fd_handle->position += ret;
@@ -104,13 +109,66 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 		return -1;
 	}
 
-	ssize_t ret = asset->read(asset, NULL, fd_handle->position, count, buf);
+	ssize_t ret;
+	if(S_ISFIFO(stat->st_mode) && fd_handle->pipe) {
+		ret = asset->read(asset, fd_handle->pipe, fd_handle->position, count, buf);
+	} else {
+		ret = asset->read(asset, NULL, fd_handle->position, count, buf);
+	}
 
 	if(ret != -1) {
 		fd_handle->position += ret;
 	}
 
 	return ret;
+}
+
+ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void *buf) {
+	spinlock(&asset->lock);
+
+	struct stat *stat = asset->stat;
+
+	if(offset > stat->st_size) {
+		// POLL (more like event await dequeue thread)
+	}
+	
+	stat->st_atim = clock_realtime;
+	stat->st_mtim = clock_realtime;
+	stat->st_ctim = clock_realtime;
+
+	if(offset + cnt > stat->st_size) {
+		cnt = stat->st_size - offset; 
+	}
+
+	memcpy8(buf + offset, out, cnt);
+
+	spinrelease(&asset->lock);
+
+	return cnt;
+}
+
+ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, void *buf) {
+	spinlock(&asset->lock);
+
+	struct stat *stat = asset->stat;
+
+	if(offset > stat->st_size) {
+		// POLL (more like event await dequeue thread)
+	}
+	
+	stat->st_atim = clock_realtime;
+	stat->st_mtim = clock_realtime;
+	stat->st_ctim = clock_realtime;
+
+	if(offset + cnt > stat->st_size) {
+		cnt = stat->st_size - offset; 
+	}
+
+	memcpy8(out + offset, buf, cnt);
+
+	spinrelease(&asset->lock);
+
+	return cnt;
 }
 
 int fd_openat(int dirfd, const char *path, int flags) {
@@ -138,7 +196,7 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		}
 	}
 
-	struct vfs_node *vfs_node = vfs_search_absolute(dir, path);
+	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, true);
 
 	if(flags & O_CREAT && vfs_node == NULL) {
 		struct vfs_node *parent = vfs_parent_dir(dir, path);
@@ -224,37 +282,55 @@ int fd_stat(int fd, void *buffer) {
 	return 0;
 }
 
-int fd_statat(int dirfd, const char *path, void *buffer, int) {
-	int relative = *path == '/' ? 0 : 1;
-	struct vfs_node *dir;
-
-	if(!relative) {
-		dir = vfs_root;
-	} else {
-		if(dirfd == AT_FDCWD) {
-			dir = CURRENT_TASK->cwd;
-		} else {
-			struct fd_handle *fd_handle = fd_translate(dirfd);
-			if(fd_handle == NULL) {
-				set_errno(EBADF);
-				return -1;
-			}
-
-			if(!S_ISDIR(fd_handle->asset->stat->st_mode)) {
-				set_errno(EBADF);
-				return -1;
-			}
-
-			dir = fd_handle->vfs_node;
-		}
-	}
-
-	struct vfs_node *vfs_node = vfs_search_absolute(dir, path);
-	if(vfs_node == NULL) {
+int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
+	if(!strlen(path) && !(flags & AT_EMPTY_PATH)) {
 		set_errno(ENOENT);
 		return -1;
 	}
-	
+
+	bool symfollow = flags & AT_SYMLINK_NOFOLLOW ? false : true;
+	struct vfs_node *vfs_node;
+
+	if(flags & AT_EMPTY_PATH) {
+		struct fd_handle *fd_handle = fd_translate(dirfd);
+		if(fd_handle == NULL) {
+			set_errno(EBADF);
+			return -1;
+		}
+
+		vfs_node = fd_handle->vfs_node;
+	} else {
+		int relative = *path == '/' ? 0 : 1;
+		struct vfs_node *dir;
+
+		if(!relative) {
+			dir = vfs_root;
+		} else {
+			if(dirfd == AT_FDCWD) {
+				dir = CURRENT_TASK->cwd;
+			} else {
+				struct fd_handle *fd_handle = fd_translate(dirfd);
+				if(fd_handle == NULL) {
+					set_errno(EBADF);
+					return -1;
+				}
+
+				if(!S_ISDIR(fd_handle->asset->stat->st_mode)) {
+					set_errno(EBADF);
+					return -1;
+				}
+
+				dir = fd_handle->vfs_node;
+			}
+		}
+
+		vfs_node = vfs_search_absolute(dir, path, symfollow);
+		if(vfs_node == NULL) {
+			set_errno(ENOENT);
+			return -1;
+		}
+	}
+
 	struct stat *stat = buffer;
 	*stat = *vfs_node->asset->stat;
 
@@ -540,7 +616,7 @@ void syscall_chdir(struct registers *regs) {
 	print("syscall: chdir: path {%s}\n", path);
 #endif
 
-	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path);
+	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path, true);
 	if(vfs_node == NULL) { 
 		set_errno(ENOENT);
 		regs->rax = -1;
@@ -548,6 +624,153 @@ void syscall_chdir(struct registers *regs) {
 	}
 
 	CURRENT_TASK->cwd = vfs_node;
+
+	regs->rax = 0;
+}
+
+void syscall_pipe(struct registers *regs) {
+	int *fd_pair = (int*)regs->rdi;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: pipe: fd pair {%x}\n", fd_pair);
+#endif
+
+	fd_pair[0] = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
+	fd_pair[1] = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
+
+	struct fd_handle *read_handle = alloc(sizeof(struct fd_handle));
+	struct fd_handle *write_handle = alloc(sizeof(struct fd_handle));
+
+	struct pipe *pipe = alloc(sizeof(struct pipe));
+	*pipe = (struct pipe) {
+		.read = read_handle,
+		.write = write_handle,
+		.fd_pair[0] = fd_pair[0], 
+		.fd_pair[1] = fd_pair[1]
+	};
+
+	struct asset *read_asset = alloc(sizeof(struct asset));
+	struct stat *read_stat = alloc(sizeof(struct stat));
+	read_asset->stat = read_stat;
+
+	read_stat->st_atim = clock_realtime;
+	read_stat->st_mtim = clock_realtime;
+	read_stat->st_ctim = clock_realtime;
+
+	read_stat->st_mode = S_IFIFO | S_IRUSR;
+
+	struct asset *write_asset = alloc(sizeof(struct asset));
+	struct stat *write_stat = alloc(sizeof(struct stat));
+	write_asset->stat = write_stat;
+
+	write_stat->st_atim = clock_realtime;
+	write_stat->st_mtim = clock_realtime;
+	write_stat->st_ctim = clock_realtime;
+
+	read_stat->st_mode = S_IFIFO | S_IWUSR;
+
+	read_handle->pipe = pipe;
+	read_handle->asset = read_asset; 
+	read_handle->fd_number = fd_pair[0];
+
+	write_handle->pipe = pipe;
+	write_handle->asset = write_asset;
+	write_handle->fd_number = fd_pair[1];
+
+	hash_table_push(&CURRENT_TASK->fd_list, &read_handle->fd_number, read_handle, sizeof(read_handle->fd_number));
+	hash_table_push(&CURRENT_TASK->fd_list, &write_handle->fd_number, read_handle, sizeof(write_handle->fd_number));
+
+	regs->rax = 0;
+}
+
+void syscall_faccessat(struct registers *regs) {
+	int dirfd = regs->rdi; 
+	const char *path = (const char*)regs->rsi;
+	int mode = regs->rdx;
+	int flags = regs->r10;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: faccessat: dirfd {%x}, path {%s}, mode {%x}, flags {%x}\n", dirfd, path, mode, flags);
+#endif
+
+	int relative = *path == '/' ? 0 : 1;
+	struct vfs_node *dir;
+
+	if(!relative) {
+		dir = vfs_root;
+	} else {
+		if(dirfd == AT_FDCWD) {
+			dir = CURRENT_TASK->cwd;
+		} else {
+			struct fd_handle *fd_handle = fd_translate(dirfd);	
+			if(fd_handle == NULL) {
+				set_errno(EBADF);
+				regs->rax = -1;
+				return;
+			}
+
+			if(!S_ISDIR(fd_handle->asset->stat->st_mode)) {
+				set_errno(EBADF);
+				regs->rax = -1;
+				return;
+			}
+
+			dir = fd_handle->vfs_node;
+		}
+	}
+
+	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, true);
+	if(vfs_node == NULL) {
+		set_errno(ENOENT);
+		regs->rax = -1;
+		return;
+	}
+
+	// TODO actually check permissions
+
+	regs->rax = 0;
+}
+
+void syscall_symlinkat(struct registers *regs) {
+	const char *target = (const char*)regs->rdi;
+	int newdirfd = regs->rsi;
+	const char *linkpath = (const char*)regs->rdx;
+
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: symlink: target {%s}, newdirfd {%x}, linkpath {%s}\n", target, newdirfd, linkpath);
+#endif
+
+	struct vfs_node *link_node;
+
+	int relative = *linkpath == '/' ? 0 : 1;
+	if(relative) {
+		if(newdirfd == AT_FDCWD) {
+			link_node = vfs_search_absolute(CURRENT_TASK->cwd, linkpath, true);
+		} else {
+			struct fd_handle *fd_handle = fd_translate(newdirfd);
+			if(fd_handle == NULL) {
+				set_errno(EBADF);
+				regs->rax = -1;
+				return;
+			}
+
+			link_node = fd_handle->vfs_node;
+		}
+	} else {
+		link_node = vfs_search_absolute(NULL, linkpath, true);
+	}
+
+	if(link_node->symlink) {
+		set_errno(EEXIST);
+		regs->rax = -1;
+		return;
+	}
+
+	char *path = alloc(strlen(target));
+	strcpy(path, target);
+
+	link_node->symlink = path;
 
 	regs->rax = 0;
 }

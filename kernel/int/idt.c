@@ -87,6 +87,8 @@ const char *exception_messages[] = {
 extern void vmm_pf_handler(struct registers*, void*);
 
 extern void isr_handler_main(struct registers *regs) {
+	asm ("cli");
+
 	if(regs->cs & 0x3) {
 		swapgs();
 	}
