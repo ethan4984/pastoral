@@ -84,37 +84,37 @@ static void syscall_syslog(struct registers *regs) {
 }
 
 static struct syscall_handle syscall_list[] = {
-	{ .handler = syscall_openat, .name = "open" },
-	{ .handler = syscall_close, .name = "close" },
-	{ .handler = syscall_read, .name = "read" },
-	{ .handler = syscall_write, .name = "write" },
-	{ .handler = syscall_seek, .name = "seek" },
-	{ .handler = syscall_dup, .name = "dup" },
-	{ .handler = syscall_dup2, .name = "dup2" },
-	{ .handler = syscall_mmap, .name = "mmap" },
-	{ .handler = syscall_munmap, .name = "munamp" },
-	{ .handler = syscall_set_fs_base, .name = "set_fs_base" },
-	{ .handler = syscall_get_fs_base, .name = "get_fs_base" },
-	{ .handler = syscall_set_gs_base, .name = "set_gs_base" },
-	{ .handler = syscall_get_gs_base, .name = "get_gs_base" },
-	{ .handler = syscall_syslog, .name = "syslog" },
-	{ .handler = syscall_exit, .name = "exit" },
-	{ .handler = syscall_getpid, .name = "getpid" },
-	{ .handler = syscall_gettid, .name = "gettid" },
-	{ .handler = syscall_getppid, .name = "getppid" },
-	{ .handler = NULL, .name = "isatty" },
-	{ .handler = syscall_fcntl, .name = "fcntl" },
-	{ .handler = syscall_stat, .name = "fstat" },
-	{ .handler = syscall_statat, .name = "fstatat" },
-	{ .handler = NULL, .name = "ioctl" },
-	{ .handler = syscall_fork, .name = "fork" },
-	{ .handler = syscall_waitpid, .name = "waitpid" },
-	{ .handler = syscall_readdir, .name = "readdir" },
-	{ .handler = syscall_execve, .name = "execve" },
-	{ .handler = syscall_getcwd, .name = "getcwd" },
-	{ .handler = syscall_chdir, .name = "chdir" },
-	{ .handler = syscall_faccessat, .name = "faccessat" },
-	{ .handler = syscall_pipe, .name = "pipe" }
+	{ .handler = syscall_openat, .name = "open" }, // 0
+	{ .handler = syscall_close, .name = "close" }, // 1 
+	{ .handler = syscall_read, .name = "read" }, // 2
+	{ .handler = syscall_write, .name = "write" }, // 3
+	{ .handler = syscall_seek, .name = "seek" }, // 4
+	{ .handler = syscall_dup, .name = "dup" }, // 5
+	{ .handler = syscall_dup2, .name = "dup2" }, // 6
+	{ .handler = syscall_mmap, .name = "mmap" }, // 7
+	{ .handler = syscall_munmap, .name = "munamp" }, // 8
+	{ .handler = syscall_set_fs_base, .name = "set_fs_base" }, // 9
+	{ .handler = syscall_set_gs_base, .name = "set_gs_base" }, // 10
+	{ .handler = syscall_get_fs_base, .name = "get_fs_base" }, // 11
+	{ .handler = syscall_get_gs_base, .name = "get_gs_base" }, // 12
+	{ .handler = syscall_syslog, .name = "syslog" }, // 13
+	{ .handler = syscall_exit, .name = "exit" }, // 14
+	{ .handler = syscall_getpid, .name = "getpid" }, // 15
+	{ .handler = syscall_gettid, .name = "gettid" }, // 16
+	{ .handler = syscall_getppid, .name = "getppid" }, // 17
+	{ .handler = NULL, .name = "isatty" }, // 18
+	{ .handler = syscall_fcntl, .name = "fcntl" }, // 19
+	{ .handler = syscall_stat, .name = "fstat" }, // 20
+	{ .handler = syscall_statat, .name = "fstatat" }, // 21
+	{ .handler = NULL, .name = "ioctl" }, // 22
+	{ .handler = syscall_fork, .name = "fork" }, // 23
+	{ .handler = syscall_waitpid, .name = "waitpid" }, // 24
+	{ .handler = syscall_readdir, .name = "readdir" }, // 25
+	{ .handler = syscall_execve, .name = "execve" }, // 26
+	{ .handler = syscall_getcwd, .name = "getcwd" }, // 27
+	{ .handler = syscall_chdir, .name = "chdir" }, // 28
+	{ .handler = syscall_faccessat, .name = "faccessat" }, // 29
+	{ .handler = syscall_pipe, .name = "pipe" } // 30
 };
 
 extern void syscall_handler(struct registers *regs) {

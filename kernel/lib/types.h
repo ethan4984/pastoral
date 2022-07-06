@@ -108,7 +108,7 @@ struct timespec {
 #define AT_REMOVEDIR 8
 #define AT_EACCESS 512
 
-#define AT_FDCWD 0xffffff9c
+#define AT_FDCWD 0xFFFFFF9C
 
 #define SEEK_CUR 1
 #define SEEK_END 2
@@ -128,7 +128,7 @@ struct stat {
 	struct timespec st_ctim;
 	blksize_t st_blksize;
 	blkcnt_t st_blocks;
-} __attribute__((packed));
+};
 
 struct dirent {
     ino_t d_ino;
@@ -136,7 +136,7 @@ struct dirent {
     unsigned short d_reclen;
     unsigned char d_type;
     char d_name[1024];
-} __attribute__((packed));
+};
 
 struct asset {
 	ssize_t (*read)(struct asset*, void*, off_t, off_t, void*);

@@ -92,6 +92,32 @@ void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, i
 
 	BST_GENERIC_INSERT(page_table->mmap_region_root, base, region);
 
+/*	uint64_t _flags = VMM_FLAGS_P | VMM_FLAGS_NX;
+
+	if(prot & MMAP_PROT_WRITE) _flags |= VMM_FLAGS_RW;
+	if(prot & MMAP_PROT_USER) _flags |= VMM_FLAGS_US;
+	if(prot & MMAP_PROT_EXEC) _flags &= ~(VMM_FLAGS_NX);
+	if(prot & MMAP_PROT_NONE) _flags &= ~(VMM_FLAGS_P);
+
+	for(size_t i = 0; i < DIV_ROUNDUP(length, PAGE_SIZE); i++) {
+		uint64_t paddr = pmm_alloc(1, 1);
+		uint64_t vaddr = base;
+
+		struct page *new_page = alloc(sizeof(struct page));
+		*new_page = (struct page) {
+			.vaddr = vaddr, 
+			.paddr = paddr,
+			.size = PAGE_SIZE,
+			.flags = _flags,
+			.pml_entry = page_table->map_page(page_table, vaddr, paddr, _flags),
+			.reference = alloc(sizeof(int))
+		};
+
+		(*new_page->reference) = 1;
+
+		hash_table_push(page_table->pages, &new_page->vaddr, new_page, sizeof(new_page->vaddr));
+	}*/
+
 	return (void*)base;
 }
 

@@ -218,7 +218,7 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path, 
 
 const char *vfs_absolute_path(struct vfs_node *node) {
 	if(node == NULL) {
-		return NULL;
+		return vfs_root->name;
 	}
 
 	VECTOR(struct vfs_node*) node_list = { 0 };

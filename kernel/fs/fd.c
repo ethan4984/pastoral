@@ -596,15 +596,18 @@ void syscall_getcwd(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
 	print("syscall: getcwd: buf {%x}, size {%x}\n", buf, size);
 #endif
-	
+
 	const char *path = vfs_absolute_path(CURRENT_TASK->cwd);
 	if(strlen(path) <= size) {
+	print("homo?\n");
 		memcpy8((void*)buf, (void*)path, strlen(path));
 	} else {
+	print("amog?\n");
 		set_errno(ERANGE);
 		regs->rax = 0;
 		return; 
 	} 
+	print("sex?\n");
 
 	regs->rax = (uintptr_t)buf;
 }
