@@ -50,6 +50,7 @@ $(DISK_IMAGE): $(INITRAMFS) limine kernel
 	sudo cp kernel/pastoral.elf disk_image/boot/
 	sudo cp kernel/limine.cfg disk_image/
 	sudo cp limine/limine.sys disk_image/boot/
+	sudo cp user/.bashrc disk_image/
 	sudo cp initramfs.tar disk_image/boot/
 	sync
 	sudo umount disk_image/
