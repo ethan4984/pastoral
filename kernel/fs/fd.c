@@ -222,10 +222,12 @@ int fd_openat(int dirfd, const char *path, int flags) {
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
-	} else if(flags & O_CREAT && flags & O_EXEC) {
+	} 
+
+/*	else if(flags & O_CREAT && flags & O_EXEC) {
 		set_errno(EEXIST);
 		return -1;
-	}
+	}*/
 
 	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
 
@@ -599,15 +601,12 @@ void syscall_getcwd(struct registers *regs) {
 
 	const char *path = vfs_absolute_path(CURRENT_TASK->cwd);
 	if(strlen(path) <= size) {
-	print("homo?\n");
 		memcpy8((void*)buf, (void*)path, strlen(path));
 	} else {
-	print("amog?\n");
 		set_errno(ERANGE);
 		regs->rax = 0;
 		return; 
 	} 
-	print("sex?\n");
 
 	regs->rax = (uintptr_t)buf;
 }

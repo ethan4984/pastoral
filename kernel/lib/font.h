@@ -1,3 +1,5 @@
+#include <stdint.h>
+
 #define FONT_HEIGHT 16
 #define FONT_WIDTH 8
 

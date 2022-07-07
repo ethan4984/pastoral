@@ -10,6 +10,7 @@
 #include <types.h>
 #include <errno.h>
 #include <fs/fd.h>
+#include <drivers/terminal.h>
 
 static struct hash_table task_list;
 
@@ -368,9 +369,6 @@ struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, ui
 	return thread;
 }
 
-ssize_t tty_read(struct asset *, void*, off_t, off_t cnt, void *buffer);
-ssize_t tty_write(struct asset *, void*, off_t, off_t cnt, const void *buffer);
-
 struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status) {
 	spinlock(&sched_lock);
 
@@ -427,7 +425,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	stdin_handle->asset->stat = alloc(sizeof(struct stat));
 	stdin_handle->asset->stat->st_mode = S_IRUSR | S_IWUSR;
-	stdin_handle->asset->read = tty_read;
+	stdin_handle->asset->read = terminal_read;
 
 	struct fd_handle *stdout_handle = alloc(sizeof(struct fd_handle));
 
@@ -440,7 +438,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	stdout_handle->asset->stat = alloc(sizeof(struct stat));
 	stdout_handle->asset->stat->st_mode = S_IWUSR | S_IRUSR;
-	stdout_handle->asset->write = tty_write;
+	stdout_handle->asset->write = terminal_write;
 
 	struct fd_handle *stderr_handle = alloc(sizeof(struct fd_handle));
 
@@ -453,7 +451,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	stderr_handle->asset->stat = alloc(sizeof(struct stat));
 	stderr_handle->asset->stat->st_mode = S_IWUSR | S_IRUSR;
-	stderr_handle->asset->write = tty_write;
+	stderr_handle->asset->write = terminal_write;
 
 	hash_table_push(&task->fd_list, &stdin_handle->fd_number, stdin_handle, sizeof(stdin_handle->fd_number));
 	hash_table_push(&task->fd_list, &stdout_handle->fd_number, stdout_handle, sizeof(stdout_handle->fd_number));
@@ -701,7 +699,7 @@ void syscall_execve(struct registers *regs) {
 	}
 
 	struct sched_task *current_task = CURRENT_TASK;
-	struct sched_task *new_task = sched_task_exec(path, 0x23, &arguments, TASK_WAITING);
+	struct sched_task *new_task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING);
 
 	hash_table_delete(&task_list, &current_task->pid, sizeof(current_task->pid));
 	hash_table_delete(&task_list, &new_task->pid, sizeof(new_task->pid));

@@ -21,7 +21,7 @@ struct cpuid_state cpuid(size_t leaf, size_t subleaf) {
 
 void init_cpu_features() {
 	wrmsr(MSR_EFER, rdmsr(MSR_EFER) | (1 << 0) | (1 << 11)); // set SCE and NX
-	wrmsr(MSR_STAR, 0x13ull << 48 | 0x8ull << 32);
+	wrmsr(MSR_STAR, 0x33ull << 48 | 0x28ull << 32);
 	wrmsr(MSR_LSTAR, (uintptr_t)syscall_main);
 	wrmsr(MSR_SFMASK, ~(uint32_t)2);
 

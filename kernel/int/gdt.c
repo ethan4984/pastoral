@@ -1,5 +1,7 @@
 #include <int/gdt.h>
 #include <mm/slab.h>
+#include <mm/pmm.h>
+#include <cpu.h>
 
 struct segment_descriptor {
 	uint16_t limit;
@@ -45,25 +47,54 @@ struct gdtr {
 } __attribute__((packed));
 
 struct gdt {
-	struct segment_descriptor null;
-	struct segment_descriptor kernel_code64;
-	struct segment_descriptor kernel_data64;
-	struct segment_descriptor user_data64;
-	struct segment_descriptor user_code64;
-	struct tss_descriptor tss_descriptor;
+	struct segment_descriptor null; // 0x0
+	struct segment_descriptor code16; // 0x8
+	struct segment_descriptor data16; // 0x10
+	struct segment_descriptor code32; // 0x18
+	struct segment_descriptor data32; // 0x20
+	struct segment_descriptor kernel_code64; // 0x28
+	struct segment_descriptor kernel_data64; // 0x30
+	struct segment_descriptor user_data64; // 0x38
+	struct segment_descriptor user_code64; // 0x40
+	struct tss_descriptor tss_descriptor; // 0x48
 } __attribute__((packed));
 
 void gdt_init() {
 	struct gdt *gdt = alloc(sizeof(struct gdt));
 
+	gdt->code16.limit = 0xffff;
+	gdt->code16.access = 0b10011010;
+	gdt->code16.granularity = 0b00000000;
+
+	gdt->data16.limit = 0xffff;
+	gdt->data16.access = 0b10010010;
+	gdt->data16.granularity = 0b00000000;
+
+	gdt->code32.limit = 0xffff;
+	gdt->code32.access = 0b10011010;
+	gdt->code32.granularity = 0b11001111;
+
+	gdt->data32.limit = 0xffff;
+	gdt->data32.access = 0b10010010;
+	gdt->data32.granularity = 0b11001111;
+	
 	gdt->kernel_code64.access = 0b10011000;
 	gdt->kernel_code64.granularity = 0b00100000;
+
 	gdt->kernel_data64.access = 0b10010110;
+	gdt->kernel_data64.granularity = 0b00000000;
+
 	gdt->user_data64.access = 0b11110010;
+	gdt->user_data64.granularity = 0b00000000;
+
 	gdt->user_code64.access = 0b11111010;
 	gdt->user_code64.granularity = 0b00100000;
 
 	struct tss *tss = alloc(sizeof(struct tss));
+
+	tss->rsp0 = pmm_alloc(4, 1) + HIGH_VMA;
+	tss->rsp1 = pmm_alloc(4, 1) + HIGH_VMA;
+	tss->rsp2 = pmm_alloc(4, 1) + HIGH_VMA;
 
 	gdt->tss_descriptor.length = 104;
 	gdt->tss_descriptor.base_low = (uintptr_t)tss & 0xffff;
@@ -80,17 +111,17 @@ void gdt_init() {
 	asm volatile (	
 		"lgdtq %0\n\t"
 		"lea 1f(%%rip), %%rax\n\t"
-		"push $0x8\n\t"
+		"push $0x28\n\t"
 		"push %%rax\n\t"
 		"lretq\n\t"
 		"1:\n\t"
-		"mov $0x10, %%ax\n\t"
+		"mov $0x30, %%ax\n\t"
 		"mov %%ax, %%ds\n\t"
 		"mov %%ax, %%ss\n\t"
 		"mov %%ax, %%es\n\t"
 		"mov %%ax, %%gs\n\t"
 		"mov %%ax, %%fs\n\t"
-		"mov $0x28, %%ax\n\t"
+		"mov $0x48, %%ax\n\t"
 		"ltr %%ax\n\t"
 		:: "m"(gdtr) : "rax", "memory"
 	);

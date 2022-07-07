@@ -3,14 +3,18 @@
 #include <lib/cpu.h>
 #include <time.h>
 #include <debug.h>
-#include <drivers/pit.h>
-#include <stivale.h>
+#include <limine.h>
 
 #define TIMER_FREQ 1000
 #define PIT_FREQ 1193182
 
 struct timespec clock_realtime;
 struct timespec clock_monotonic;
+
+static volatile struct limine_boot_time_request limine_boot_time_request = {
+	.id = LIMINE_BOOT_TIME_REQUEST,
+	.revision = 0
+};
 
 void pit_handler(struct registers*, void*) {
 	struct timespec interval = { .tv_sec = 0, .tv_nsec = 1000000000 / TIMER_FREQ };
@@ -34,6 +38,8 @@ void pit_init() {
 
 	ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), vector, 0, false);
 
-	clock_realtime = (struct timespec) { .tv_sec = stivale_struct->epoch, .tv_nsec = 0 };
-	clock_monotonic = (struct timespec) { .tv_sec = stivale_struct->epoch, .tv_nsec = 0 };
+	int64_t epoch = limine_boot_time_request.response->boot_time;
+
+	clock_realtime = (struct timespec) { .tv_sec = epoch, .tv_nsec = 0 };
+	clock_monotonic = (struct timespec) { .tv_sec = epoch, .tv_nsec = 0 };
 }

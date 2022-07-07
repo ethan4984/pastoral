@@ -29,12 +29,6 @@ SECTIONS
 	/* Move to the next memory page for .rodata */
 	. += 0x1000;
 
-	/* We place the .stivalehdr section containing the header in its own section, */
-	/* and we use the KEEP directive on it to make sure it doesn't get discarded. */
-	.stivalehdr : {
-		KEEP(*(.stivalehdr))
-	} :rodata
-
 	.rodata : {
 		*(.rodata*)
 	} :rodata

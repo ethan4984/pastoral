@@ -2,10 +2,10 @@
 #include <mm/pmm.h>
 #include <cpu.h>
 #include <string.h>
-#include <stivale.h>
 #include <sched/sched.h>
 #include <mm/mmap.h>
 #include <debug.h>
+#include <limine.h>
 
 #define PML5_FLAGS_MASK ~(VMM_FLAGS_PS | VMM_FLAGS_G | VMM_FLAGS_NX)
 #define PML4_FLAGS_MASK ~(VMM_FLAGS_PS | VMM_FLAGS_G | VMM_FLAGS_NX)
@@ -317,6 +317,11 @@ void vmm_init() {
 	vmm_init_page_table(&kernel_mappings);
 }
 
+static volatile struct limine_kernel_address_request limine_kernel_address_request = {
+	.id = LIMINE_KERNEL_ADDRESS_REQUEST,
+	.revision = 0
+};
+
 void vmm_default_table(struct page_table *page_table) {
 	struct cpuid_state cpuid_state = cpuid(7, 0);
 
@@ -333,23 +338,27 @@ void vmm_default_table(struct page_table *page_table) {
 	page_table->pml_high = (uint64_t*)(pmm_alloc(1, 1) + HIGH_VMA);
 	page_table->pages = alloc(sizeof(struct hash_table));
 
-	size_t phys = 0;
+	uintptr_t kernel_vaddr = limine_kernel_address_request.response->virtual_base;
+	uintptr_t kernel_paddr = limine_kernel_address_request.response->physical_base;
+
 	for(size_t i = 0; i < 0x400; i++) {
-		page_table->map_page(page_table, phys + KERNEL_HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G | VMM_FLAGS_US);
-		phys += 0x200000;
+		page_table->map_page(page_table, kernel_vaddr, kernel_paddr, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_G | VMM_FLAGS_US);
+		kernel_vaddr += 0x1000;
+		kernel_paddr += 0x1000;
 	}
 
-	phys = 0;
+	uint64_t phys = 0;
 	for(size_t i = 0; i < 0x800; i++) {
 		page_table->map_page(page_table, phys + HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G | VMM_FLAGS_US);
 		phys += 0x200000;
 	}
 
-	struct stivale_mmap_entry *mmap = (struct stivale_mmap_entry*)stivale_struct->memory_map_addr;
+	struct limine_memmap_entry **mmap = limine_memmap_request.response->entries;
+	uint64_t entry_count = limine_memmap_request.response->entry_count;
 
-	for(size_t i = 0; i < stivale_struct->memory_map_entries; i++) {
-		phys = (mmap[i].base / 0x200000) * 0x200000;
-		for(size_t j = 0; j < DIV_ROUNDUP(mmap[i].length, 0x200000); j++) {
+	for(uint64_t i = 0; i < entry_count; i++) {
+		phys = (mmap[i]->base / 0x200000) * 0x200000;
+		for(size_t j = 0; j < DIV_ROUNDUP(mmap[i]->length, 0x200000); j++) {
 			page_table->map_page(page_table, phys + HIGH_VMA, phys, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G | VMM_FLAGS_US);
 			phys += 0x200000;
 		}
@@ -497,8 +506,6 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 		}
 
 		(*page->reference)--;
-
-		print("cowing page: pid %x | vaddr %x | paddr %x | ref %x\n", task->pid, faulting_address, new_frame, *page->reference + 1);
 
 		uint64_t entry = new_frame | ((pmll_entry & 0x1ff) | (VMM_FLAGS_RW));
 		*lowest_level = entry;

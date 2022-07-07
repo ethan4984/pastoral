@@ -2,7 +2,6 @@
 #include <cpu.h>
 #include <string.h>
 #include <stdarg.h>
-#include <drivers/tty.h>
 
 static void serial_write(uint8_t data) {
 	while((inb(COM1 + 5) & (1 << 5)) == 0);

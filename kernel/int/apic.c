@@ -55,7 +55,7 @@ void apic_timer_init(uint32_t ms) {
 }
 
 int ioapic_set_irq_redirection(uint32_t lapic_id, uint8_t vector, uint8_t irq, bool mask) {
-	uint8_t flags = 0;
+	uint64_t flags = 0;
 
 	for(size_t i = 0; i < madt_ent2_list.length; i++) {
 		struct madt_ent2 *madt2 = &madt_ent2_list.data[i];

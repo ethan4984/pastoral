@@ -2,27 +2,35 @@
 #include <fs/ramfs.h>
 #include <mm/slab.h>
 #include <tar.h>
-#include <stivale.h>
 #include <types.h>
 #include <string.h>
 #include <debug.h>
 #include <time.h>
+#include <limine.h>
+
+static volatile struct limine_module_request limine_module_request = {
+	.id = LIMINE_MODULE_REQUEST,
+	.revision = 0
+};
 
 int initramfs() {
-	struct stivale_module *module = (void*)stivale_struct->modules;
+	struct limine_file **modules = limine_module_request.response->modules;
+	uint64_t module_count = limine_module_request.response->module_count;
 
-	for(size_t i = 0; i < stivale_struct->module_count; i++) {
-		if(module && strcmp(module->string, "initramfs") == 0) {
+	struct limine_file *module = NULL;
+
+	for(uint64_t i = 0; i < module_count; i++) {
+		if(strcmp(modules[i]->cmdline, "initramfs") == 0) {
+			module = modules[i];
 			break;
 		}
-		module = (void*)module->next;
 	}
 
-	if(module == NULL) { /* may not be guaranteed to be null */
+	if(module == NULL) {
 		return -1;
 	}
 
-	struct ustar_header *ustar_header = (void*)module->begin;
+	struct ustar_header *ustar_header = module->address;
 
 	for(;;) {
 		if(strncmp(ustar_header->magic, "ustar", 5) != 0) {
@@ -79,7 +87,7 @@ int initramfs() {
 
 		ustar_header = (void*)ustar_header + 512 + ALIGN_UP(stat->st_size, 512);
 
-		if((uintptr_t)ustar_header >= (module->begin + (module->end - module->begin))) {
+		if((uintptr_t)ustar_header >= ((uintptr_t)module->address + module->size)) {
 			break;
 		}
 	}

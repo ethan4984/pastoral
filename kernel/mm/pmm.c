@@ -3,10 +3,10 @@
 #include <stddef.h>
 #include <cpu.h>
 #include <string.h>
-#include <stivale.h>
+#include <limine.h>
 
 struct pmm_module {
-	struct stivale_mmap_entry *mmap_entry;
+	struct limine_memmap_entry *mmap_entry;
 
 	size_t bitmap_size;
 	size_t bitmap_entry_cnt;
@@ -21,7 +21,12 @@ struct pmm_module {
 static struct pmm_module *root_module;
 static void *meta_buffer;
 
-static void pmm_init_module(struct pmm_module *module, struct stivale_mmap_entry *mmap_entry) {
+volatile struct limine_memmap_request limine_memmap_request = {
+	.id = LIMINE_MEMMAP_REQUEST,
+	.revision = 0
+};
+
+static void pmm_init_module(struct pmm_module *module, struct limine_memmap_entry *mmap_entry) {
 	size_t page_cnt = DIV_ROUNDUP(mmap_entry->length, PAGE_SIZE);
 
 	module->mmap_entry = mmap_entry;
@@ -89,50 +94,51 @@ static void pmm_module_free(struct pmm_module *module, uint64_t base, uint64_t c
 }
 
 void pmm_init() {
-	struct stivale_mmap_entry *mmap = (struct stivale_mmap_entry*)stivale_struct->memory_map_addr;
+	struct limine_memmap_entry **mmap = limine_memmap_request.response->entries;	
+	uint64_t entry_count = limine_memmap_request.response->entry_count;
 
 	size_t buffer_size = 0;
 
-	for(size_t i = 0; i < stivale_struct->memory_map_entries; i++) { // calcuate the size the metabuffer needs to be
-		if(mmap[i].type == STIVALE_MMAP_USABLE) {
-			size_t entry_cnt = DIV_ROUNDUP(mmap[i].length, PAGE_SIZE);
+	for(size_t i = 0; i < entry_count; i++) { // calcuate the size the metabuffer needs to be
+		if(mmap[i]->type == LIMINE_MEMMAP_USABLE) {
+			size_t entry_cnt = DIV_ROUNDUP(mmap[i]->length, PAGE_SIZE);
 			buffer_size += sizeof(struct pmm_module) * 2 + DIV_ROUNDUP(entry_cnt, 8);
 		}
 
-		if(mmap[i].base < 0x100000) {
-			if(0x100000 - mmap[i].base > mmap[i].length) {
-				mmap[i].length = 0;
+		if(mmap[i]->base < 0x100000) {
+			if(0x100000 - mmap[i]->base > mmap[i]->length) {
+				mmap[i]->length = 0;
 				continue;
 			}
 
-			mmap[i].base += 0x100000 - mmap[i].base;
-			mmap[i].length -= 0x100000 - mmap[i].base;
+			mmap[i]->base += 0x100000 - mmap[i]->base;
+			mmap[i]->length -= 0x100000 - mmap[i]->base;
 		}
 	}
 
-	for(size_t i = 0; i < stivale_struct->memory_map_entries; i++) { // find a memory range that the buffer can fit inside and allocate it
-		if(mmap[i].type == STIVALE_MMAP_USABLE && mmap[i].length >= buffer_size) {
-			meta_buffer = (void*)(mmap[i].base + HIGH_VMA);
-			mmap[i].base += buffer_size;
-			mmap[i].length -= buffer_size;
+	for(size_t i = 0; i < entry_count; i++) { // find a memory range that the buffer can fit inside and allocate it
+		if(mmap[i]->type == LIMINE_MEMMAP_USABLE && mmap[i]->length >= buffer_size) {
+			meta_buffer = (void*)(mmap[i]->base + HIGH_VMA);
+			mmap[i]->base += buffer_size;
+			mmap[i]->length -= buffer_size;
 
-			mmap[i].base = ALIGN_UP(mmap[i].base, PAGE_SIZE); // align up a page
-			mmap[i].length = mmap[i].length / PAGE_SIZE * PAGE_SIZE; // align down a page
+			mmap[i]->base = ALIGN_UP(mmap[i]->base, PAGE_SIZE); // align up a page
+			mmap[i]->length = mmap[i]->length / PAGE_SIZE * PAGE_SIZE; // align down a page
 
 			break;
 		}
 	}
 
-	for(size_t i = 0; i < stivale_struct->memory_map_entries; i++) { // create bitmap modules for all usable regions
-		if(mmap[i].type == STIVALE_MMAP_USABLE && mmap[i].length) {
-			print("pmm: [%x -> %x] length %x type %x\n", mmap[i].base, mmap[i].base + mmap[i].length, mmap[i].length, mmap[i].type);
+	for(size_t i = 0; i < entry_count; i++) { // create bitmap modules for all usable regions
+		if(mmap[i]->type == LIMINE_MEMMAP_USABLE && mmap[i]->length) {
+			print("pmm: [%x -> %x] length %x type %x\n", mmap[i]->base, mmap[i]->base + mmap[i]->length, mmap[i]->length, mmap[i]->type);
 
 			if(root_module == NULL) {
 				meta_buffer = (void*)(ALIGN_UP((uintptr_t)meta_buffer - HIGH_VMA, sizeof(struct pmm_module)) + HIGH_VMA);
 				root_module = (struct pmm_module*)meta_buffer;
 				memset8((void*)root_module, 0, sizeof(struct pmm_module));
 				meta_buffer += sizeof(struct pmm_module) * 2;
-				pmm_init_module(root_module, &mmap[i]);
+				pmm_init_module(root_module, mmap[i]);
 				continue; 
 			}
 
@@ -146,7 +152,7 @@ void pmm_init() {
 			memset8((void*)node->next, 0, sizeof(struct pmm_module));
 			meta_buffer += sizeof(struct pmm_module) * 2;
 
-			pmm_init_module(node->next, &mmap[i]);
+			pmm_init_module(node->next, mmap[i]);
 		}
 	}
 
@@ -177,7 +183,7 @@ void pmm_free(uint64_t base, uint64_t cnt) {
 	struct pmm_module *module = root_module;
 
 	do {
-		struct stivale_mmap_entry *mmap = module->mmap_entry;
+		struct limine_memmap_entry *mmap = module->mmap_entry;
 		if(base >= mmap->base && (mmap->base + cnt * PAGE_SIZE) <= (mmap->base + module->bitmap_entry_cnt * PAGE_SIZE)) {
 			return pmm_module_free(module, base - mmap->base, cnt);
 		}

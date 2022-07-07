@@ -13,10 +13,10 @@ syscall_main:
 	push rcx ; rip
 	push r11 ; rflags
 
-	push 0x1b ; ss
+	push 0x3b ; ss
 	push qword [gs:8] ; rsp
 	push r11 ; rflags
-	push 0x23 ; cs
+	push 0x43 ; cs
 	push rcx ; rip
 
 	push 0
