@@ -9,18 +9,28 @@
 #include <hash.h>
 #include <elf.h>
 
-struct event_listener {
-	struct sched_task *task;
-	struct sched_thread *thread;
-
+struct event_trigger {
 	struct sched_task *agent_task;
 	struct sched_thread *agent_thread;
+
+	struct event *event;
+	int event_type;
 };
 
 struct event {
-	VECTOR(struct event_listener*) listeners;
+	struct sched_task *task;
+	struct sched_thread *thread;
+
+	VECTOR(struct event_trigger*) triggers;
+
+	int pending;
 	char lock;
 };
+
+// WAITPID
+// adds each child it wants to monitor as a possible trigger for relasing this event
+// wait for the event - dequeue and wait
+// event gets triggered 
 
 struct sched_thread {
 	tid_t tid;
@@ -36,8 +46,6 @@ struct sched_thread {
 	size_t user_stack_size;
 	size_t errno;
 
-	struct event event;
-
 	struct registers regs;
 }; 
 
@@ -48,10 +56,13 @@ struct sched_task {
 	struct hash_table thread_list;
 	struct bitmap tid_bitmap;
 
-	struct event event;
-	struct event_listener *last_listen;
+	struct event *event;
+	int event_waiting;
+
+	struct event_trigger *exit_trigger;
+	struct event_trigger *last_trigger;
+
 	struct vfs_node *cwd;
-	int pending_event;
 
 	pid_t pid;
 	pid_t ppid;

@@ -222,12 +222,10 @@ int fd_openat(int dirfd, const char *path, int flags) {
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
-	} 
-
-/*	else if(flags & O_CREAT && flags & O_EXEC) {
+	} else if(flags & O_CREAT && flags & O_EXEC) {
 		set_errno(EEXIST);
 		return -1;
-	}*/
+	}
 
 	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
 

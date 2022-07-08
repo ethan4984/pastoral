@@ -155,7 +155,7 @@ void reschedule(struct registers *regs, void*) {
 	set_user_fs(next_thread->user_fs_base);
 	set_user_gs(next_thread->user_gs_base);
 
-	spinrelease(&next_task->pending_event);
+	spinrelease(&next_task->event_waiting);
 
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
@@ -254,6 +254,9 @@ struct sched_task *sched_default_task() {
 	task->pid = bitmap_alloc(&pid_bitmap);
 	task->status = TASK_YIELD;
 	task->fd_bitmap.resizable = true;
+
+	task->event = alloc(sizeof(struct event));
+	task->exit_trigger = alloc(sizeof(struct event_trigger));
 
 	bitmap_alloc(&task->fd_bitmap); // STDIN
 	bitmap_alloc(&task->fd_bitmap); // STDOUT
@@ -464,6 +467,12 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		return NULL;
 	}
 
+	task->event->task = task;
+	task->event->thread = thread;
+
+	task->exit_trigger->agent_task = task;
+	task->exit_trigger->agent_thread = thread;
+
 	CORE_LOCAL->pid = current_task->pid;
 	vmm_init_page_table(current_task->page_table);
 
@@ -475,57 +484,49 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	return task;
 }
 
-void event_listen(struct event *event) {
+void event_append_trigger(struct event *event, struct event_trigger *trigger) {
 	spinlock(&event->lock);
 
-	struct event_listener *listener = alloc(sizeof(struct event_listener));
-	*listener = (struct event_listener) {
-		.task = CURRENT_TASK,
-		.thread = CURRENT_THREAD
-	};
-
-	VECTOR_PUSH(event->listeners, listener);
+	VECTOR_PUSH(event->triggers, trigger);
 
 	spinrelease(&event->lock);
 }
 
-void event_wait() {
-	spinlock(&CURRENT_TASK->pending_event);
+void event_wait(struct event *event) {
+	struct sched_task *task = CURRENT_TASK;
 
-	spinlock(&CURRENT_TASK->pending_event);
-	spinrelease(&CURRENT_TASK->pending_event);
-}
-
-void event_listen_and_wait() {
 	asm volatile ("cli");
+
+	if(event->pending) {
+		event->pending--;
+		return;
+	}
 
 	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
 
+	spinlock(&task->event_waiting);
+
 	asm volatile ("sti");
 
-	event_wait();
+	spinlock(&task->event_waiting);
+	spinrelease(&task->event_waiting);
 }
 
-void event_trigger(struct event *event) {
-	spinlock(&event->lock);
+void event_fire(struct event_trigger *trigger) {
+	struct event *event = trigger->event;
+	struct sched_task *task = event->task;
 
 	asm volatile ("cli");
 
-	for(size_t i = 0; i < event->listeners.length; i++) { 
-		struct event_listener *listener = event->listeners.data[i];
-		struct sched_task *task = listener->task;
+	spinlock(&event->lock);
 
-		listener->agent_task = CURRENT_TASK;
-		listener->agent_thread = CURRENT_THREAD;
-	
-		task->last_listen = listener;
+	event->pending++;
+	task->last_trigger = trigger;
+	sched_requeue(event->task, event->thread);
 
-		sched_requeue(listener->task, listener->thread);
-	}
+	spinrelease(&event->lock);
 
 	asm volatile ("sti");
-	
-	spinrelease(&event->lock);
 }
 
 void syscall_waitpid(struct registers *regs) {
@@ -536,14 +537,18 @@ void syscall_waitpid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
 	print("syscall: waitpid: pid {%x}, status {%x}, options {%x}\n", pid, (uintptr_t)status, options);
 #endif
+	
+	asm volatile ("cli");
+
+	struct sched_task *current_task = CURRENT_TASK;
 
 	VECTOR(struct sched_task*) process_list = { 0 };
 
 	if(pid < -1) {
 		// TODO implement process groups
 	} else if(pid == -1) {
-		for(size_t i = 0; i < CURRENT_TASK->children.length; i++) {
-			VECTOR_PUSH(process_list, CURRENT_TASK->children.data[i]);
+		for(size_t i = 0; i < current_task->children.length; i++) {
+			VECTOR_PUSH(process_list, current_task->children.data[i]);
 		}
 	} else if(pid == 0) {
 		// TODO implement process groups
@@ -553,13 +558,17 @@ void syscall_waitpid(struct registers *regs) {
 
 	for(size_t i = 0; i < process_list.length; i++) {
 		struct sched_task *task = process_list.data[i];
-		event_listen(&task->event);
+		struct event_trigger *trigger = task->exit_trigger;
+
+		trigger->event = current_task->event;
+
+		event_append_trigger(current_task->event, task->exit_trigger);
 	}
 
-	event_listen_and_wait();
+	event_wait(current_task->event);
 
-	struct event_listener *listen = CURRENT_TASK->last_listen;
-	struct sched_task *agent = listen->agent_task;
+	struct event_trigger *trigger = current_task->last_trigger;
+	struct sched_task *agent = trigger->agent_task;
 
 	*status = agent->process_status;
 	regs->rax = agent->pid;
@@ -619,8 +628,10 @@ void syscall_exit(struct registers *regs) {
 			VECTOR_PUSH(parent->children, task->children.data[i]);
 		}
 
+		print("shooting on %x\n", task);
+
 		task->process_status = status | 0x200;
-		event_trigger(&task->event);
+		event_fire(task->exit_trigger);
 	}
 
 	task->status = TASK_YIELD;
@@ -709,6 +720,12 @@ void syscall_execve(struct registers *regs) {
 	new_task->ppid = current_task->ppid;
 	new_task->event = current_task->event;
 
+	new_task->exit_trigger = current_task->exit_trigger;
+	new_task->exit_trigger->agent_task = new_task;
+	new_task->exit_trigger->agent_thread = *new_task->thread_list.data;
+
+	new_task->event->task = new_task;
+
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
 
@@ -742,6 +759,14 @@ void syscall_fork(struct registers *regs) {
 	task->status = TASK_WAITING;
 	task->page_table = vmm_fork_page_table(current_task->page_table);
 	task->cwd = current_task->cwd;
+	task->event = alloc(sizeof(struct event));
+
+	task->event->task = task;
+	task->event->thread = thread;
+
+	task->exit_trigger = alloc(sizeof(struct event_trigger));
+	task->exit_trigger->agent_task = task;
+	task->exit_trigger->agent_thread = thread;
 
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,
