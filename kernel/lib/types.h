@@ -28,9 +28,9 @@ struct timespec {
 };
 
 #define O_ACCMODE 0x0007
-#define O_EXEC    1
+#define O_EXEC	  1
 #define O_RDONLY  2
-#define O_RDWR    3
+#define O_RDWR	  3
 #define O_SEARCH  4
 #define O_WRONLY  5
 
@@ -131,18 +131,24 @@ struct stat {
 };
 
 struct dirent {
-    ino_t d_ino;
-    off_t d_off;
-    unsigned short d_reclen;
-    unsigned char d_type;
-    char d_name[1024];
+	ino_t d_ino;
+	off_t d_off;
+	unsigned short d_reclen;
+	unsigned char d_type;
+	char d_name[1024];
 };
+
+struct event;
+struct event_trigger;
 
 struct asset {
 	ssize_t (*read)(struct asset*, void*, off_t, off_t, void*);
 	ssize_t (*write)(struct asset*, void*, off_t, off_t, const void*);
 	int (*ioctl)(struct asset*, void*, uint64_t req, void *args);
 	int (*resize)(struct asset*, void*, off_t);
+
+	struct event *event;
+	struct event_trigger *trigger;
 
 	struct stat *stat;
 	char lock;

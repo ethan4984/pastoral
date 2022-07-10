@@ -62,15 +62,11 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		return -1;
 	}
 
-	struct stat *stat = fd_handle->asset->stat;
-	if(S_ISFIFO(stat->st_mode) || S_ISSOCK(stat->st_mode)) {
-		set_errno(ESPIPE);
-		return -1;
-	}
-
 	struct asset *asset = fd_handle->asset;
+	struct stat *stat = asset->stat;
 
 	if(asset->write == NULL) {
+		print("NUll for some reason\n");
 		set_errno(EINVAL);
 		return -1;
 	}
@@ -127,9 +123,9 @@ ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void 
 	spinlock(&asset->lock);
 
 	struct stat *stat = asset->stat;
-
+	
 	if(offset > stat->st_size) {
-		// POLL (more like event await dequeue thread)
+		event_wait(asset->event, EVENT_FD_WRITE);
 	}
 	
 	stat->st_atim = clock_realtime;
@@ -140,20 +136,27 @@ ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void 
 		cnt = stat->st_size - offset; 
 	}
 
-	memcpy8(buf + offset, out, cnt);
+	print("reading from %x and %x\n", offset, cnt); 
+
+	memcpy8(buf, out + offset, cnt);
 
 	spinrelease(&asset->lock);
 
 	return cnt;
 }
 
-ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, void *buf) {
+ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, const void *buf) {
 	spinlock(&asset->lock);
 
 	struct stat *stat = asset->stat;
 
+	print("pipe write %x %x and %x\n", offset, stat->st_size, cnt);
+
 	if(offset > stat->st_size) {
-		// POLL (more like event await dequeue thread)
+		asset->trigger->event_type = EVENT_FD_WRITE;
+		asset->trigger->agent_task = CURRENT_TASK;
+		asset->trigger->agent_thread = CURRENT_THREAD;
+		event_fire(asset->trigger);
 	}
 	
 	stat->st_atim = clock_realtime;
@@ -161,7 +164,7 @@ ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, void
 	stat->st_ctim = clock_realtime;
 
 	if(offset + cnt > stat->st_size) {
-		cnt = stat->st_size - offset; 
+		stat->st_size += offset + cnt - stat->st_size;
 	}
 
 	memcpy8(out + offset, buf, cnt);
@@ -208,11 +211,14 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		struct asset *asset = alloc(sizeof(struct asset));
 		struct stat *stat = alloc(sizeof(struct stat));
 
+		asset->stat = stat;
 		asset->read = parent->asset->read;
 		asset->write = parent->asset->write;
 		asset->ioctl = parent->asset->ioctl;
 		asset->resize = parent->asset->resize;
-		asset->stat = stat;
+		asset->event = alloc(sizeof(struct event));
+		asset->trigger = alloc(sizeof(struct event_trigger));
+		asset->trigger->event = asset->event;
 
 		stat->st_atim = clock_realtime;
 		stat->st_mtim = clock_realtime;
@@ -650,24 +656,20 @@ void syscall_pipe(struct registers *regs) {
 	};
 
 	struct asset *read_asset = alloc(sizeof(struct asset));
-	struct stat *read_stat = alloc(sizeof(struct stat));
-	read_asset->stat = read_stat;
-
-	read_stat->st_atim = clock_realtime;
-	read_stat->st_mtim = clock_realtime;
-	read_stat->st_ctim = clock_realtime;
-
-	read_stat->st_mode = S_IFIFO | S_IRUSR;
+	read_asset->read = pipe_read;
 
 	struct asset *write_asset = alloc(sizeof(struct asset));
-	struct stat *write_stat = alloc(sizeof(struct stat));
-	write_asset->stat = write_stat;
+	write_asset->write = pipe_write;
 
-	write_stat->st_atim = clock_realtime;
-	write_stat->st_mtim = clock_realtime;
-	write_stat->st_ctim = clock_realtime;
+	struct stat *pipe_stat = alloc(sizeof(struct stat));
 
-	read_stat->st_mode = S_IFIFO | S_IWUSR;
+	pipe_stat->st_atim = clock_realtime;
+	pipe_stat->st_mtim = clock_realtime;
+	pipe_stat->st_ctim = clock_realtime;
+	pipe_stat->st_mode = S_IFIFO | S_IWUSR;
+
+	read_asset->stat = pipe_stat;
+	write_asset->stat = pipe_stat;
 
 	read_handle->pipe = pipe;
 	read_handle->asset = read_asset; 
@@ -678,7 +680,7 @@ void syscall_pipe(struct registers *regs) {
 	write_handle->fd_number = fd_pair[1];
 
 	hash_table_push(&CURRENT_TASK->fd_list, &read_handle->fd_number, read_handle, sizeof(read_handle->fd_number));
-	hash_table_push(&CURRENT_TASK->fd_list, &write_handle->fd_number, read_handle, sizeof(write_handle->fd_number));
+	hash_table_push(&CURRENT_TASK->fd_list, &write_handle->fd_number, write_handle, sizeof(write_handle->fd_number));
 
 	regs->rax = 0;
 }

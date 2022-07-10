@@ -155,7 +155,7 @@ void reschedule(struct registers *regs, void*) {
 	set_user_fs(next_thread->user_fs_base);
 	set_user_gs(next_thread->user_gs_base);
 
-	spinrelease(&next_task->event_waiting);
+	next_task->event_waiting = 0;
 
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
@@ -472,6 +472,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	task->exit_trigger->agent_task = task;
 	task->exit_trigger->agent_thread = thread;
+	task->exit_trigger->event_type = EVENT_PROC_EXIT;
 
 	CORE_LOCAL->pid = current_task->pid;
 	vmm_init_page_table(current_task->page_table);
@@ -484,35 +485,59 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	return task;
 }
 
-void event_append_trigger(struct event *event, struct event_trigger *trigger) {
+int event_append_trigger(struct event *event, struct event_trigger *trigger) {
+	if(event == NULL || trigger == NULL) {
+		return -1;
+	}
+
 	spinlock(&event->lock);
 
 	VECTOR_PUSH(event->triggers, trigger);
 
 	spinrelease(&event->lock);
+
+	return 0;
 }
 
-void event_wait(struct event *event) {
+int event_wait(struct event *event, int event_type) {
+	if(event == NULL) {
+		return -1;
+	}
+
 	struct sched_task *task = CURRENT_TASK;
 
 	asm volatile ("cli");
 
 	if(event->pending) {
 		event->pending--;
-		return;
+		return 0;
 	}
 
-	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
+	for(;;) {
+		sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
 
-	spinlock(&task->event_waiting);
+		task->event_waiting = 1;
 
-	asm volatile ("sti");
+		asm volatile ("sti");
 
-	spinlock(&task->event_waiting);
-	spinrelease(&task->event_waiting);
+		while(task->event_waiting);
+		task->event_waiting = 0;
+
+		struct event_trigger *trigger = task->last_trigger;
+		
+		if(trigger->event_type == event_type) {
+			return 0;
+		}
+	}
+
+	return 0;
 }
 
-void event_fire(struct event_trigger *trigger) {
+int event_fire(struct event_trigger *trigger) {
+	if(trigger == NULL || trigger->event == NULL) {
+		return -1;
+	}
+
 	struct event *event = trigger->event;
 	struct sched_task *task = event->task;
 
@@ -527,6 +552,8 @@ void event_fire(struct event_trigger *trigger) {
 	spinrelease(&event->lock);
 
 	asm volatile ("sti");
+
+	return 0;
 }
 
 void syscall_waitpid(struct registers *regs) {
@@ -565,12 +592,15 @@ void syscall_waitpid(struct registers *regs) {
 		event_append_trigger(current_task->event, task->exit_trigger);
 	}
 
-	event_wait(current_task->event);
+	event_wait(current_task->event, EVENT_PROC_EXIT);
 
 	struct event_trigger *trigger = current_task->last_trigger;
 	struct sched_task *agent = trigger->agent_task;
 
-	*status = agent->process_status;
+	if(status != NULL) {
+		*status = agent->process_status;
+	}
+
 	regs->rax = agent->pid;
 }
 
@@ -723,6 +753,7 @@ void syscall_execve(struct registers *regs) {
 	new_task->exit_trigger = current_task->exit_trigger;
 	new_task->exit_trigger->agent_task = new_task;
 	new_task->exit_trigger->agent_thread = *new_task->thread_list.data;
+	new_task->exit_trigger->event_type = EVENT_PROC_EXIT;
 
 	new_task->event->task = new_task;
 
@@ -767,6 +798,7 @@ void syscall_fork(struct registers *regs) {
 	task->exit_trigger = alloc(sizeof(struct event_trigger));
 	task->exit_trigger->agent_task = task;
 	task->exit_trigger->agent_thread = thread;
+	task->exit_trigger->event_type = EVENT_PROC_EXIT;
 
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,

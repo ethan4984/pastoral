@@ -7,6 +7,7 @@
 #include <debug.h>
 #include <time.h>
 #include <limine.h>
+#include <sched/sched.h>
 
 static volatile struct limine_module_request limine_module_request = {
 	.id = LIMINE_MODULE_REQUEST,
@@ -66,6 +67,9 @@ int initramfs() {
 		asset->read = ramfs_read;
 		asset->write = ramfs_write;
 		asset->resize = ramfs_resize;
+		asset->event = alloc(sizeof(struct event));
+		asset->trigger = alloc(sizeof(struct event_trigger));
+		asset->trigger->event = asset->event;
 
 		switch(ustar_header->typeflag) {
 			case USTAR_REGTYPE:

@@ -9,6 +9,10 @@
 #include <hash.h>
 #include <elf.h>
 
+#define EVENT_PROC_EXIT 0
+#define EVENT_FD_READ 1
+#define EVENT_FD_WRITE 2
+
 struct event_trigger {
 	struct sched_task *agent_task;
 	struct sched_thread *agent_thread;
@@ -26,11 +30,6 @@ struct event {
 	int pending;
 	char lock;
 };
-
-// WAITPID
-// adds each child it wants to monitor as a possible trigger for relasing this event
-// wait for the event - dequeue and wait
-// event gets triggered 
 
 struct sched_thread {
 	tid_t tid;
@@ -57,7 +56,7 @@ struct sched_task {
 	struct bitmap tid_bitmap;
 
 	struct event *event;
-	int event_waiting;
+	volatile int event_waiting;
 
 	struct event_trigger *exit_trigger;
 	struct event_trigger *last_trigger;
@@ -97,6 +96,10 @@ void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *threa
 void sched_requeue(struct sched_task *task, struct sched_thread *thread);
 void sched_requeue_and_yield(struct sched_task *task, struct sched_thread *thread);
 void sched_yield();
+
+int event_append_trigger(struct event *event, struct event_trigger *trigger);
+int event_wait(struct event *event, int event_type);
+int event_fire(struct event_trigger *trigger);
 
 extern char sched_lock;
 
