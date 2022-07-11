@@ -6,6 +6,7 @@
 #include <int/idt.h>
 #include <drivers/terminal.h>
 #include <debug.h>
+#include <errno.h>
 
 typeof(terminal_list) terminal_list;
 struct terminal *current_terminal;
@@ -103,6 +104,26 @@ ssize_t terminal_read(struct asset*, void*, off_t, off_t, void *buffer) {
 ssize_t terminal_write(struct asset*, void*, off_t, off_t cnt, const void *buffer) {
 	limine_terminal_print((void*)buffer, cnt);
 	return cnt;
+}
+
+int terminal_ioctl(struct asset*, int, uint64_t req, void *args) {
+	switch(req) {
+		case TIOCGWINSZ:
+			struct winsize *winsize = args;
+
+			*winsize = (struct winsize) {
+				.ws_row = current_terminal->limine_terminal->columns,
+				.ws_col = current_terminal->limine_terminal->rows,
+				.ws_xpixel = current_terminal->limine_terminal->framebuffer->width,
+				.ws_ypixel = current_terminal->limine_terminal->framebuffer->height
+			};
+
+			break;
+		default:
+			set_errno(EINVAL);
+			return -1;
+	};
+	return 0;
 }
 
 void limine_terminal_init() {

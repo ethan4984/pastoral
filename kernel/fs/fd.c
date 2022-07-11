@@ -783,3 +783,28 @@ void syscall_symlinkat(struct registers *regs) {
 
 	regs->rax = 0;
 }
+
+void syscall_ioctl(struct registers *regs) {
+	int fd = regs->rdi;
+	uint64_t req = regs->rsi;
+	void *args = (void*)regs->rdx;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: ioctl: fd {%x}, req {%x}, args {%x}\n", fd, req, args);
+#endif
+
+	struct fd_handle *fd_handle = fd_translate(fd);	
+	if(fd_handle == NULL) {
+		set_errno(EBADF);
+		regs->rax = -1;
+		return;
+	}
+
+	if(fd_handle->asset->ioctl == NULL) {
+		set_errno(ENOTTY);
+		regs->rax = -1;
+		return;
+	}
+
+	regs->rax = fd_handle->asset->ioctl(fd_handle->asset, fd, req, args);
+}

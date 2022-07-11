@@ -33,6 +33,7 @@ extern void syscall_chdir(struct registers*);
 extern void syscall_getcwd(struct registers*);
 extern void syscall_faccessat(struct registers*);
 extern void syscall_pipe(struct registers*);
+extern void syscall_ioctl(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -106,7 +107,7 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_fcntl, .name = "fcntl" }, // 19
 	{ .handler = syscall_stat, .name = "fstat" }, // 20
 	{ .handler = syscall_statat, .name = "fstatat" }, // 21
-	{ .handler = NULL, .name = "ioctl" }, // 22
+	{ .handler = syscall_ioctl, .name = "ioctl" }, // 22
 	{ .handler = syscall_fork, .name = "fork" }, // 23
 	{ .handler = syscall_waitpid, .name = "waitpid" }, // 24
 	{ .handler = syscall_readdir, .name = "readdir" }, // 25
@@ -128,9 +129,6 @@ extern void syscall_handler(struct registers *regs) {
 	if(syscall_list[syscall_number].handler != NULL) {
 		syscall_list[syscall_number].handler(regs);
 	} else {
-		if(strcmp(syscall_list[syscall_number].name, "ioctl") == 0) {
-			return;	
-		}
 		panic("null syscall %s", syscall_list[syscall_number].name);
 	}
 

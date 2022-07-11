@@ -429,6 +429,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	stdin_handle->asset->stat = alloc(sizeof(struct stat));
 	stdin_handle->asset->stat->st_mode = S_IRUSR | S_IWUSR;
 	stdin_handle->asset->read = terminal_read;
+	stdin_handle->asset->ioctl = terminal_ioctl;
 
 	struct fd_handle *stdout_handle = alloc(sizeof(struct fd_handle));
 
@@ -442,6 +443,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	stdout_handle->asset->stat = alloc(sizeof(struct stat));
 	stdout_handle->asset->stat->st_mode = S_IWUSR | S_IRUSR;
 	stdout_handle->asset->write = terminal_write;
+	stdout_handle->asset->ioctl = terminal_ioctl;
 
 	struct fd_handle *stderr_handle = alloc(sizeof(struct fd_handle));
 
@@ -455,6 +457,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	stderr_handle->asset->stat = alloc(sizeof(struct stat));
 	stderr_handle->asset->stat->st_mode = S_IWUSR | S_IRUSR;
 	stderr_handle->asset->write = terminal_write;
+	stderr_handle->asset->ioctl = terminal_ioctl;
 
 	hash_table_push(&task->fd_list, &stdin_handle->fd_number, stdin_handle, sizeof(stdin_handle->fd_number));
 	hash_table_push(&task->fd_list, &stdout_handle->fd_number, stdout_handle, sizeof(stdout_handle->fd_number));
@@ -657,8 +660,6 @@ void syscall_exit(struct registers *regs) {
 		for(size_t i = 0; i < task->children.length; i++) {
 			VECTOR_PUSH(parent->children, task->children.data[i]);
 		}
-
-		print("shooting on %x\n", task);
 
 		task->process_status = status | 0x200;
 		event_fire(task->exit_trigger);
