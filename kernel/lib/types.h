@@ -150,6 +150,8 @@ struct asset {
 	struct event *event;
 	struct event_trigger *trigger;
 
+	void *something;
+
 	struct stat *stat;
 	char lock;
 };

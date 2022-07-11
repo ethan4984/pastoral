@@ -16,11 +16,6 @@ static volatile struct limine_terminal_request limine_terminal_request = {
 	.revision = 0
 };
 
-static volatile struct limine_framebuffer_request limine_framebuffer_request = {
-	.id = LIMINE_FRAMEBUFFER_REQUEST,
-	.revision = 0
-};
-
 static struct page_table terminal_page_table;
 
 void terminal_stream_push(struct terminal *terminal, char c) {
@@ -122,14 +117,15 @@ int terminal_ioctl(struct asset*, int, uint64_t req, void *args) {
 		default:
 			set_errno(EINVAL);
 			return -1;
-	};
+	}
+
 	return 0;
 }
 
 void limine_terminal_init() {
 	vmm_default_table(&terminal_page_table);
 
-	struct limine_framebuffer *framebuffer = limine_framebuffer_request.response->framebuffers[0];
+	struct limine_framebuffer *framebuffer = limine_terminal_request.response->terminals[0]->framebuffer;
 
 	uint64_t phys = 0;
 	for(size_t i = 0; i < 0x800; i++) {

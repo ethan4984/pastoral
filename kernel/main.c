@@ -16,6 +16,7 @@
 #include <drivers/pit.h>
 #include <drivers/iommu/intel/vtd.h>
 #include <drivers/terminal.h>
+#include <drivers/gfx.h>
 #include <fs/vfs.h>
 #include <fs/initramfs.h>
 #include <sched/sched.h>
@@ -43,6 +44,8 @@ void pastoral_thread() {
 	if(initramfs() == -1) {
 		panic("initramfs: unable to initialise");
 	}
+
+	gfx_init();
 
 	limine_terminal_init();
 
