@@ -3,6 +3,8 @@
 #include <types.h>
 #include <fs/vfs.h>
 
+#define PIPE_BUFFER_SIZE 0x10000
+
 struct fd_handle;
 struct pipe;
 
@@ -25,6 +27,8 @@ struct pipe {
 
 	struct fd_handle *read;
 	struct fd_handle *write; 
+
+	void *buffer;
 };
 
 struct fd_handle *fd_translate(int index);

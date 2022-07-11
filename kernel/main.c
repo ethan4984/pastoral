@@ -46,7 +46,7 @@ void pastoral_thread() {
 
 	limine_terminal_init();
 
-/*	char *argv[] = { "/usr/bin/bash", NULL };
+	char *argv[] = { "/usr/bin/bash", NULL };
 	char *envp[] = {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -63,9 +63,9 @@ void pastoral_thread() {
 		.argv_cnt = 1 
 	};
 
-	sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_WAITING);*/
+	sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_WAITING);
 
-	char *argv[] = { "/init", "big butt hoes", NULL };
+	/*char *argv[] = { "/init", "big butt hoes", NULL };
 	char *envp[] = {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -82,7 +82,7 @@ void pastoral_thread() {
 		.argv_cnt = 2 
 	};
 
-	sched_task_exec("/init", 0x43, arguments, TASK_WAITING);
+	sched_task_exec("/init", 0x43, arguments, TASK_WAITING);*/
 
 	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
 

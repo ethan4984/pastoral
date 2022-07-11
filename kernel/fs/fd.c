@@ -8,6 +8,7 @@
 #include <fs/vfs.h>
 #include <debug.h>
 #include <time.h>
+#include <mm/pmm.h>
 
 static char fd_lock;
 
@@ -73,7 +74,7 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 
 	ssize_t ret;
 	if(S_ISFIFO(stat->st_mode) && fd_handle->pipe) {
-		ret = asset->write(asset, fd_handle->pipe, fd_handle->position, count, buf);
+		ret = asset->write(asset, fd_handle->pipe->buffer, fd_handle->position, count, buf);
 	} else {
 		ret = asset->write(asset, NULL, fd_handle->position, count, buf);
 	}
@@ -107,7 +108,7 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 
 	ssize_t ret;
 	if(S_ISFIFO(stat->st_mode) && fd_handle->pipe) {
-		ret = asset->read(asset, fd_handle->pipe, fd_handle->position, count, buf);
+		ret = asset->read(asset, fd_handle->pipe->buffer, fd_handle->position, count, buf);
 	} else {
 		ret = asset->read(asset, NULL, fd_handle->position, count, buf);
 	}
@@ -136,8 +137,6 @@ ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void 
 		cnt = stat->st_size - offset; 
 	}
 
-	print("reading from %x and %x\n", offset, cnt); 
-
 	memcpy8(buf, out + offset, cnt);
 
 	spinrelease(&asset->lock);
@@ -150,7 +149,14 @@ ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, cons
 
 	struct stat *stat = asset->stat;
 
-	print("pipe write %x %x and %x\n", offset, stat->st_size, cnt);
+	if(offset >= PIPE_BUFFER_SIZE) {
+		set_errno(EINVAL);
+		return -1;
+	}
+
+	if(offset + cnt > PIPE_BUFFER_SIZE) {
+		cnt = stat->st_size - offset; 
+	}
 
 	if(offset > stat->st_size) {
 		asset->trigger->event_type = EVENT_FD_WRITE;
@@ -652,7 +658,8 @@ void syscall_pipe(struct registers *regs) {
 		.read = read_handle,
 		.write = write_handle,
 		.fd_pair[0] = fd_pair[0], 
-		.fd_pair[1] = fd_pair[1]
+		.fd_pair[1] = fd_pair[1],
+		.buffer = (void*)(pmm_alloc(DIV_ROUNDUP(PIPE_BUFFER_SIZE, PAGE_SIZE), 1) + HIGH_VMA)
 	};
 
 	struct asset *read_asset = alloc(sizeof(struct asset));
