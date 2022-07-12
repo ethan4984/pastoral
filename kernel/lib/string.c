@@ -80,7 +80,7 @@ static void sprint_print_number(char *str, int *write_cnt, size_t number, int ba
 	} while(number);
 
 	for(int i = cnt - 1; i > -1; i--) {
-		str[*write_cnt++] = characters[arr[i]];
+		str[(*write_cnt)++] = characters[arr[i]];
 	}
 }
 

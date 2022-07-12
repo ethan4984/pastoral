@@ -16,7 +16,7 @@
 #include <drivers/pit.h>
 #include <drivers/iommu/intel/vtd.h>
 #include <drivers/terminal.h>
-#include <drivers/gfx.h>
+#include <drivers/fbdev.h>
 #include <fs/vfs.h>
 #include <fs/initramfs.h>
 #include <sched/sched.h>
@@ -38,6 +38,11 @@ static volatile struct limine_rsdp_request limine_rsdp_request = {
 	.revision = 0
 };
 
+static volatile struct limine_framebuffer_request limine_framebuffer_request = {
+	.id = LIMINE_FRAMEBUFFER_REQUEST,
+	.revision = 0
+};
+
 void pastoral_thread() {
 	print("Greetings from pastorals kernel thread\n");
 
@@ -45,7 +50,12 @@ void pastoral_thread() {
 		panic("initramfs: unable to initialise");
 	}
 
-	gfx_init();
+	struct limine_framebuffer **framebuffers = limine_framebuffer_request.response->framebuffers;
+	uint64_t framebuffer_count = limine_framebuffer_request.response->framebuffer_count;
+
+	for(uint64_t i = 0; i < framebuffer_count; i++) {
+		fbdev_init_device(framebuffers[i]);
+	}
 
 	limine_terminal_init();
 

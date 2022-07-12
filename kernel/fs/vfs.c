@@ -110,7 +110,7 @@ struct vfs_node *vfs_search_relative(struct vfs_node *parent, const char *name, 
 
 				int relative = *sympath == '/' ? 0 : 1;
 				if(relative) {
-					node = vfs_search_absolute(node, sympath, true);
+					node = vfs_search_absolute(parent, sympath, true);
 				} else {
 					node = vfs_search_absolute(NULL, sympath, true);	
 				}
