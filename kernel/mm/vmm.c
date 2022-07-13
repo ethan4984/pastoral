@@ -417,9 +417,53 @@ struct page_table *vmm_fork_page_table(struct page_table *page_table) {
 	return new_table;
 }
 
+int vmm_share_map(struct page_table *page_table, uintptr_t address) {
+	
+}
+
+int vmm_private_map(struct page_table *page_table, uintptr_t address) {
+	struct mmap_region *root = page_table->mmap_region_root;
+	if(root == NULL) {
+		return 0;
+	}
+
+	uint64_t faulting_page = address & ~(0xfff);
+	uint64_t *lowest_level = page_table->lowest_level(page_table, faulting_page);
+
+	while(root) {
+		if(root->base <= address && (root->base + root->limit) >= address) {
+			struct page *page = hash_table_search(page_table->pages, &faulting_page, sizeof(faulting_page));
+			if(page == NULL) {
+				return 0;
+			}
+
+			struct vfs_node *node = page->node;
+			if(node == NULL) {
+				return 0;
+			}
+
+			invlpg(address);
+
+			int ret = node->asset->read(node->asset, NULL, page->offset, PAGE_SIZE, (void*)(page->paddr + HIGH_VMA)) == -1 ? 0 : 1;
+			if(ret) {
+				*lowest_level = *lowest_level | VMM_FLAGS_P;
+			}
+
+			return ret;
+		}
+
+		if(root->base > address) {
+			root = root->left;
+		} else {
+			root = root->right;
+		}
+	}
+
+	return 0;
+}
+
 int vmm_anon_map(struct page_table *page_table, uintptr_t address) {
 	struct mmap_region *root = page_table->mmap_region_root;
-
 	if(root == NULL) {
 		return 0;
 	}
@@ -442,7 +486,7 @@ int vmm_anon_map(struct page_table *page_table, uintptr_t address) {
 
 			struct page *new_page = alloc(sizeof(struct page));
 			*new_page = (struct page) {
-				.vaddr = vaddr, 
+				.vaddr = vaddr,
 				.paddr = paddr,
 				.size = PAGE_SIZE,
 				.flags = flags,
@@ -481,13 +525,16 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 	uint64_t faulting_address;
 	asm volatile ("mov %%cr2, %0" : "=a"(faulting_address));
 
-	if((regs->error_code & VMM_FLAGS_P) == 0) { // anon mmap
-		EXIT_PF(vmm_anon_map(task->page_table, faulting_address));
-	}
-
 	uint64_t faulting_page = faulting_address & ~(0xfff);
 	uint64_t *lowest_level = task->page_table->lowest_level(task->page_table, faulting_page);
-	uint64_t pmll_entry = *lowest_level;
+	uint64_t pmll_entry = lowest_level == NULL ? 0 : *lowest_level;
+
+	if((regs->error_code & VMM_FLAGS_P) == 0) {
+		if(pmll_entry & VMM_PRIVATE_FLAG) {
+			EXIT_PF(vmm_private_map(task->page_table, faulting_address));
+		}
+		EXIT_PF(vmm_anon_map(task->page_table, faulting_address));
+	}
 
 	if(pmll_entry & VMM_COW_FLAG) {
 		struct page *page = hash_table_search(task->page_table->pages, &faulting_page, sizeof(faulting_page));
@@ -517,6 +564,10 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 		(*page->reference) = 1;
 
 		EXIT_PF(1);
+	}
+
+	if(pmll_entry & VMM_SHARE_FLAG) {
+		EXIT_PF(vmm_share_map(task->page_table, faulting_address));
 	}
 
 	EXIT_PF(0);

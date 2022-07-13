@@ -30,6 +30,8 @@ struct page {
 	uint64_t vaddr;
 	uint64_t size;
 	uint64_t flags;
+
+	struct vfs_node *node;
 	off_t offset;
 
 	uint64_t *pml_entry;
