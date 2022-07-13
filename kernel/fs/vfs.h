@@ -2,6 +2,7 @@
 
 #include <types.h>
 #include <vector.h>
+#include <hash.h>
 
 #define MAX_PATH_LENGTH 4096
 #define MAX_FILENAME 256
@@ -19,6 +20,8 @@ struct vfs_node {
 	struct vfs_node *mountpoint;
 
 	VECTOR(struct vfs_node*) children;
+
+	struct hash_table shared_pages;
 
 	const char *symlink;
 };

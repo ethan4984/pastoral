@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <bst.h>
 #include <string.h>
+#include <fs/vfs.h>
+#include <mm/pmm.h>
 
 static ssize_t validate_region(struct page_table *page_table, uint64_t base, uint64_t length) {
 	struct mmap_region *root = page_table->mmap_region_root;
@@ -47,6 +49,107 @@ static struct mmap_region *mmap_search_region(struct page_table *page_table, uin
 	return root;
 }
 
+static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int fd, off_t offset, int length, int prot) {
+	struct fd_handle *handle = fd_translate(fd);
+	if(handle == NULL) {
+		set_errno(EBADF);
+		return -1;
+	}
+
+	struct vfs_node *vfs_node = handle->vfs_node;
+	offset = offset & ~(0xfff);
+
+	uint64_t flags = VMM_SHARE_FLAG | VMM_FLAGS_NX;
+
+	if(prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
+	if(prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;
+	if(prot & MMAP_PROT_EXEC) flags &= ~(VMM_FLAGS_NX);
+
+	for(size_t i = 0; i < DIV_ROUNDUP(length, PAGE_SIZE); i++) {
+		struct page *page = hash_table_search(&vfs_node->shared_pages, &offset, sizeof(offset));
+		struct page *new_page = alloc(sizeof(struct page));
+
+		if(page) {
+			flags |= VMM_FLAGS_P;
+
+			*new_page = (struct page) {
+				.vaddr = vaddr,
+				.paddr = page->paddr,
+				.size = PAGE_SIZE,
+				.flags = flags,
+				.offset = offset,
+				.pml_entry = page_table->map_page(page_table, vaddr, page->paddr, flags),
+				.reference = page->reference
+			};
+
+			(*new_page->reference)++;
+		} else {
+			uint64_t frame = pmm_alloc(1, 1); 
+
+			*new_page = (struct page) {
+				.vaddr = vaddr,
+				.paddr = frame,
+				.size = PAGE_SIZE,
+				.flags = flags,
+				.offset = offset,
+				.pml_entry = page_table->map_page(page_table, vaddr, frame, flags),
+				.reference = alloc(sizeof(int))
+			};
+
+			(*new_page->reference) = 1;
+		}
+
+		hash_table_push(page_table->pages, &new_page->vaddr, new_page, sizeof(new_page->vaddr));
+		hash_table_push(&vfs_node->shared_pages, &new_page->offset, new_page, sizeof(new_page->vaddr));
+
+		offset += PAGE_SIZE;
+		vaddr += PAGE_SIZE;
+	}
+
+	return 0;
+}
+
+static int mmap_private_pages(struct page_table *page_table, uintptr_t vaddr, int fd, off_t offset, int length, int prot) {
+	struct fd_handle *handle = fd_translate(fd);
+	if(handle == NULL) {
+		set_errno(EBADF);
+		return -1;
+	}
+
+	offset = offset & ~(0xfff);
+
+	uint64_t flags = VMM_PRIVATE_FLAG | VMM_FLAGS_NX;
+
+	if(prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
+	if(prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;
+	if(prot & MMAP_PROT_EXEC) flags &= ~(VMM_FLAGS_NX);
+
+	for(size_t i = 0; i < DIV_ROUNDUP(length, PAGE_SIZE); i++) {
+		struct page *page = alloc(sizeof(struct page));
+
+		uint64_t frame = pmm_alloc(1, 1);
+
+		*page = (struct page) {
+			.vaddr = vaddr,
+			.paddr = frame,
+			.size = PAGE_SIZE,
+			.flags = flags,
+			.offset = offset,
+			.pml_entry = page_table->map_page(page_table, vaddr, frame, flags),
+			.reference = alloc(sizeof(int))
+		};
+
+		(*page->reference) = 1;
+
+		hash_table_push(page_table->pages, &page->vaddr, page, sizeof(page->vaddr));
+
+		offset += PAGE_SIZE;
+		vaddr += PAGE_SIZE;
+	}
+
+	return 0;
+}
+
 void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
 	uint64_t base = 0;
 
@@ -77,6 +180,21 @@ void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, i
 	if((base % PAGE_SIZE != 0) || (length % PAGE_SIZE != 0)) {
 		set_errno(EINVAL);
 		return (void*)-1;
+	}
+
+	if(!(flags & MMAP_MAP_ANONYMOUS)) {
+		if(flags & MMAP_MAP_SHARED) {
+			if(mmap_shared_pages(page_table, base, fd, offset, length, prot) == -1) {
+				return (void*)-1;
+			}
+		} else if(flags & MMAP_MAP_PRIVATE) {
+			if(mmap_private_pages(page_table, base, fd, offset, length, prot) == -1) {
+				return (void*)-1;
+			}
+		} else {
+			set_errno(EINVAL);
+			return (void*)-1;
+		}
 	}
 
 	struct mmap_region *region = alloc(sizeof(struct mmap_region));

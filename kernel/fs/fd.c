@@ -745,7 +745,6 @@ void syscall_symlinkat(struct registers *regs) {
 	int newdirfd = regs->rsi;
 	const char *linkpath = (const char*)regs->rdx;
 
-
 #ifndef SYSCALL_DEBUG
 	print("syscall: symlink: target {%s}, newdirfd {%x}, linkpath {%s}\n", target, newdirfd, linkpath);
 #endif
