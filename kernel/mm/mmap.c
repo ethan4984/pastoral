@@ -310,9 +310,10 @@ int munmap(struct page_table *page_table, void *addr, size_t length) {
 
 	for(size_t i = 0; i < region->limit / PAGE_SIZE; i++) {
 		struct page *page = hash_table_search(CURRENT_TASK->page_table->pages, &base, sizeof(base));
-		struct vfs_node *node = page->node;
 
 		if(page) {
+			struct vfs_node *node = page->node;
+
 			if(page->flags & VMM_SHARE_FLAG) {
 				(*page->reference)--;
 
