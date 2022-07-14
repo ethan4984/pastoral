@@ -59,7 +59,7 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 	struct vfs_node *vfs_node = handle->vfs_node;
 	offset = offset & ~(0xfff);
 
-	uint64_t flags = VMM_SHARE_FLAG | VMM_FLAGS_NX;
+	uint64_t flags = VMM_FILE_FLAG | VMM_FLAGS_NX;
 
 	if(prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
 	if(prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;
@@ -118,7 +118,7 @@ static int mmap_private_pages(struct page_table *page_table, uintptr_t vaddr, in
 
 	offset = offset & ~(0xfff);
 
-	uint64_t flags = VMM_PRIVATE_FLAG | VMM_FLAGS_NX;
+	uint64_t flags = VMM_FILE_FLAG | VMM_FLAGS_NX;
 
 	if(prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
 	if(prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;

@@ -22,8 +22,7 @@
 #define VMM_PAT_UCM 7
 
 #define VMM_COW_FLAG (1 << 9)
-#define VMM_SHARE_FLAG (1 << 10)
-#define VMM_PRIVATE_FLAG (1 << 11)
+#define VMM_FILE_FLAG (1 << 10)
 
 struct page {
 	uint64_t paddr;

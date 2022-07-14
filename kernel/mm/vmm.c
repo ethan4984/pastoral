@@ -417,11 +417,7 @@ struct page_table *vmm_fork_page_table(struct page_table *page_table) {
 	return new_table;
 }
 
-int vmm_share_map(struct page_table *page_table, uintptr_t address) {
-	
-}
-
-int vmm_private_map(struct page_table *page_table, uintptr_t address) {
+int vmm_file_map(struct page_table *page_table, uintptr_t address) {
 	struct mmap_region *root = page_table->mmap_region_root;
 	if(root == NULL) {
 		return 0;
@@ -530,8 +526,8 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 	uint64_t pmll_entry = lowest_level == NULL ? 0 : *lowest_level;
 
 	if((regs->error_code & VMM_FLAGS_P) == 0) {
-		if(pmll_entry & VMM_PRIVATE_FLAG) {
-			EXIT_PF(vmm_private_map(task->page_table, faulting_address));
+		if(pmll_entry & VMM_FILE_FLAG) {
+			EXIT_PF(vmm_file_map(task->page_table, faulting_address));
 		}
 		EXIT_PF(vmm_anon_map(task->page_table, faulting_address));
 	}
@@ -564,10 +560,6 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 		(*page->reference) = 1;
 
 		EXIT_PF(1);
-	}
-
-	if(pmll_entry & VMM_SHARE_FLAG) {
-		EXIT_PF(vmm_share_map(task->page_table, faulting_address));
 	}
 
 	EXIT_PF(0);
