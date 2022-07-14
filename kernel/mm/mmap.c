@@ -309,6 +309,25 @@ int munmap(struct page_table *page_table, void *addr, size_t length) {
 	BST_GENERIC_INSERT(page_table->mmap_region_root, base, upper_split);
 
 	for(size_t i = 0; i < region->limit / PAGE_SIZE; i++) {
+		struct page *page = hash_table_search(CURRENT_TASK->page_table->pages, &base, sizeof(base));
+		struct vfs_node *node = page->node;
+
+		if(page) {
+			if(page->flags & VMM_SHARE_FLAG) {
+				(*page->reference)--;
+
+				if(*page->reference == 0 && node) {
+					if(node->asset->shared == NULL) {
+						node->asset->write(node->asset, NULL, page->offset, PAGE_SIZE, (void*)(page->paddr + HIGH_VMA));
+					}
+
+					hash_table_delete(&node->shared_pages, &page->vaddr, sizeof(page->vaddr));
+				}
+			}
+
+			hash_table_delete(CURRENT_TASK->page_table->pages, &base, sizeof(base));
+		}
+
 		page_table->unmap_page(page_table, base);
 		base += PAGE_SIZE;
 	}
