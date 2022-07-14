@@ -84,16 +84,24 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 
 			(*new_page->reference)++;
 		} else {
-			uint64_t frame = pmm_alloc(1, 1); 
+			uint64_t frame;
+			uint64_t extra_flags = 0;
+
+			if(vfs_node->asset->shared == NULL) {
+				frame = pmm_alloc(1, 1); 
+			} else {
+				frame = (uint64_t)vfs_node->asset->shared(vfs_node->asset, NULL, offset);
+				extra_flags |= VMM_FLAGS_P;
+			}
 
 			*new_page = (struct page) {
 				.vaddr = vaddr,
 				.paddr = frame,
 				.size = PAGE_SIZE,
-				.flags = flags,
+				.flags = flags | extra_flags,
 				.node = handle->vfs_node,
 				.offset = offset,
-				.pml_entry = page_table->map_page(page_table, vaddr, frame, flags),
+				.pml_entry = page_table->map_page(page_table, vaddr, frame, flags | extra_flags),
 				.reference = alloc(sizeof(int))
 			};
 

@@ -146,6 +146,7 @@ struct asset {
 	ssize_t (*write)(struct asset*, void*, off_t, off_t, const void*);
 	int (*ioctl)(struct asset*, int fd, uint64_t req, void *args);
 	int (*resize)(struct asset*, void*, off_t);
+	void *(*shared)(struct asset*, void*, off_t);
 
 	struct event *event;
 	struct event_trigger *trigger;

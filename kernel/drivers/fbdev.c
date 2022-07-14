@@ -11,6 +11,7 @@ VECTOR(struct fb_device*) fbdev_list;
 static ssize_t fbdev_write(struct asset *asset, void*, off_t offset, off_t cnt, const void *buf);
 static ssize_t fbdev_read(struct asset *asset, void*, off_t offset, off_t cnt, void *buf);
 static int fbdev_ioctl(struct asset *asset, int fd, uint64_t req, void *args);
+static void *fbdev_shared(struct asset *asset, void*, off_t offset);
 
 void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 	struct fb_device *device = alloc(sizeof(struct fb_device));
@@ -77,6 +78,7 @@ void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 	asset->ioctl = fbdev_ioctl;
 	asset->write = fbdev_write;
 	asset->read = fbdev_read;
+	asset->shared = fbdev_shared;
 	asset->stat = stat;
 	asset->something = device;
 
@@ -117,6 +119,16 @@ static ssize_t fbdev_read(struct asset *asset, void*, off_t offset, off_t cnt, v
 	memcpy8(buf, (void*)device->fix->smem_start, cnt); 
 
 	return cnt;
+}
+
+static void *fbdev_shared(struct asset *asset, void*, off_t offset) {
+	struct fb_device *device = asset->something;
+	if(device == NULL) {
+		set_errno(EBADF);
+		return (void*)-1;
+	}
+
+	return (void*)(device->fix->smem_start - HIGH_VMA + offset);
 }
 
 static int fbdev_ioctl(struct asset *asset, int, uint64_t req, void *args) {
