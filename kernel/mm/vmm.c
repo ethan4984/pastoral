@@ -390,12 +390,14 @@ struct page_table *vmm_fork_page_table(struct page_table *page_table) {
 		struct page *page = page_table->pages->data[i];
 
 		if(page) {
-			*page->pml_entry &= ~(VMM_FLAGS_RW);
-			*page->pml_entry |= VMM_COW_FLAG;
+			if(!(*page->pml_entry & VMM_SHARE_FLAG)) {
+				*page->pml_entry &= ~(VMM_FLAGS_RW);
+				*page->pml_entry |= VMM_COW_FLAG;
+
+				page->flags = (page->flags & ~(VMM_FLAGS_RW)) | VMM_COW_FLAG;
+			}
 
 			(*page->reference)++;
-
-			page->flags = (page->flags & ~(VMM_FLAGS_RW)) | VMM_COW_FLAG;
 
 			invlpg(page->vaddr);
 

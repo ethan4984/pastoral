@@ -78,7 +78,7 @@ void pastoral_thread() {
 
 	sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_WAITING);
 
-	/*char *argv[] = { "/init", "big butt hoes", NULL };
+	/*char *argv[] = { "/init", "test.c", "0", "43", NULL };
 	char *envp[] = {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -92,7 +92,7 @@ void pastoral_thread() {
 		.argv = argv,
 		.envp = envp,
 		.envp_cnt = 3,
-		.argv_cnt = 2 
+		.argv_cnt = 4
 	};
 
 	sched_task_exec("/init", 0x43, arguments, TASK_WAITING);*/

@@ -59,7 +59,7 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 	struct vfs_node *vfs_node = handle->vfs_node;
 	offset = offset & ~(0xfff);
 
-	uint64_t flags = VMM_FILE_FLAG | VMM_FLAGS_NX;
+	uint64_t flags = VMM_FILE_FLAG | VMM_SHARE_FLAG | VMM_FLAGS_NX;
 
 	if(prot & MMAP_PROT_WRITE) flags |= VMM_FLAGS_RW;
 	if(prot & MMAP_PROT_USER) flags |= VMM_FLAGS_US;
@@ -91,6 +91,7 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 				.paddr = frame,
 				.size = PAGE_SIZE,
 				.flags = flags,
+				.node = handle->vfs_node,
 				.offset = offset,
 				.pml_entry = page_table->map_page(page_table, vaddr, frame, flags),
 				.reference = alloc(sizeof(int))
@@ -134,6 +135,7 @@ static int mmap_private_pages(struct page_table *page_table, uintptr_t vaddr, in
 			.paddr = frame,
 			.size = PAGE_SIZE,
 			.flags = flags,
+			.node = handle->vfs_node,
 			.offset = offset,
 			.pml_entry = page_table->map_page(page_table, vaddr, frame, flags),
 			.reference = alloc(sizeof(int))
@@ -152,6 +154,8 @@ static int mmap_private_pages(struct page_table *page_table, uintptr_t vaddr, in
 
 void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
 	uint64_t base = 0;
+
+	length = ALIGN_UP(length, PAGE_SIZE);
 
 	if(flags & MMAP_MAP_FIXED) {
 		base = (uintptr_t)addr;
