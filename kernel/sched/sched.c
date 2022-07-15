@@ -383,6 +383,8 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	vmm_init_page_table(task->page_table);
 
 	struct sched_task *current_task = CURRENT_TASK;
+	struct sched_thread *current_thread = CURRENT_THREAD;
+
 	CORE_LOCAL->pid = task->pid;
 
 	int fd = fd_openat(AT_FDCWD, path, 0);
@@ -470,6 +472,10 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		return NULL;
 	}
 
+	CORE_LOCAL->pid = current_task->pid;
+
+	vmm_init_page_table(current_task->page_table);
+
 	task->event->task = task;
 	task->event->thread = thread;
 
@@ -477,8 +483,9 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	task->exit_trigger->agent_thread = thread;
 	task->exit_trigger->event_type = EVENT_PROC_EXIT;
 
-	CORE_LOCAL->pid = current_task->pid;
-	vmm_init_page_table(current_task->page_table);
+	task->exit_trigger->event = alloc(sizeof(struct event));
+	task->exit_trigger->event->task = current_task;
+	task->exit_trigger->event->thread = current_thread;
 
 	spinrelease(&sched_lock);
 
@@ -527,7 +534,7 @@ int event_wait(struct event *event, int event_type) {
 		task->event_waiting = 0;
 
 		struct event_trigger *trigger = task->last_trigger;
-		
+
 		if(trigger->event_type == event_type) {
 			return 0;
 		}
@@ -612,6 +619,8 @@ void syscall_exit(struct registers *regs) {
 	print("syscall: exit\n");
 #endif
 
+	asm volatile ("cli");
+
 	struct sched_task *task = CURRENT_TASK;
 	if(task == NULL) {
 		panic("");
@@ -652,18 +661,18 @@ void syscall_exit(struct registers *regs) {
 	
 	int status = regs->rdi;
 
-	if(task->ppid != -1) {
-		struct sched_task *parent = sched_translate_pid(task->ppid);
+	struct sched_task *parent = sched_translate_pid(1);
 
-		VECTOR_REMOVE_BY_VALUE(parent->children, task);
-
-		for(size_t i = 0; i < task->children.length; i++) {
-			VECTOR_PUSH(parent->children, task->children.data[i]);
-		}
-
-		task->process_status = status | 0x200;
-		event_fire(task->exit_trigger);
+	for(size_t i = 0; i < task->children.length; i++) {
+		struct sched_task *child = task->children.data[i];
+		child->ppid = 1;
+		VECTOR_PUSH(parent->children, child);
 	}
+
+	//VECTOR_REMOVE_BY_VALUE(sched_translate_pid(task->ppid)->children, task);
+
+	task->process_status = status | 0x200;
+	event_fire(task->exit_trigger);
 
 	task->status = TASK_YIELD;
 
@@ -672,6 +681,8 @@ void syscall_exit(struct registers *regs) {
 
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
+	
+	asm volatile ("sti");
 
 	sched_yield();
 }
@@ -749,14 +760,7 @@ void syscall_execve(struct registers *regs) {
 	new_task->cwd = current_task->cwd;
 	new_task->pid = current_task->pid;
 	new_task->ppid = current_task->ppid;
-	new_task->event = current_task->event;
-
 	new_task->exit_trigger = current_task->exit_trigger;
-	new_task->exit_trigger->agent_task = new_task;
-	new_task->exit_trigger->agent_thread = *new_task->thread_list.data;
-	new_task->exit_trigger->event_type = EVENT_PROC_EXIT;
-
-	new_task->event->task = new_task;
 
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
@@ -791,8 +795,8 @@ void syscall_fork(struct registers *regs) {
 	task->status = TASK_WAITING;
 	task->page_table = vmm_fork_page_table(current_task->page_table);
 	task->cwd = current_task->cwd;
-	task->event = alloc(sizeof(struct event));
 
+	task->event = alloc(sizeof(struct event));
 	task->event->task = task;
 	task->event->thread = thread;
 
@@ -800,6 +804,10 @@ void syscall_fork(struct registers *regs) {
 	task->exit_trigger->agent_task = task;
 	task->exit_trigger->agent_thread = thread;
 	task->exit_trigger->event_type = EVENT_PROC_EXIT;
+
+	task->exit_trigger->event = alloc(sizeof(struct event));
+	task->exit_trigger->event->task = CURRENT_TASK;
+	task->exit_trigger->event->thread = CURRENT_THREAD;
 
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,

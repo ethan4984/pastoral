@@ -5,6 +5,7 @@
 #include <cpu.h>
 #include <time.h>
 #include <string.h>
+#include <errno.h>
 
 struct hash_table ramfs_node_list;
 
@@ -54,12 +55,12 @@ ssize_t ramfs_read(struct asset *asset, void*, off_t offset, off_t cnt, void *bu
 
 	if(ramfs_handle == NULL) {
 		spinrelease(&asset->lock);
-		return -1;
+		return 0;
 	}
 
 	if(offset > stat->st_size) {
 		spinrelease(&asset->lock);
-		return -1;
+		return 0;
 	}
 
 	stat->st_atim = clock_realtime;
@@ -88,7 +89,7 @@ ssize_t ramfs_write(struct asset *asset, void*, off_t offset, off_t cnt, const v
 
 	if(ramfs_handle == NULL) {
 		spinrelease(&asset->lock);
-		return -1;
+		return 0;
 	}
 
 	stat->st_atim = clock_realtime;
@@ -96,7 +97,8 @@ ssize_t ramfs_write(struct asset *asset, void*, off_t offset, off_t cnt, const v
 	stat->st_ctim = clock_realtime;
 
 	if(offset + cnt > stat->st_size) {
-		stat->st_size += offset + cnt - stat->st_size;
+		//stat->st_size += offset + cnt - stat->st_size;
+		stat->st_size = offset + cnt;
 		ramfs_handle->buffer = realloc(ramfs_handle->buffer, stat->st_size);
 	}
 	

@@ -83,11 +83,6 @@ int initramfs() {
 				break;
 		}
 
-        /*7if(strcmp("./usr/lib/libz.so.1", ustar_header->name) == 0) {
-            print("link %s\n", ustar_header->linkname);
-            for(;;);
-        }*/
-
 		struct vfs_node *node = vfs_create_node_deep(NULL, asset, &ramfs_filesystem, ustar_header->name);
 
 		if(S_ISLNK(node->asset->stat->st_mode)) {

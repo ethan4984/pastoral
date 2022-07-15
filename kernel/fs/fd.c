@@ -67,7 +67,6 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	struct stat *stat = asset->stat;
 
 	if(asset->write == NULL) {
-		print("NUll for some reason\n");
 		set_errno(EINVAL);
 		return -1;
 	}
@@ -230,14 +229,16 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		stat->st_mtim = clock_realtime;
 		stat->st_ctim = clock_realtime;
 
+		stat->st_mode = S_IFREG;
+
 		vfs_node = vfs_create_node_deep(parent, asset, parent->filesystem, path);
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
-	} else if(flags & O_CREAT && flags & O_EXEC) {
+	} /*else if(flags & O_CREAT && flags & O_EXEC) {
 		set_errno(EEXIST);
 		return -1;
-	}
+	}*/
 
 	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
 
