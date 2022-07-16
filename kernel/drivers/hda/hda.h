@@ -3,6 +3,7 @@
 #include <fs/vfs.h>
 #include <drivers/pci.h>
 #include <types.h>
+#include <sched/sched.h>
 
 struct hda_registers { 
 	uint16_t gcap;
@@ -12,7 +13,7 @@ struct hda_registers {
 	uint16_t inpay;
 	uint32_t gctl;
 	uint16_t wakeen;
-	uint16_t wakests;
+	uint16_t statests;
 	uint16_t gsts;
 	uint8_t reserved0[6];
 	uint16_t outstrmpay;
@@ -50,6 +51,10 @@ struct hda_registers {
 	uint8_t reserved7[8]; 
 };
 
+struct codec {
+	uint64_t codec_response;
+};
+
 struct hda_device {
 	struct pci_device *pci_device;
 	struct pci_bar bar;
@@ -63,6 +68,14 @@ struct hda_device {
 	int addr64cap;
 	int corbsize;
 	int rirbsize;
+
+	uint32_t *corbbase;
+	uint32_t *rirbbase;
+
+	struct codec codec[15];
+
+	struct event_trigger command_event_trigger;
+	struct event command_event;
 
 	volatile struct hda_registers *regs;
 };

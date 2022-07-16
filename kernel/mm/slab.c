@@ -223,8 +223,6 @@ void *alloc(size_t size) {
 	if(!size)
 		return NULL;
 
-	size += 50;
-
 	size_t round_size = pow2_roundup(size + 1);
 	if(round_size <= 16) {
 		round_size = 32;

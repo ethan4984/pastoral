@@ -12,6 +12,7 @@
 #define EVENT_PROC_EXIT 0
 #define EVENT_FD_READ 1
 #define EVENT_FD_WRITE 2
+#define EVENT_HDA_CMD 3
 
 struct event_trigger {
 	struct sched_task *agent_task;

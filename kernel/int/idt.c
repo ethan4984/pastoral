@@ -106,11 +106,15 @@ extern void isr_handler_main(struct registers *regs) {
 	}
 
 	if(regs->isr_number < 32) {
+		static char exception_lock;
+
 		uint64_t cr2;
 		asm volatile ("mov %%cr2, %0" : "=a"(cr2));
 
 		uint64_t cr3;
 		asm volatile ("mov %%cr3, %0" : "=a"(cr3));
+
+		spinlock(&exception_lock);
 
 		print("debug: Kowalski analysis: \"%s\", Error: %x\n", exception_messages[regs->isr_number], regs->error_code);
 		print("debug: pid: %x | tid: %x | apic_id: %x | cr3: %x\n", CORE_LOCAL->pid, CORE_LOCAL->tid, CORE_LOCAL->apic_id, cr3);
@@ -119,6 +123,8 @@ extern void isr_handler_main(struct registers *regs) {
 		print("debug: r8:  %x | r9:  %x | r10: %x | r11: %x\n", regs->r8, regs->r9, regs->r10, regs->r11);
 		print("debug: r12: %x | r13: %x | r14: %x | r15: %x\n", regs->r12, regs->r13, regs->r14, regs->r15); 
 		print("debug: cs:  %x | ss:  %x | cr2: %x | rip: %x\n", regs->cs, regs->ss, cr2, regs->rip);
+
+		spinrelease(&exception_lock);
 
 		for(;;) {
 			asm ("hlt");
