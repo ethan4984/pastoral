@@ -1,4 +1,5 @@
 #include <drivers/pci.h>
+#include <drivers/hda/hda.h>
 #include <int/apic.h>
 #include <debug.h>
 #include <cpu.h>
@@ -74,7 +75,7 @@ struct msix_entry {
 	uint32_t control;
 } __attribute__((packed));
 
-static inline void pci_device_write(struct pci_device *device, int size, uint8_t off, uint32_t data) {
+void pci_device_write(struct pci_device *device, int size, uint8_t off, uint32_t data) {
 	outd(0xcf8, (1 << 31) |
 				((uint32_t)device->bus << 16) |
 				(((uint32_t)device->dev & 31) << 11) |
@@ -93,7 +94,7 @@ static inline void pci_device_write(struct pci_device *device, int size, uint8_t
 	}
 }
 
-static inline uint32_t pci_device_read(struct pci_device *device, int size, uint8_t off) {
+uint32_t pci_device_read(struct pci_device *device, int size, uint8_t off) {
 	outd(0xcf8, (1 << 31) |
 				((uint32_t)device->bus << 16) |
 				(((uint32_t)device->dev & 31) << 11) |
@@ -109,6 +110,44 @@ static inline uint32_t pci_device_read(struct pci_device *device, int size, uint
 			return inb(0xcfc + (off & 3));
 		default:
 			return -1;
+	}
+}
+
+uint32_t pci_raw_read(int size, uint8_t bus, uint8_t device_code, uint8_t func, uint8_t off) {
+	outd(0xcf8, (1 << 31) | // enable
+				((uint32_t)bus << 16) | // bus number
+				(((uint32_t)device_code & 31) << 11) | // device number
+				(((uint32_t)func & 7) << 8) | // function number
+				((uint32_t)off & ~(3)));
+
+	switch(size) {
+		case 4:
+			return ind(0xcfc + (off & 3));
+		case 2:
+			return inw(0xcfc + (off & 3));
+		case 1:
+			return inb(0xcfc + (off & 3));
+		default:
+			return -1;
+	}
+}
+
+void pci_raw_write(int size, uint32_t data, uint8_t bus, uint8_t device_code, uint8_t func, uint8_t off) {
+	outd(0xcf8, (1 << 31) | // enable
+				((uint32_t)bus << 16) | // bus number
+				(((uint32_t)device_code & 31) << 11) | // device number
+				(((uint32_t)func & 7) << 8) | // function number
+				((uint32_t)off & ~(3)));
+
+	switch(size) {
+		case 4:
+			outd(0xcfc + (off & 3), data);
+			break;
+		case 2:
+			outw(0xcfc + (off & 3), (uint16_t)data);
+			break;
+		case 1:
+			outb(0xcfc + (off & 3), (uint8_t)data);
 	}
 }
 
@@ -316,15 +355,35 @@ void pci_init() {
 				switch(id) {
 					case 0x5:
 						device->msi_offset = off;
+						device->msi_capable = true;
 						break;
 					case 0x11:
 						device->msix_offset = off;
 						device->msix_table_size = pci_device_read(device, 2, off + 2) & 0x7ff;
+						device->msix_capable = true;
 						bitmap_init(&device->msix_table_bitmap, false, device->msix_table_size);
 				}
 
 				off = pci_device_read(device, 1, off + 1);
 			}
+		}
+
+		switch(device->class_code) {
+			case 1: // mass storage controlelr
+				switch(device->sub_class) {
+					case 6: // sata
+						break;
+					case 8: // nvme
+						break;
+				}
+				break;
+			case 4:
+				switch(device->sub_class) {
+					case 3: // audio
+						hda_device_init(device);
+						break;
+				}
+				break;
 		}
 	}
 }

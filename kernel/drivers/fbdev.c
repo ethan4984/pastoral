@@ -4,6 +4,7 @@
 #include <vector.h>
 #include <string.h>
 #include <errno.h>
+#include <debug.h>
 #include <cpu.h>
 
 VECTOR(struct fb_device*) fbdev_list;
@@ -87,6 +88,8 @@ void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 	device->vfs_node = vfs_node;
 
 	VECTOR_PUSH(fbdev_list, device);
+
+	print("fbdev: %s initialised\n", device_path);
 }
 
 static ssize_t fbdev_write(struct asset *asset, void*, off_t offset, off_t cnt, const void *buf) {

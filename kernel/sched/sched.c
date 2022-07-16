@@ -389,6 +389,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	int fd = fd_openat(AT_FDCWD, path, 0);
 	if(fd == -1) {
+		CORE_LOCAL->pid = current_task->pid;
 		spinrelease(&sched_lock); 
 		return NULL;
 	}
@@ -396,7 +397,8 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	char *ld_path = NULL;
 
 	struct aux aux;
-	if(elf_load(task->page_table, &aux, fd, 0, &ld_path) == -1) { 
+	if(elf_load(task->page_table, &aux, fd, 0, &ld_path) == -1) {
+		CORE_LOCAL->pid = current_task->pid;
 		spinrelease(&sched_lock); 
 		return NULL;
 	}
@@ -406,12 +408,14 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	if(ld_path) {
 		int ld_fd = fd_openat(AT_FDCWD, ld_path, 0);
 		if(ld_fd == -1) {
+			CORE_LOCAL->pid = current_task->pid;
 			spinrelease(&sched_lock); 
 			return NULL;
 		}
 
 		struct aux ld_aux;
 		if(elf_load(task->page_table, &ld_aux, ld_fd, 0x40000000, NULL) == -1) { 
+			CORE_LOCAL->pid = current_task->pid;
 			spinrelease(&sched_lock); 
 			return NULL;
 		}
@@ -468,6 +472,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	struct sched_thread *thread = sched_thread_exec(task, entry_point, cs, &aux, arguments);
 
 	if(thread == NULL) {
+		CORE_LOCAL->pid = current_task->pid;
 		spinrelease(&sched_lock);
 		return NULL;
 	}
@@ -669,7 +674,7 @@ void syscall_exit(struct registers *regs) {
 		VECTOR_PUSH(parent->children, child);
 	}
 
-	//VECTOR_REMOVE_BY_VALUE(sched_translate_pid(task->ppid)->children, task);
+	VECTOR_REMOVE_BY_VALUE(sched_translate_pid(task->ppid)->children, task);
 
 	task->process_status = status | 0x200;
 	event_fire(task->exit_trigger);

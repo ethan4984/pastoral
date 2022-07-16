@@ -9,7 +9,7 @@
 #include <errno.h>
 
 typeof(terminal_list) terminal_list;
-struct terminal *current_terminal;
+struct terminal *current_terminal = NULL;
 
 static volatile struct limine_terminal_request limine_terminal_request = {
 	.id = LIMINE_TERMINAL_REQUEST,
@@ -173,12 +173,14 @@ void limine_terminal_print(char *str, size_t length) {
 	char *data = alloc(length);
 	memcpy8((void*)data, (void*)str, length);
 
-	vmm_init_page_table(&terminal_page_table);
+	uint64_t cr3;
+	asm volatile ("mov %%cr3, %0" : "=a"(cr3));
+	asm volatile ("mov %0, %%cr3" :: "r"((uint64_t)terminal_page_table.pml_high - HIGH_VMA) : "memory");
 
 	struct limine_terminal *terminal = limine_terminal_request.response->terminals[0];
 	limine_terminal_request.response->write(terminal, data, length);
 
-	vmm_init_page_table(CORE_LOCAL->page_table);
+	asm volatile ("mov %0, %%cr3" :: "r"(cr3) : "memory");
 
 	spinrelease(&current_terminal->lock);
 	asm volatile ("sti");

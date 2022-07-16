@@ -50,14 +50,14 @@ void pastoral_thread() {
 		panic("initramfs: unable to initialise");
 	}
 
+	limine_terminal_init();
+
 	struct limine_framebuffer **framebuffers = limine_framebuffer_request.response->framebuffers;
 	uint64_t framebuffer_count = limine_framebuffer_request.response->framebuffer_count;
 
 	for(uint64_t i = 0; i < framebuffer_count; i++) {
 		fbdev_init_device(framebuffers[i]);
 	}
-
-	limine_terminal_init();
 
 	char *argv[] = { "/usr/bin/bash", NULL };
 	char *envp[] = {
@@ -76,7 +76,10 @@ void pastoral_thread() {
 		.argv_cnt = 1 
 	};
 
-	sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_WAITING);
+	struct sched_task *task = sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_WAITING);
+	if(task == NULL) {
+		panic("unable to start init process");
+	}
 
 	/*char *argv[] = { "/init", "test.c", "0", "43", NULL };
 	char *envp[] = {
@@ -145,7 +148,7 @@ void pastoral_entry(void) {
 	pci_init();
 	pit_init();
 
-	apic_timer_init(100);
+	apic_timer_init(20);
 
 	struct sched_task *kernel_task = sched_default_task();
 	struct sched_thread *kernel_thread = sched_default_thread(kernel_task);

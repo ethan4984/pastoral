@@ -15,6 +15,10 @@ static volatile struct limine_module_request limine_module_request = {
 };
 
 int initramfs() {
+	if(limine_module_request.response == NULL) {
+		return -1;
+	}
+
 	struct limine_file **modules = limine_module_request.response->modules;
 	uint64_t module_count = limine_module_request.response->module_count;
 
@@ -30,6 +34,8 @@ int initramfs() {
 	if(module == NULL) {
 		return -1;
 	}
+
+	print("initramfs: unpacking\n");
 
 	struct ustar_header *ustar_header = module->address;
 
@@ -95,6 +101,8 @@ int initramfs() {
 			break;
 		}
 	}
+
+	print("initramfs: unpacked\n");
 
 	return 0;
 }

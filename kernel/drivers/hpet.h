@@ -25,9 +25,10 @@ struct hpet_regs {
 	uint64_t int_status;
 	uint64_t unused2;
 	uint64_t unused3[24];
-	uint64_t counter_value;
+	volatile uint64_t counter_value;
 	uint64_t unused4;
 } __attribute__((packed));
 
-void sleep(size_t ms);
+void msleep(size_t ms);
+void usleep(size_t us);
 void hpet_init();
