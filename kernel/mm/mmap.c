@@ -56,7 +56,8 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 		return -1;
 	}
 
-	struct vfs_node *vfs_node = handle->vfs_node;
+	file_get(handle->file_handle);
+	struct vfs_node *vfs_node = handle->file_handle->vfs_node;
 	offset = offset & ~(0xfff);
 
 	uint64_t flags = VMM_FILE_FLAG | VMM_SHARE_FLAG | VMM_FLAGS_NX;
@@ -88,7 +89,7 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 			uint64_t extra_flags = 0;
 
 			if(vfs_node->asset->shared == NULL) {
-				frame = pmm_alloc(1, 1); 
+				frame = pmm_alloc(1, 1);
 			} else {
 				frame = (uint64_t)vfs_node->asset->shared(vfs_node->asset, NULL, offset);
 				extra_flags |= VMM_FLAGS_P;
@@ -99,7 +100,7 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 				.paddr = frame,
 				.size = PAGE_SIZE,
 				.flags = flags | extra_flags,
-				.node = handle->vfs_node,
+				.node = handle->file_handle->vfs_node,
 				.offset = offset,
 				.pml_entry = page_table->map_page(page_table, vaddr, frame, flags | extra_flags),
 				.reference = alloc(sizeof(int))
@@ -125,6 +126,7 @@ static int mmap_private_pages(struct page_table *page_table, uintptr_t vaddr, in
 		return -1;
 	}
 
+	file_get(handle->file_handle);
 	offset = offset & ~(0xfff);
 
 	uint64_t flags = VMM_FILE_FLAG | VMM_FLAGS_NX;
@@ -143,7 +145,7 @@ static int mmap_private_pages(struct page_table *page_table, uintptr_t vaddr, in
 			.paddr = frame,
 			.size = PAGE_SIZE,
 			.flags = flags,
-			.node = handle->vfs_node,
+			.node = handle->file_handle->vfs_node,
 			.offset = offset,
 			.pml_entry = page_table->map_page(page_table, vaddr, frame, flags),
 			.reference = alloc(sizeof(int))
@@ -235,7 +237,7 @@ void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, i
 
 		struct page *new_page = alloc(sizeof(struct page));
 		*new_page = (struct page) {
-			.vaddr = vaddr, 
+			.vaddr = vaddr,
 			.paddr = paddr,
 			.size = PAGE_SIZE,
 			.flags = _flags,
@@ -251,6 +253,8 @@ void *mmap(struct page_table *page_table, void *addr, size_t length, int prot, i
 	return (void*)base;
 }
 
+
+// TODO: decrease reference count on the mmaped file
 int munmap(struct page_table *page_table, void *addr, size_t length) {
 	uint64_t base = (uint64_t)addr;
 
@@ -351,7 +355,7 @@ extern void syscall_mmap(struct registers *regs) {
 	off_t offset = regs->r9;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: mmap: addr {%x}, length {%x}, prot {%x}, flags {%x}, fd {%x}, offset {%x}\n", (uintptr_t)addr, length, prot, flags, fd, offset);
+	print("syscall: [pid %x] mmap: addr {%x}, length {%x}, prot {%x}, flags {%x}, fd {%x}, offset {%x}\n", CORE_LOCAL->pid, (uintptr_t)addr, length, prot, flags, fd, offset);
 #endif
 
 	regs->rax = (uint64_t)mmap(page_table, addr, length, prot | MMAP_PROT_USER, flags, fd, offset);
@@ -368,7 +372,7 @@ extern void syscall_munmap(struct registers *regs) {
 	size_t length = regs->rsi;
 
 #ifndef SYSCALL_DBEUG
-	print("syscall: munmap: addr {%x}, length {%x}\n", (uintptr_t)addr, length);
+	print("syscall: [pid %x] munmap: addr {%x}, length {%x}\n", CORE_LOCAL->pid, (uintptr_t)addr, length);
 #endif
 
 	regs->rax = munmap(page_table, addr, length);

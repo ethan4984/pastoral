@@ -4,8 +4,12 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+
 typedef int64_t off_t;
 typedef int64_t ssize_t;
+
+#include <lib/string.h>
+
 
 typedef ssize_t pid_t;
 typedef ssize_t tid_t;
@@ -19,7 +23,7 @@ typedef int32_t gid_t;
 typedef int64_t blksize_t;
 typedef int64_t blkcnt_t;
 
-typedef int64_t time_t; 
+typedef int64_t time_t;
 typedef int64_t clockid_t;
 
 struct timespec {
@@ -44,7 +48,7 @@ struct timespec {
 #define S_IFSOCK 0x0c000
 
 #define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
-#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR) 
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
 #define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)
 #define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)
 #define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
@@ -156,3 +160,9 @@ struct asset {
 	struct stat *stat;
 	char lock;
 };
+
+
+static inline void asset_init(struct asset *asset) {
+	memset(asset, 0, sizeof(*asset));
+}
+

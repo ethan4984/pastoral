@@ -73,7 +73,7 @@ void pastoral_thread() {
 		.argv = argv,
 		.envp = envp,
 		.envp_cnt = 3,
-		.argv_cnt = 1 
+		.argv_cnt = 1
 	};
 
 	struct sched_task *task = sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_WAITING);

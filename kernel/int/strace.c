@@ -41,7 +41,7 @@ static void syscall_set_fs_base(struct registers *regs) {
 	CURRENT_THREAD->user_fs_base = addr;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: set_fs_base: addr {%x}\n", addr);
+	print("syscall: [pid %x] set_fs_base: addr {%x}\n", CORE_LOCAL->pid, addr);
 #endif
 
 	set_user_fs(addr);
@@ -51,7 +51,7 @@ static void syscall_set_fs_base(struct registers *regs) {
 
 static void syscall_get_fs_base(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: get_fs_base\n");
+	print("syscall: [pid %x] get_fs_base\n", CORE_LOCAL->pid);
 #endif
 
 	regs->rax = get_user_fs();
@@ -63,7 +63,7 @@ static void syscall_set_gs_base(struct registers *regs) {
 	CURRENT_THREAD->user_gs_base = addr;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: set_gs_base: addr {%x}\n", addr);
+	print("syscall: [pid %x] set_gs_base: addr {%x}\n", CORE_LOCAL->pid, addr);
 #endif
 
 	set_user_gs(addr);
@@ -73,7 +73,7 @@ static void syscall_set_gs_base(struct registers *regs) {
 
 static void syscall_get_gs_base(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: get_gs_base\n");
+	print("syscall: [pid %x] get_gs_base\n", CORE_LOCAL->pid);
 #endif
 
 	regs->rax = get_user_gs();
@@ -86,7 +86,7 @@ static void syscall_syslog(struct registers *regs) {
 
 static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_openat, .name = "open" }, // 0
-	{ .handler = syscall_close, .name = "close" }, // 1 
+	{ .handler = syscall_close, .name = "close" }, // 1
 	{ .handler = syscall_read, .name = "read" }, // 2
 	{ .handler = syscall_write, .name = "write" }, // 3
 	{ .handler = syscall_seek, .name = "seek" }, // 4

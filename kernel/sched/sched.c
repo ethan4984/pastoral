@@ -21,13 +21,14 @@ struct bitmap pid_bitmap = {
 };
 
 char sched_lock;
+static int init_executed;
 
-// does not lock **remember** 
+// does not lock **remember**
 struct sched_task *sched_translate_pid(pid_t pid) {
 	return hash_table_search(&task_list, &pid, sizeof(pid));
 }
 
-// does not lock **remember** 
+// does not lock **remember**
 struct sched_thread *sched_translate_tid(pid_t pid, tid_t tid) {
 	struct sched_task *task = sched_translate_pid(pid);
 	if(task == NULL) {
@@ -112,7 +113,7 @@ void reschedule(struct registers *regs, void*) {
 	}
 
 	if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-		struct sched_task *last_task = sched_translate_pid(CORE_LOCAL->pid);		 
+		struct sched_task *last_task = sched_translate_pid(CORE_LOCAL->pid);
 		if(last_task == NULL) {
 			sched_idle();
 		}
@@ -255,12 +256,11 @@ struct sched_task *sched_default_task() {
 	task->status = TASK_YIELD;
 	task->fd_bitmap.resizable = true;
 
+		bitmap_alloc(&task->fd_bitmap);
+		bitmap_alloc(&task->fd_bitmap);
+		bitmap_alloc(&task->fd_bitmap);
 	task->event = alloc(sizeof(struct event));
 	task->exit_trigger = alloc(sizeof(struct event_trigger));
-
-	bitmap_alloc(&task->fd_bitmap); // STDIN
-	bitmap_alloc(&task->fd_bitmap); // STDOUT
-	bitmap_alloc(&task->fd_bitmap); // STDERR
 
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,
@@ -390,7 +390,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	int fd = fd_openat(AT_FDCWD, path, 0);
 	if(fd == -1) {
 		CORE_LOCAL->pid = current_task->pid;
-		spinrelease(&sched_lock); 
+		spinrelease(&sched_lock);
 		return NULL;
 	}
 
@@ -399,7 +399,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	struct aux aux;
 	if(elf_load(task->page_table, &aux, fd, 0, &ld_path) == -1) {
 		CORE_LOCAL->pid = current_task->pid;
-		spinrelease(&sched_lock); 
+		spinrelease(&sched_lock);
 		return NULL;
 	}
 
@@ -409,65 +409,97 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		int ld_fd = fd_openat(AT_FDCWD, ld_path, 0);
 		if(ld_fd == -1) {
 			CORE_LOCAL->pid = current_task->pid;
-			spinrelease(&sched_lock); 
+			spinrelease(&sched_lock);
 			return NULL;
 		}
 
 		struct aux ld_aux;
-		if(elf_load(task->page_table, &ld_aux, ld_fd, 0x40000000, NULL) == -1) { 
+		if(elf_load(task->page_table, &ld_aux, ld_fd, 0x40000000, NULL) == -1) {
 			CORE_LOCAL->pid = current_task->pid;
-			spinrelease(&sched_lock); 
+			spinrelease(&sched_lock);
 			return NULL;
 		}
 
 		entry_point = ld_aux.at_entry;
 	}
 
-	struct fd_handle *stdin_handle = alloc(sizeof(struct fd_handle));
+	// TODO: Make a real init system, and remove this.
+	if (!init_executed) {
+		init_executed = 1;
 
-	*stdin_handle = (struct fd_handle) { 
-		.asset = alloc(sizeof(struct asset)),
-		.fd_number = 0,
-		.flags = O_RDONLY,
-		.position = 0
-	};
+		struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
+			*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
+			*stderr_fd_handle = alloc(sizeof(struct fd_handle));
 
-	stdin_handle->asset->stat = alloc(sizeof(struct stat));
-	stdin_handle->asset->stat->st_mode = S_IRUSR | S_IWUSR;
-	stdin_handle->asset->read = terminal_read;
-	stdin_handle->asset->ioctl = terminal_ioctl;
+		struct file_handle *stdin_file_handle = alloc(sizeof(struct file_handle)),
+			*stdout_file_handle = alloc(sizeof(struct file_handle)),
+			*stderr_file_handle = alloc(sizeof(struct file_handle));
 
-	struct fd_handle *stdout_handle = alloc(sizeof(struct fd_handle));
+		struct asset *stdin_asset = alloc(sizeof(struct asset)),
+			*stdout_asset = alloc(sizeof(struct asset)),
+			*stderr_asset = alloc(sizeof(struct asset));
 
-	*stdout_handle = (struct fd_handle) { 
-		.asset = alloc(sizeof(struct asset)),
-		.fd_number = 1,
-		.flags = O_WRONLY,
-		.position = 0
-	};
+		struct stat *stdin_stat = alloc(sizeof(struct stat)),
+			*stdout_stat = alloc(sizeof(struct stat)),
+			*stderr_stat = alloc(sizeof(struct stat));
 
-	stdout_handle->asset->stat = alloc(sizeof(struct stat));
-	stdout_handle->asset->stat->st_mode = S_IWUSR | S_IRUSR;
-	stdout_handle->asset->write = terminal_write;
-	stdout_handle->asset->ioctl = terminal_ioctl;
+		fd_init(stdin_fd_handle);
+		fd_init(stdout_fd_handle);
+		fd_init(stderr_fd_handle);
 
-	struct fd_handle *stderr_handle = alloc(sizeof(struct fd_handle));
+		file_init(stdin_file_handle);
+		file_init(stdout_file_handle);
+		file_init(stderr_file_handle);
 
-	*stderr_handle = (struct fd_handle) { 
-		.asset = alloc(sizeof(struct asset)),
-		.fd_number = 2,
-		.flags = O_WRONLY,
-		.position = 0
-	};
+		asset_init(stdin_asset);
+		asset_init(stdout_asset);
+		asset_init(stderr_asset);
 
-	stderr_handle->asset->stat = alloc(sizeof(struct stat));
-	stderr_handle->asset->stat->st_mode = S_IWUSR | S_IRUSR;
-	stderr_handle->asset->write = terminal_write;
-	stderr_handle->asset->ioctl = terminal_ioctl;
+		stdin_fd_handle->fd_number = 0;
+		stdin_fd_handle->file_handle = stdin_file_handle;
+		stdout_fd_handle->fd_number = 1;
+		stdout_fd_handle->file_handle = stdout_file_handle;
+		stderr_fd_handle->fd_number = 2;
+		stderr_fd_handle->file_handle = stderr_file_handle;
 
-	hash_table_push(&task->fd_list, &stdin_handle->fd_number, stdin_handle, sizeof(stdin_handle->fd_number));
-	hash_table_push(&task->fd_list, &stdout_handle->fd_number, stdout_handle, sizeof(stdout_handle->fd_number));
-	hash_table_push(&task->fd_list, &stderr_handle->fd_number, stderr_handle, sizeof(stderr_handle->fd_number));
+		stdin_file_handle->flags = O_RDONLY;
+		stdin_file_handle->asset = stdin_asset;
+		stdin_asset->read = terminal_read;
+		stdin_asset->ioctl = terminal_ioctl;
+		stdin_asset->stat = stdin_stat;
+		stdin_stat->st_mode = S_IRUSR | S_IWUSR;
+
+		stdout_file_handle->flags = O_WRONLY;
+		stdout_file_handle->asset = stdout_asset;
+		stdout_asset->write = terminal_write;
+		stdout_asset->ioctl = terminal_ioctl;
+		stdout_asset->stat = stdout_stat;
+		stdout_stat->st_mode = S_IRUSR | S_IWUSR;
+
+		stderr_file_handle->flags = O_WRONLY;
+		stderr_file_handle->asset = stderr_asset;
+		stderr_asset->write = terminal_write;
+		stderr_asset->ioctl = terminal_ioctl;
+		stderr_asset->stat = stderr_stat;
+		stderr_stat->st_mode = S_IRUSR | S_IWUSR;
+
+		hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
+		hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
+		hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
+	} else {
+		bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
+		for (size_t i = 0; i < task->fd_bitmap.size; i++) {
+			if (BIT_TEST(task->fd_bitmap.data, i)) {
+				int j = i;
+				struct fd_handle *handle = hash_table_search(&current_task->fd_list, &j, sizeof(j));
+				if (handle->flags & O_CLOEXEC) {
+					BIT_CLEAR(task->fd_bitmap.data, i);
+					continue;
+				}
+				hash_table_push(&task->fd_list, &handle->fd_number, handle, sizeof(&handle->fd_number));
+			}
+		}
+	}
 
 	struct sched_thread *thread = sched_thread_exec(task, entry_point, cs, &aux, arguments);
 
@@ -579,7 +611,7 @@ void syscall_waitpid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
 	print("syscall: waitpid: pid {%x}, status {%x}, options {%x}\n", pid, (uintptr_t)status, options);
 #endif
-	
+
 	asm volatile ("cli");
 
 	struct sched_task *current_task = CURRENT_TASK;
@@ -657,13 +689,13 @@ void syscall_exit(struct registers *regs) {
 
 			if((*page->reference) <= 1) { // shared page
 				(*page->reference)--;
-				continue;	
+				continue;
 			}
 
 			pmm_free(page->paddr, 1);
 		}
 	}
-	
+
 	int status = regs->rdi;
 
 	struct sched_task *parent = sched_translate_pid(1);
@@ -681,12 +713,11 @@ void syscall_exit(struct registers *regs) {
 
 	task->status = TASK_YIELD;
 
-	bitmap_free(&pid_bitmap, task->pid);
 	hash_table_delete(&task_list, &task->pid, sizeof(task->pid));
 
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
-	
+
 	asm volatile ("sti");
 
 	sched_yield();
@@ -825,7 +856,7 @@ void syscall_fork(struct registers *regs) {
 		if(handle) {
 			struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
 			*new_handle = *handle;
-
+			file_get(new_handle->file_handle);
 			hash_table_push(&task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 		}
 	}
