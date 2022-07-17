@@ -40,7 +40,6 @@ struct page_table kernel_mappings;
 
 static uint64_t *pml4_map_page(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags) {
 	struct pml_indices pml_indices = compute_table_indices(vaddr);
-
 	spinlock(&page_table->lock);
 
 	if((page_table->pml_high[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
@@ -142,7 +141,7 @@ static uint64_t *pml4_lowest_level(struct page_table *page_table, uintptr_t vadd
 	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
 		spinrelease(&page_table->lock);
 		return NULL;
-	} 
+	}
 
 	uint64_t *pml1 = (uint64_t*)((pml2[pml_indices.pml2_index] & ~(0xfff)) + HIGH_VMA);
 
@@ -206,7 +205,7 @@ static uint64_t *pml5_map_page(struct page_table *page_table, uintptr_t vaddr, u
 	uint64_t *pml4 = (uint64_t*)((page_table->pml_high[pml_indices.pml5_index] & ~(0xfff)) + HIGH_VMA);
 
 	if((pml4[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
-		pml4[pml_indices.pml4_index] = pmm_alloc(1, 1) | (flags & PML4_FLAGS_MASK);	
+		pml4[pml_indices.pml4_index] = pmm_alloc(1, 1) | (flags & PML4_FLAGS_MASK);
 	}
 
 	uint64_t *pml3 = (uint64_t*)((pml4[pml_indices.pml4_index] & ~(0xfff)) + HIGH_VMA);
@@ -564,5 +563,6 @@ void vmm_pf_handler(struct registers *regs, void *status) {
 		EXIT_PF(1);
 	}
 
-	EXIT_PF(0);
+	*lowest_level = *lowest_level | VMM_FLAGS_RW;
+	EXIT_PF(1);
 }

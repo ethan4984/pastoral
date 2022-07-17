@@ -24,7 +24,7 @@ static inline size_t pow2_roundup(size_t a) {
 static inline ssize_t pow(ssize_t base, ssize_t exp) {
 	ssize_t result = 1;
 
-	for(;;) { 
+	for(;;) {
 		if(exp & 1)
 			result *= base;
 
@@ -101,7 +101,7 @@ static inline uint64_t octal_to_decimal(const char *str) {
 		ret += (uint64_t)(*str) - 0x30;
 		str++;
 	}
-	
+
 	return ret;
 }
 

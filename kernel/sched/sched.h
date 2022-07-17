@@ -34,7 +34,7 @@ struct event {
 
 struct sched_thread {
 	tid_t tid;
-	pid_t pid; 
+	pid_t pid;
 
 	size_t status;
 	size_t idle_cnt;
@@ -47,7 +47,7 @@ struct sched_thread {
 	size_t errno;
 
 	struct registers regs;
-}; 
+};
 
 struct sched_task {
 	struct hash_table fd_list;

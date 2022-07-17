@@ -10,7 +10,7 @@
 #include <time.h>
 #include <mm/pmm.h>
 
-static char fd_lock;
+static char fd__lock;
 
 struct fd_handle *fd_translate(int index) {
 	struct sched_task *current_task = CURRENT_TASK;
@@ -18,9 +18,9 @@ struct fd_handle *fd_translate(int index) {
 		return NULL;
 	}
 
-	spinlock(&fd_lock);
+	spinlock(&fd__lock);
 	struct fd_handle *handle = hash_table_search(&current_task->fd_list, &index, sizeof(index));
-	spinrelease(&fd_lock);
+	spinrelease(&fd__lock);
 
 	return handle;
 }
@@ -32,28 +32,32 @@ off_t fd_seek(int fd, off_t offset, int whence) {
 		return -1;
 	}
 
-	struct stat *stat = fd_handle->asset->stat;
+	struct stat *stat = fd_handle->file_handle->asset->stat;
 	if(S_ISFIFO(stat->st_mode) || S_ISSOCK(stat->st_mode)) {
 		set_errno(ESPIPE);
 		return -1;
 	}
 
+	file_lock(fd_handle->file_handle);
 	switch(whence) {
 		case SEEK_SET:
-			fd_handle->position = offset;
+			fd_handle->file_handle->position = offset;
 			break;
 		case SEEK_CUR:
-			fd_handle->position += offset;
+			fd_handle->file_handle->position += offset;
 			break;
 		case SEEK_END:
-			fd_handle->position = stat->st_size + offset; 
+			fd_handle->file_handle->position = stat->st_size + offset;
 			break;
 		default:
+			file_unlock(fd_handle->file_handle);
 			set_errno(EINVAL);
 			return -1;
 	}
-	
-	return fd_handle->position;
+
+	off_t pos =  fd_handle->file_handle->position;
+	file_unlock(fd_handle->file_handle);
+	return pos;
 }
 
 ssize_t fd_write(int fd, const void *buf, size_t count) {
@@ -63,7 +67,7 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		return -1;
 	}
 
-	struct asset *asset = fd_handle->asset;
+	struct asset *asset = fd_handle->file_handle->asset;
 	struct stat *stat = asset->stat;
 
 	if(asset->write == NULL) {
@@ -72,14 +76,14 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	}
 
 	ssize_t ret;
-	if(S_ISFIFO(stat->st_mode) && fd_handle->pipe) {
-		ret = asset->write(asset, fd_handle->pipe->buffer, fd_handle->position, count, buf);
+	if(S_ISFIFO(stat->st_mode) && fd_handle->file_handle->pipe) {
+		ret = asset->write(asset, fd_handle->file_handle->pipe->buffer, fd_handle->file_handle->position, count, buf);
 	} else {
-		ret = asset->write(asset, NULL, fd_handle->position, count, buf);
+		ret = asset->write(asset, NULL, fd_handle->file_handle->position, count, buf);
 	}
 
 	if(ret != -1) {
-		fd_handle->position += ret;
+		fd_handle->file_handle->position += ret;
 	}
 
 	return ret;
@@ -92,13 +96,13 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 		return -1;
 	}
 
-	struct stat *stat = fd_handle->asset->stat;
+	struct stat *stat = fd_handle->file_handle->asset->stat;
 	if(S_ISDIR(stat->st_mode)) {
 		set_errno(EISDIR);
-		return -1; 
+		return -1;
 	}
 
-	struct asset *asset = fd_handle->asset;
+	struct asset *asset = fd_handle->file_handle->asset;
 
 	if(asset->read == NULL) {
 		set_errno(EINVAL);
@@ -106,14 +110,14 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 	}
 
 	ssize_t ret;
-	if(S_ISFIFO(stat->st_mode) && fd_handle->pipe) {
-		ret = asset->read(asset, fd_handle->pipe->buffer, fd_handle->position, count, buf);
+	if(S_ISFIFO(stat->st_mode) && fd_handle->file_handle->pipe) {
+		ret = asset->read(asset, fd_handle->file_handle->pipe->buffer, fd_handle->file_handle->position, count, buf);
 	} else {
-		ret = asset->read(asset, NULL, fd_handle->position, count, buf);
+		ret = asset->read(asset, NULL, fd_handle->file_handle->position, count, buf);
 	}
 
 	if(ret != -1) {
-		fd_handle->position += ret;
+		fd_handle->file_handle->position += ret;
 	}
 
 	return ret;
@@ -123,17 +127,17 @@ ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void 
 	spinlock(&asset->lock);
 
 	struct stat *stat = asset->stat;
-	
+
 	if(offset > stat->st_size) {
 		event_wait(asset->event, EVENT_FD_WRITE);
 	}
-	
+
 	stat->st_atim = clock_realtime;
 	stat->st_mtim = clock_realtime;
 	stat->st_ctim = clock_realtime;
 
 	if(offset + cnt > stat->st_size) {
-		cnt = stat->st_size - offset; 
+		cnt = stat->st_size - offset;
 	}
 
 	memcpy8(buf, out + offset, cnt);
@@ -154,7 +158,7 @@ ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, cons
 	}
 
 	if(offset + cnt > PIPE_BUFFER_SIZE) {
-		cnt = stat->st_size - offset; 
+		cnt = stat->st_size - offset;
 	}
 
 	if(offset > stat->st_size) {
@@ -163,7 +167,7 @@ ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, cons
 		asset->trigger->agent_thread = CURRENT_THREAD;
 		event_fire(asset->trigger);
 	}
-	
+
 	stat->st_atim = clock_realtime;
 	stat->st_mtim = clock_realtime;
 	stat->st_ctim = clock_realtime;
@@ -200,7 +204,7 @@ int fd_openat(int dirfd, const char *path, int flags) {
 				return -1;
 			}
 
-			dir = fd_handle->vfs_node;
+			dir = fd_handle->file_handle->vfs_node;
 		}
 	}
 
@@ -216,6 +220,7 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		struct asset *asset = alloc(sizeof(struct asset));
 		struct stat *stat = alloc(sizeof(struct stat));
 
+		asset_init(asset);
 		asset->stat = stat;
 		asset->read = parent->asset->read;
 		asset->write = parent->asset->write;
@@ -240,17 +245,19 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		return -1;
 	}*/
 
-	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
+	struct fd_handle *new_fd_handle = alloc(sizeof(struct fd_handle));
+	struct file_handle *new_file_handle = alloc(sizeof(struct file_handle));
 
-	*new_handle = (struct fd_handle) {
-		.asset = vfs_node->asset,
-		.vfs_node = vfs_node,
-		.fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap),
-		.flags = flags,
-		.position = 0,
-		.dirent_list = { 0 },
-		.current_dirent = 0
-	};
+	fd_init(new_fd_handle);
+	file_init(new_file_handle);
+
+	new_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
+	new_fd_handle->file_handle = new_file_handle;
+	new_fd_handle->flags = flags & O_CLOEXEC;
+
+	new_file_handle->vfs_node = vfs_node;
+	new_file_handle->asset = vfs_node->asset;
+	new_file_handle->flags = flags & ~O_CLOEXEC;
 
 	struct sched_task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
@@ -258,9 +265,9 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		return -1;
 	}
 
-	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	hash_table_push(&current_task->fd_list, &new_fd_handle->fd_number, new_fd_handle, sizeof(new_fd_handle->fd_number));
 
-	return new_handle->fd_number;
+	return new_fd_handle->fd_number;
 }
 
 int fd_close(int fd) {
@@ -276,9 +283,11 @@ int fd_close(int fd) {
 		return -1;
 	}
 
+	file_put(fd_handle->file_handle);
+
 	hash_table_delete(&current_task->fd_list, &fd_handle->fd_number, sizeof(fd_handle->fd_number));
 	bitmap_free(&current_task->fd_bitmap, fd_handle->fd_number);
-	
+
 	return 0;
 }
 
@@ -290,7 +299,7 @@ int fd_stat(int fd, void *buffer) {
 	}
 
 	struct stat *stat = buffer;
-	*stat = *fd_handle->asset->stat;
+	*stat = *fd_handle->file_handle->asset->stat;
 
 	return 0;
 }
@@ -311,7 +320,7 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 			return -1;
 		}
 
-		vfs_node = fd_handle->vfs_node;
+		vfs_node = fd_handle->file_handle->vfs_node;
 	} else {
 		int relative = *path == '/' ? 0 : 1;
 		struct vfs_node *dir;
@@ -328,12 +337,12 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 					return -1;
 				}
 
-				if(!S_ISDIR(fd_handle->asset->stat->st_mode)) {
+				if(!S_ISDIR(fd_handle->file_handle->asset->stat->st_mode)) {
 					set_errno(EBADF);
 					return -1;
 				}
 
-				dir = fd_handle->vfs_node;
+				dir = fd_handle->file_handle->vfs_node;
 			}
 		}
 
@@ -359,8 +368,10 @@ int fd_dup(int fd) {
 
 	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
 	*new_handle = *fd_handle;
-
+	file_get(new_handle->file_handle);
 	new_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
+
+	hash_table_push(&CURRENT_TASK->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 
 	return new_handle->fd_number;
 }
@@ -380,8 +391,10 @@ int fd_dup2(int oldfd, int newfd) {
 
 	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
 	*new_handle = *oldfd_handle;
-
+	file_get(new_handle->file_handle);
 	new_handle->fd_number = newfd;
+
+	hash_table_push(&CURRENT_TASK->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 
 	return new_handle->fd_number;
 }
@@ -391,7 +404,7 @@ void syscall_dup2(struct registers *regs) {
 	int newfd = regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: dup2: oldfd {%x}, newfd {%x}\n", oldfd, newfd);
+	print("syscall: [pid %x] dup2: oldfd {%x}, newfd {%x}\n", CORE_LOCAL->pid, oldfd, newfd);
 #endif
 
 	regs->rax = fd_dup2(oldfd, newfd);
@@ -401,7 +414,7 @@ void syscall_dup(struct registers *regs) {
 	int fd = regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: dup: fd {%x}\n", fd);
+	print("syscall: [pid %x] dup: fd {%x}\n", CORE_LOCAL->pid, fd);
 #endif
 
 	regs->rax = fd_dup(fd);
@@ -412,7 +425,7 @@ void syscall_stat(struct registers *regs) {
 	void *buf = (void*)regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: stat: fd {%x}, buf {%x}\n", fd, (uintptr_t)buf);
+	print("syscall: [pid %x] stat: fd {%x}, buf {%x}\n", CORE_LOCAL->pid, fd, (uintptr_t)buf);
 #endif
 
 	regs->rax = fd_stat(fd, buf);
@@ -425,7 +438,7 @@ void syscall_statat(struct registers *regs) {
 	int flags = regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: statat: dirfd {%x}, path {%s}, buf {%x}, flags {%x}\n", dirfd, path, (uintptr_t)buf, flags);
+	print("syscall: [pid %x] statat: dirfd {%x}, path {%s}, buf {%x}, flags {%x}\n", CORE_LOCAL->pid, dirfd, path, (uintptr_t)buf, flags);
 #endif
 
 	regs->rax = fd_statat(dirfd, path, buf, flags);
@@ -437,7 +450,7 @@ void syscall_write(struct registers *regs) {
 	size_t cnt = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: write: fd {%x}, buf {%x}, cnt {%x}\n", fd, (uintptr_t)buf, cnt);
+	print("syscall: [pid %x] write: fd {%x}, buf {%x}, cnt {%x}\n", CORE_LOCAL->pid, fd, (uintptr_t)buf, cnt);
 #endif
 
 	regs->rax = fd_write(fd, buf, cnt);
@@ -449,7 +462,7 @@ void syscall_read(struct registers *regs) {
 	size_t cnt = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: read: fd {%x}, buf {%x}, cnt {%x}\n", fd, (uintptr_t)buf, cnt);
+	print("syscall: [pid %x] read: fd {%x}, buf {%x}, cnt {%x}\n", CORE_LOCAL->pid, fd, (uintptr_t)buf, cnt);
 #endif
 
 	regs->rax = fd_read(fd, buf, cnt);
@@ -461,7 +474,7 @@ void syscall_seek(struct registers *regs) {
 	int whence = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: seek: fd {%x}, offset {%x}, whence {%x}\n", fd, offset, whence);
+	print("syscall: [pid %x] seek: fd {%x}, offset {%x}, whence {%x}\n", CORE_LOCAL->pid, fd, offset, whence);
 #endif
 
 	regs->rax = fd_seek(fd, offset, whence);
@@ -473,17 +486,17 @@ void syscall_openat(struct registers *regs) {
 	int flags = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: open: dirfd {%x}, pathname {%s}, flags {%x}\n", dirfd, pathname, flags);
+	print("syscall: [pid %x] open: dirfd {%x}, pathname {%s}, flags {%x}\n", CORE_LOCAL->pid, dirfd, pathname, flags);
 #endif
 
-	regs->rax = fd_openat(dirfd, pathname, flags); 
+	regs->rax = fd_openat(dirfd, pathname, flags);
 }
 
 void syscall_close(struct registers *regs) {
 	int fd = regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: close: fd {%x}\n", fd);
+	print("syscall: [pid %x] close: fd {%x}\n", CORE_LOCAL->pid, fd);
 #endif
 
 	regs->rax = fd_close(fd);
@@ -491,7 +504,7 @@ void syscall_close(struct registers *regs) {
 
 void syscall_fcntl(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: fcntl: fd {%x}, cmd {%x}\n", regs->rdi, regs->rsi);
+	print("syscall: [pid %x] fcntl: fd {%x}, cmd {%x}\n", CORE_LOCAL->pid, regs->rdi, regs->rsi);
 #endif
 
 	struct fd_handle *fd_handle = fd_translate(regs->rdi);
@@ -506,19 +519,26 @@ void syscall_fcntl(struct registers *regs) {
 			regs->rax = fd_dup(regs->rdi);
 			break;
 		case F_GETFD:
-			regs->rax = (uint64_t)((fd_handle->flags & O_CLOEXEC) ? O_CLOEXEC : 0);
-			break;
-		case F_SETFD:
-			fd_handle->flags = (uint64_t)((fd_handle->flags & O_CLOEXEC) ? O_CLOEXEC : 0);
-			regs->rax = 0;
-			break;
-		case F_GETFL:
 			regs->rax = fd_handle->flags;
 			break;
-		case F_SETFL:
+		case F_SETFD:
 			fd_handle->flags = regs->rdx;
 			regs->rax = 0;
 			break;
+		case F_GETFL:
+			regs->rax = fd_handle->file_handle->flags;
+			break;
+		case F_SETFL: {
+			if (regs->rdx & O_ACCMODE) {
+				// It is disallowed to change the access mode.
+				set_errno(EINVAL);
+				regs->rax = -1;
+				break;
+			}
+			fd_handle->file_handle->flags = regs->rdx;
+			regs->rax = 0;
+			break;
+		}
 		default:
 			print("fnctl unknown command %x\n", regs->rsi);
 			set_errno(EINVAL);
@@ -531,7 +551,7 @@ void syscall_readdir(struct registers *regs) {
 	struct dirent *buf = (void*)regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: readdir: fd {%x}, buf {%x}\n", fd, (uintptr_t)buf);
+	print("syscall: [pid %x] readdir: fd {%x}, buf {%x}\n", CORE_LOCAL->pid, fd, (uintptr_t)buf);
 #endif
 
 	struct fd_handle *dir_handle = fd_translate(fd);
@@ -541,7 +561,7 @@ void syscall_readdir(struct registers *regs) {
 		return;
 	}
 
-	struct vfs_node *dir = dir_handle->vfs_node;
+	struct vfs_node *dir = dir_handle->file_handle->vfs_node;
 
 	if(!S_ISDIR(dir->asset->stat->st_mode)) {
 		set_errno(ENOTDIR);
@@ -549,7 +569,7 @@ void syscall_readdir(struct registers *regs) {
 		return;
 	}
 
-	if(!dir_handle->dirent_list.length) {
+	if(!dir_handle->file_handle->dirent_list.length) {
 		for(size_t i = 0; i < dir->children.length; i++) {
 			struct vfs_node *node = dir->children.data[i];
 
@@ -586,18 +606,18 @@ void syscall_readdir(struct registers *regs) {
 					entry->d_type = DT_UNKNOWN;
 			}
 
-			VECTOR_PUSH(dir_handle->dirent_list, entry);
+			VECTOR_PUSH(dir_handle->file_handle->dirent_list, entry);
 		}
 	}
 
-	if(dir_handle->current_dirent >= dir_handle->dirent_list.length) {
+	if(dir_handle->file_handle->current_dirent >= dir_handle->file_handle->dirent_list.length) {
 		set_errno(0);
 		regs->rax = -1;
 		return;
 	}
 
-	*buf = *dir_handle->dirent_list.data[dir_handle->current_dirent];
-	dir_handle->current_dirent++;
+	*buf = *dir_handle->file_handle->dirent_list.data[dir_handle->file_handle->current_dirent];
+	dir_handle->file_handle->current_dirent++;
 
 	regs->rax = 0;
 }
@@ -607,7 +627,7 @@ void syscall_getcwd(struct registers *regs) {
 	size_t size = regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: getcwd: buf {%x}, size {%x}\n", buf, size);
+	print("syscall: [pid %x] getcwd: buf {%x}, size {%x}\n", CORE_LOCAL->pid, buf, size);
 #endif
 
 	const char *path = vfs_absolute_path(CURRENT_TASK->cwd);
@@ -616,21 +636,21 @@ void syscall_getcwd(struct registers *regs) {
 	} else {
 		set_errno(ERANGE);
 		regs->rax = 0;
-		return; 
-	} 
+		return;
+	}
 
 	regs->rax = (uintptr_t)buf;
 }
 
-void syscall_chdir(struct registers *regs) { 
+void syscall_chdir(struct registers *regs) {
 	const char *path = (const char*)regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: chdir: path {%s}\n", path);
+	print("syscall: [pid %x] chdir: path {%s}\n", CORE_LOCAL->pid, path);
 #endif
 
 	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path, true);
-	if(vfs_node == NULL) { 
+	if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		regs->rax = -1;
 		return;
@@ -645,62 +665,74 @@ void syscall_pipe(struct registers *regs) {
 	int *fd_pair = (int*)regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: pipe: fd pair {%x}\n", fd_pair);
+	print("syscall: [pid %x] pipe: fd pair {%x}\n", CORE_LOCAL->pid, fd_pair);
 #endif
 
 	fd_pair[0] = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
 	fd_pair[1] = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
 
-	struct fd_handle *read_handle = alloc(sizeof(struct fd_handle));
-	struct fd_handle *write_handle = alloc(sizeof(struct fd_handle));
+	struct fd_handle *read_fd_handle = alloc(sizeof(struct fd_handle));
+	struct fd_handle *write_fd_handle = alloc(sizeof(struct fd_handle));
+	struct file_handle *read_file_handle = alloc(sizeof(struct file_handle));
+	struct file_handle *write_file_handle = alloc(sizeof(struct file_handle));
+
+	fd_init(read_fd_handle);
+	fd_init(write_fd_handle);
+	file_init(read_file_handle);
+	file_init(write_file_handle);
 
 	struct pipe *pipe = alloc(sizeof(struct pipe));
 	*pipe = (struct pipe) {
-		.read = read_handle,
-		.write = write_handle,
-		.fd_pair[0] = fd_pair[0], 
-		.fd_pair[1] = fd_pair[1],
+		.read = read_file_handle,
+		.write = write_file_handle,
 		.buffer = (void*)(pmm_alloc(DIV_ROUNDUP(PIPE_BUFFER_SIZE, PAGE_SIZE), 1) + HIGH_VMA)
 	};
 
 	struct asset *read_asset = alloc(sizeof(struct asset));
+	asset_init(read_asset);
 	read_asset->read = pipe_read;
 
 	struct asset *write_asset = alloc(sizeof(struct asset));
+	asset_init(write_asset);
 	write_asset->write = pipe_write;
 
 	struct stat *pipe_stat = alloc(sizeof(struct stat));
-
 	pipe_stat->st_atim = clock_realtime;
 	pipe_stat->st_mtim = clock_realtime;
 	pipe_stat->st_ctim = clock_realtime;
 	pipe_stat->st_mode = S_IFIFO | S_IWUSR;
 
+	// Do we want to support full duplex pipes? If so,
+	// make both ends readable and writable.
+	read_fd_handle->fd_number = fd_pair[0];
+	read_fd_handle->file_handle = read_file_handle;
+	read_file_handle->asset = read_asset;
+	read_file_handle->pipe = pipe;
+	read_file_handle->flags = O_RDONLY;
+
+	write_fd_handle->fd_number = fd_pair[1];
+	write_fd_handle->file_handle = write_file_handle;
+	write_file_handle->asset = write_asset;
+	write_file_handle->pipe = pipe;
+	write_file_handle->flags = O_WRONLY;
+
 	read_asset->stat = pipe_stat;
 	write_asset->stat = pipe_stat;
 
-	read_handle->pipe = pipe;
-	read_handle->asset = read_asset; 
-	read_handle->fd_number = fd_pair[0];
-
-	write_handle->pipe = pipe;
-	write_handle->asset = write_asset;
-	write_handle->fd_number = fd_pair[1];
-
-	hash_table_push(&CURRENT_TASK->fd_list, &read_handle->fd_number, read_handle, sizeof(read_handle->fd_number));
-	hash_table_push(&CURRENT_TASK->fd_list, &write_handle->fd_number, write_handle, sizeof(write_handle->fd_number));
+	hash_table_push(&CURRENT_TASK->fd_list, &read_fd_handle->fd_number, read_fd_handle, sizeof(read_fd_handle->fd_number));
+	hash_table_push(&CURRENT_TASK->fd_list, &write_fd_handle->fd_number, write_fd_handle, sizeof(write_fd_handle->fd_number));
 
 	regs->rax = 0;
 }
 
 void syscall_faccessat(struct registers *regs) {
-	int dirfd = regs->rdi; 
+	int dirfd = regs->rdi;
 	const char *path = (const char*)regs->rsi;
 	int mode = regs->rdx;
 	int flags = regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: faccessat: dirfd {%x}, path {%s}, mode {%x}, flags {%x}\n", dirfd, path, mode, flags);
+	print("syscall: [pid %x] faccessat: dirfd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, dirfd, path, mode, flags);
 #endif
 
 	int relative = *path == '/' ? 0 : 1;
@@ -712,20 +744,20 @@ void syscall_faccessat(struct registers *regs) {
 		if(dirfd == AT_FDCWD) {
 			dir = CURRENT_TASK->cwd;
 		} else {
-			struct fd_handle *fd_handle = fd_translate(dirfd);	
+			struct fd_handle *fd_handle = fd_translate(dirfd);
 			if(fd_handle == NULL) {
 				set_errno(EBADF);
 				regs->rax = -1;
 				return;
 			}
 
-			if(!S_ISDIR(fd_handle->asset->stat->st_mode)) {
+			if(!S_ISDIR(fd_handle->file_handle->asset->stat->st_mode)) {
 				set_errno(EBADF);
 				regs->rax = -1;
 				return;
 			}
 
-			dir = fd_handle->vfs_node;
+			dir = fd_handle->file_handle->vfs_node;
 		}
 	}
 
@@ -747,7 +779,7 @@ void syscall_symlinkat(struct registers *regs) {
 	const char *linkpath = (const char*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: symlink: target {%s}, newdirfd {%x}, linkpath {%s}\n", target, newdirfd, linkpath);
+	print("syscall: [pid %x] symlink: target {%s}, newdirfd {%x}, linkpath {%s}\n", CORE_LOCAL->pid, target, newdirfd, linkpath);
 #endif
 
 	struct vfs_node *link_node;
@@ -764,7 +796,7 @@ void syscall_symlinkat(struct registers *regs) {
 				return;
 			}
 
-			link_node = fd_handle->vfs_node;
+			link_node = fd_handle->file_handle->vfs_node;
 		}
 	} else {
 		link_node = vfs_search_absolute(NULL, linkpath, true);
@@ -790,21 +822,21 @@ void syscall_ioctl(struct registers *regs) {
 	void *args = (void*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: ioctl: fd {%x}, req {%x}, args {%x}\n", fd, req, args);
+	print("syscall: [pid %x] ioctl: fd {%x}, req {%x}, args {%x}\n", CORE_LOCAL->pid, fd, req, args);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(fd);	
+	struct fd_handle *fd_handle = fd_translate(fd);
 	if(fd_handle == NULL) {
 		set_errno(EBADF);
 		regs->rax = -1;
 		return;
 	}
 
-	if(fd_handle->asset->ioctl == NULL) {
+	if(fd_handle->file_handle->asset->ioctl == NULL) {
 		set_errno(ENOTTY);
 		regs->rax = -1;
 		return;
 	}
 
-	regs->rax = fd_handle->asset->ioctl(fd_handle->asset, fd, req, args);
+	regs->rax = fd_handle->file_handle->asset->ioctl(fd_handle->file_handle->asset, fd, req, args);
 }
