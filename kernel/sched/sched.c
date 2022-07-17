@@ -494,6 +494,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 				struct fd_handle *handle = hash_table_search(&current_task->fd_list, &j, sizeof(j));
 				if (handle->flags & O_CLOEXEC) {
 					BIT_CLEAR(task->fd_bitmap.data, i);
+					file_put(handle->file_handle);
 					continue;
 				}
 				hash_table_push(&task->fd_list, &handle->fd_number, handle, sizeof(&handle->fd_number));
