@@ -62,5 +62,7 @@ _ret: \
 	_j; \
 })
 
-#define VECTOR_DELETE(THIS) \
-	free((THIS).data);
+#define VECTOR_CLEAR(THIS) \
+	free((THIS).data); \
+	(THIS).length = 0; \
+	(THIS).buffer_capacity = 0;

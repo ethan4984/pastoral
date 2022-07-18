@@ -11,7 +11,6 @@
 struct fd_handle;
 struct pipe;
 
-
 struct file_handle {
 	char lock;
 	int refcnt;
@@ -83,4 +82,4 @@ ssize_t fd_read(int fd, void *buf, size_t count);
 off_t fd_seek(int fd, off_t offset, int whence);
 int fd_openat(int dirfd, const char *path, int flags);
 int fd_close(int fd);
-
+int fd_generate_dirent(struct fd_handle *dir_handle, struct vfs_node *node, struct dirent *entry);

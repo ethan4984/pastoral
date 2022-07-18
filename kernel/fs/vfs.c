@@ -4,16 +4,23 @@
 #include <string.h>
 #include <time.h>
 #include <fs/ramfs.h>
+#include <sched/sched.h>
 
 struct vfs_node *vfs_root;
 
 struct asset *vfs_default_asset(mode_t mode) {
 	struct asset *asset = alloc(sizeof(struct asset));
+
 	asset->stat = alloc(sizeof(struct stat));
 	asset->stat->st_mode = mode;
 	asset->stat->st_atim = clock_realtime;
 	asset->stat->st_mtim = clock_realtime;
 	asset->stat->st_ctim = clock_realtime;
+
+	asset->event = alloc(sizeof(struct event));
+	asset->trigger = alloc(sizeof(struct event_trigger));
+	asset->trigger->event = asset->event;
+
 	return asset;
 }
 
@@ -59,7 +66,7 @@ void vfs_init() {
 
 	vfs_root->name = "/";
 	vfs_root->asset = vfs_default_asset(S_IFDIR);
-	vfs_root->filesystem = NULL;
+	vfs_root->filesystem = &ramfs_filesystem;
 	vfs_root->parent = NULL;
 
 	vfs_root->asset->write = ramfs_write;
@@ -238,7 +245,7 @@ const char *vfs_absolute_path(struct vfs_node *node) {
 		}
 	}
 
-	VECTOR_DELETE(node_list);
+	VECTOR_CLEAR(node_list);
 
 	return ++ret;
 }

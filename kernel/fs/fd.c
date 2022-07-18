@@ -198,13 +198,12 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		if(dirfd == AT_FDCWD) {
 			dir = CURRENT_TASK->cwd;
 		} else {
-			struct fd_handle *fd_handle = fd_translate(dirfd);
-			if(fd_handle == NULL) {
+			struct fd_handle *dir_handle = fd_translate(dirfd);
+			if(dir_handle == NULL) {
 				set_errno(EBADF);
 				return -1;
 			}
-
-			dir = fd_handle->file_handle->vfs_node;
+			dir = dir_handle->file_handle->vfs_node;
 		}
 	}
 
@@ -217,33 +216,17 @@ int fd_openat(int dirfd, const char *path, int flags) {
 			return -1;
 		}
 
-		struct asset *asset = alloc(sizeof(struct asset));
-		struct stat *stat = alloc(sizeof(struct stat));
+		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1); 
+		strcpy(name, path + find_last_char(path, '/'));
 
-		asset_init(asset);
-		asset->stat = stat;
-		asset->read = parent->asset->read;
-		asset->write = parent->asset->write;
-		asset->ioctl = parent->asset->ioctl;
-		asset->resize = parent->asset->resize;
-		asset->event = alloc(sizeof(struct event));
-		asset->trigger = alloc(sizeof(struct event_trigger));
-		asset->trigger->event = asset->event;
-
-		stat->st_atim = clock_realtime;
-		stat->st_mtim = clock_realtime;
-		stat->st_ctim = clock_realtime;
-
-		stat->st_mode = S_IFREG;
-
-		vfs_node = vfs_create_node_deep(parent, asset, parent->filesystem, path);
+		vfs_node = parent->filesystem->create(parent, name, S_IFREG);
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
-	} /*else if(flags & O_CREAT && flags & O_EXEC) {
+	} else if(flags & O_CREAT && flags & O_EXEC) {
 		set_errno(EEXIST);
 		return -1;
-	}*/
+	}
 
 	struct fd_handle *new_fd_handle = alloc(sizeof(struct fd_handle));
 	struct file_handle *new_file_handle = alloc(sizeof(struct file_handle));
@@ -383,6 +366,10 @@ int fd_dup2(int oldfd, int newfd) {
 		return -1;
 	}
 
+	if(oldfd == newfd) {
+		return newfd;
+	}
+
 	if(BIT_TEST(CURRENT_TASK->fd_bitmap.data, newfd)) {
 		fd_close(newfd);
 	} else {
@@ -397,6 +384,46 @@ int fd_dup2(int oldfd, int newfd) {
 	hash_table_push(&CURRENT_TASK->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 
 	return new_handle->fd_number;
+}
+
+int fd_generate_dirent(struct fd_handle *dir_handle, struct vfs_node *node, struct dirent *entry) {
+	if(!S_ISDIR(dir_handle->file_handle->asset->stat->st_mode)) {
+		set_errno(ENOTDIR);
+		return -1;
+	}
+
+	strcpy(entry->d_name, node->name);
+	entry->d_ino = node->asset->stat->st_ino;
+	entry->d_off = 0;
+	entry->d_reclen = sizeof(struct dirent);
+
+	switch(node->asset->stat->st_mode & S_IFMT) {
+		case S_IFCHR:
+			entry->d_type = DT_CHR;
+			break;
+		case S_IFBLK:
+			entry->d_type = DT_BLK;
+			break;
+		case S_IFDIR:
+			entry->d_type = DT_DIR;
+			break;
+		case S_IFLNK:
+			entry->d_type = DT_LNK;
+			break;
+		case S_IFIFO:
+			entry->d_type = DT_FIFO;
+			break;
+		case S_IFREG:
+			entry->d_type = DT_REG;
+			break;
+		case S_IFSOCK:
+			entry->d_type = DT_SOCK;
+			break;
+		default:
+			entry->d_type = DT_UNKNOWN;
+	}
+
+	return 0;
 }
 
 void syscall_dup2(struct registers *regs) {
@@ -569,41 +596,21 @@ void syscall_readdir(struct registers *regs) {
 		return;
 	}
 
+	if((dir->children.length >= dir_handle->file_handle->current_dirent) && dir->children.length != dir_handle->file_handle->dirent_list.length) {
+		VECTOR_CLEAR(dir_handle->file_handle->dirent_list);
+		dir_handle->file_handle->current_dirent = 0;
+	}
+
 	if(!dir_handle->file_handle->dirent_list.length) {
 		for(size_t i = 0; i < dir->children.length; i++) {
 			struct vfs_node *node = dir->children.data[i];
 
 			struct dirent *entry = alloc(sizeof(struct dirent));
 
-			strcpy(entry->d_name, node->name);
-			entry->d_ino = node->asset->stat->st_ino;
-			entry->d_off = 0;
-			entry->d_reclen = sizeof(struct dirent);
-
-			switch(node->asset->stat->st_mode & S_IFMT) {
-				case S_IFCHR:
-					entry->d_type = DT_CHR;
-					break;
-				case S_IFBLK:
-					entry->d_type = DT_BLK;
-					break;
-				case S_IFDIR:
-					entry->d_type = DT_DIR;
-					break;
-				case S_IFLNK:
-					entry->d_type = DT_LNK;
-					break;
-				case S_IFIFO:
-					entry->d_type = DT_FIFO;
-					break;
-				case S_IFREG:
-					entry->d_type = DT_REG;
-					break;
-				case S_IFSOCK:
-					entry->d_type = DT_SOCK;
-					break;
-				default:
-					entry->d_type = DT_UNKNOWN;
+			int ret = fd_generate_dirent(dir_handle, node, entry);
+			if(ret == -1) {
+				regs->rax = -1;
+				return;
 			}
 
 			VECTOR_PUSH(dir_handle->file_handle->dirent_list, entry);
@@ -689,11 +696,9 @@ void syscall_pipe(struct registers *regs) {
 	};
 
 	struct asset *read_asset = alloc(sizeof(struct asset));
-	asset_init(read_asset);
 	read_asset->read = pipe_read;
 
 	struct asset *write_asset = alloc(sizeof(struct asset));
-	asset_init(write_asset);
 	write_asset->write = pipe_write;
 
 	struct stat *pipe_stat = alloc(sizeof(struct stat));

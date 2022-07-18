@@ -160,9 +160,3 @@ struct asset {
 	struct stat *stat;
 	char lock;
 };
-
-
-static inline void asset_init(struct asset *asset) {
-	memset(asset, 0, sizeof(*asset));
-}
-

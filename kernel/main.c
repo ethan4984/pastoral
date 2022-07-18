@@ -81,7 +81,7 @@ void pastoral_thread() {
 		panic("unable to start init process");
 	}
 
-	/*char *argv[] = { "/init", "test.c", "0", "43", NULL };
+	/*char *argv[] = { "/init", NULL };
 	char *envp[] = {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -95,10 +95,13 @@ void pastoral_thread() {
 		.argv = argv,
 		.envp = envp,
 		.envp_cnt = 3,
-		.argv_cnt = 4
+		.argv_cnt = 1
 	};
 
-	sched_task_exec("/init", 0x43, arguments, TASK_WAITING);*/
+	struct sched_task *task = sched_task_exec("/init", 0x43, arguments, TASK_WAITING, 1);
+	if(task == NULL) {
+		panic("unable to start init process");
+	}*/
 
 	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
 

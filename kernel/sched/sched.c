@@ -21,7 +21,6 @@ struct bitmap pid_bitmap = {
 };
 
 char sched_lock;
-static int init_executed;
 
 // does not lock **remember**
 struct sched_task *sched_translate_pid(pid_t pid) {
@@ -256,9 +255,6 @@ struct sched_task *sched_default_task() {
 	task->status = TASK_YIELD;
 	task->fd_bitmap.resizable = true;
 
-		bitmap_alloc(&task->fd_bitmap);
-		bitmap_alloc(&task->fd_bitmap);
-		bitmap_alloc(&task->fd_bitmap);
 	task->event = alloc(sizeof(struct event));
 	task->exit_trigger = alloc(sizeof(struct event_trigger));
 
@@ -389,6 +385,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	int fd = fd_openat(AT_FDCWD, path, 0);
 	if(fd == -1) {
+		fd_close(fd);
 		CORE_LOCAL->pid = current_task->pid;
 		spinrelease(&sched_lock);
 		return NULL;
@@ -398,16 +395,20 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	struct aux aux;
 	if(elf_load(task->page_table, &aux, fd, 0, &ld_path) == -1) {
+		fd_close(fd);
 		CORE_LOCAL->pid = current_task->pid;
 		spinrelease(&sched_lock);
 		return NULL;
 	}
+
+	fd_close(fd);
 
 	uint64_t entry_point = aux.at_entry;
 
 	if(ld_path) {
 		int ld_fd = fd_openat(AT_FDCWD, ld_path, 0);
 		if(ld_fd == -1) {
+			fd_close(ld_fd);
 			CORE_LOCAL->pid = current_task->pid;
 			spinrelease(&sched_lock);
 			return NULL;
@@ -415,92 +416,72 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 		struct aux ld_aux;
 		if(elf_load(task->page_table, &ld_aux, ld_fd, 0x40000000, NULL) == -1) {
+			fd_close(ld_fd);
 			CORE_LOCAL->pid = current_task->pid;
 			spinrelease(&sched_lock);
 			return NULL;
 		}
 
+		fd_close(ld_fd);
+
 		entry_point = ld_aux.at_entry;
 	}
 
-	// TODO: Make a real init system, and remove this.
-	if (!init_executed) {
-		init_executed = 1;
+	struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
+		*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
+		*stderr_fd_handle = alloc(sizeof(struct fd_handle));
 
-		struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
-			*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
-			*stderr_fd_handle = alloc(sizeof(struct fd_handle));
+	struct file_handle *stdin_file_handle = alloc(sizeof(struct file_handle)),
+		*stdout_file_handle = alloc(sizeof(struct file_handle)),
+		*stderr_file_handle = alloc(sizeof(struct file_handle));
 
-		struct file_handle *stdin_file_handle = alloc(sizeof(struct file_handle)),
-			*stdout_file_handle = alloc(sizeof(struct file_handle)),
-			*stderr_file_handle = alloc(sizeof(struct file_handle));
+	struct asset *stdin_asset = alloc(sizeof(struct asset)),
+		*stdout_asset = alloc(sizeof(struct asset)),
+		*stderr_asset = alloc(sizeof(struct asset));
 
-		struct asset *stdin_asset = alloc(sizeof(struct asset)),
-			*stdout_asset = alloc(sizeof(struct asset)),
-			*stderr_asset = alloc(sizeof(struct asset));
+	struct stat *stdin_stat = alloc(sizeof(struct stat)),
+		*stdout_stat = alloc(sizeof(struct stat)),
+		*stderr_stat = alloc(sizeof(struct stat));
 
-		struct stat *stdin_stat = alloc(sizeof(struct stat)),
-			*stdout_stat = alloc(sizeof(struct stat)),
-			*stderr_stat = alloc(sizeof(struct stat));
+	fd_init(stdin_fd_handle);
+	fd_init(stdout_fd_handle);
+	fd_init(stderr_fd_handle);
 
-		fd_init(stdin_fd_handle);
-		fd_init(stdout_fd_handle);
-		fd_init(stderr_fd_handle);
+	file_init(stdin_file_handle);
+	file_init(stdout_file_handle);
+	file_init(stderr_file_handle);
 
-		file_init(stdin_file_handle);
-		file_init(stdout_file_handle);
-		file_init(stderr_file_handle);
+	stdin_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
+	stdin_fd_handle->file_handle = stdin_file_handle;
+	stdout_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
+	stdout_fd_handle->file_handle = stdout_file_handle;
+	stderr_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
+	stderr_fd_handle->file_handle = stderr_file_handle;
 
-		asset_init(stdin_asset);
-		asset_init(stdout_asset);
-		asset_init(stderr_asset);
+	stdin_file_handle->flags = O_RDONLY;
+	stdin_file_handle->asset = stdin_asset;
+	stdin_asset->read = terminal_read;
+	stdin_asset->ioctl = terminal_ioctl;
+	stdin_asset->stat = stdin_stat;
+	stdin_stat->st_mode = S_IRUSR | S_IWUSR;
 
-		stdin_fd_handle->fd_number = 0;
-		stdin_fd_handle->file_handle = stdin_file_handle;
-		stdout_fd_handle->fd_number = 1;
-		stdout_fd_handle->file_handle = stdout_file_handle;
-		stderr_fd_handle->fd_number = 2;
-		stderr_fd_handle->file_handle = stderr_file_handle;
+	stdout_file_handle->flags = O_WRONLY;
+	stdout_file_handle->asset = stdout_asset;
+	stdout_asset->write = terminal_write;
+	stdout_asset->ioctl = terminal_ioctl;
+	stdout_asset->stat = stdout_stat;
+	stdout_stat->st_mode = S_IRUSR | S_IWUSR;
 
-		stdin_file_handle->flags = O_RDONLY;
-		stdin_file_handle->asset = stdin_asset;
-		stdin_asset->read = terminal_read;
-		stdin_asset->ioctl = terminal_ioctl;
-		stdin_asset->stat = stdin_stat;
-		stdin_stat->st_mode = S_IRUSR | S_IWUSR;
+	stderr_file_handle->flags = O_WRONLY;
+	stderr_file_handle->asset = stderr_asset;
+	stderr_asset->write = terminal_write;
+	stderr_asset->ioctl = terminal_ioctl;
+	stderr_asset->stat = stderr_stat;
+	stderr_stat->st_mode = S_IRUSR | S_IWUSR;
 
-		stdout_file_handle->flags = O_WRONLY;
-		stdout_file_handle->asset = stdout_asset;
-		stdout_asset->write = terminal_write;
-		stdout_asset->ioctl = terminal_ioctl;
-		stdout_asset->stat = stdout_stat;
-		stdout_stat->st_mode = S_IRUSR | S_IWUSR;
-
-		stderr_file_handle->flags = O_WRONLY;
-		stderr_file_handle->asset = stderr_asset;
-		stderr_asset->write = terminal_write;
-		stderr_asset->ioctl = terminal_ioctl;
-		stderr_asset->stat = stderr_stat;
-		stderr_stat->st_mode = S_IRUSR | S_IWUSR;
-
-		hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
-		hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
-		hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
-	} else {
-		bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
-		for (size_t i = 0; i < task->fd_bitmap.size; i++) {
-			if (BIT_TEST(task->fd_bitmap.data, i)) {
-				int j = i;
-				struct fd_handle *handle = hash_table_search(&current_task->fd_list, &j, sizeof(j));
-				if (handle->flags & O_CLOEXEC) {
-					BIT_CLEAR(task->fd_bitmap.data, i);
-					file_put(handle->file_handle);
-					continue;
-				}
-				hash_table_push(&task->fd_list, &handle->fd_number, handle, sizeof(&handle->fd_number));
-			}
-		}
-	}
+	hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
+	hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
+	hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
 
 	struct sched_thread *thread = sched_thread_exec(task, entry_point, cs, &aux, arguments);
 
@@ -789,20 +770,33 @@ void syscall_execve(struct registers *regs) {
 	}
 
 	struct sched_task *current_task = CURRENT_TASK;
-	struct sched_task *new_task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING);
+	struct sched_task *task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING);
+
+	bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
+	for(size_t i = 3; i < task->fd_bitmap.size; i++) {
+		if(BIT_TEST(task->fd_bitmap.data, i)) {
+			struct fd_handle *handle = fd_translate(i);
+			if(handle->flags & O_CLOEXEC) {
+				fd_close(i);
+				continue;
+			}
+
+			hash_table_push(&task->fd_list, &handle->fd_number, handle, sizeof(handle->fd_number));
+		}
+	}
 
 	hash_table_delete(&task_list, &current_task->pid, sizeof(current_task->pid));
-	hash_table_delete(&task_list, &new_task->pid, sizeof(new_task->pid));
+	hash_table_delete(&task_list, &task->pid, sizeof(task->pid));
 
-	new_task->cwd = current_task->cwd;
-	new_task->pid = current_task->pid;
-	new_task->ppid = current_task->ppid;
-	new_task->exit_trigger = current_task->exit_trigger;
+	task->cwd = current_task->cwd;
+	task->pid = current_task->pid;
+	task->ppid = current_task->ppid;
+	task->exit_trigger = current_task->exit_trigger;
 
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
 
-	hash_table_push(&task_list, &new_task->pid, new_task, sizeof(new_task->pid));
+	hash_table_push(&task_list, &task->pid, task, sizeof(task->pid));
 
 	sched_yield();
 }
