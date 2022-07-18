@@ -258,6 +258,16 @@ struct sched_task *sched_default_task() {
 	task->event = alloc(sizeof(struct event));
 	task->exit_trigger = alloc(sizeof(struct event_trigger));
 
+	task->real_uid = 0;
+	task->effective_uid = 0;
+	task->saved_uid = 0;
+
+	task->real_gid = 0;
+	task->effective_gid = 0;
+	task->saved_gid = 0;
+
+	task->umask = 0777;
+
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,
 		.size = 0,
@@ -383,7 +393,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	CORE_LOCAL->pid = task->pid;
 
-	int fd = fd_openat(AT_FDCWD, path, 0);
+	int fd = fd_openat(AT_FDCWD, path, O_RDONLY);
 	if(fd == -1) {
 		fd_close(fd);
 		CORE_LOCAL->pid = current_task->pid;
@@ -406,7 +416,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	uint64_t entry_point = aux.at_entry;
 
 	if(ld_path) {
-		int ld_fd = fd_openat(AT_FDCWD, ld_path, 0);
+		int ld_fd = fd_openat(AT_FDCWD, ld_path, O_RDONLY);
 		if(ld_fd == -1) {
 			fd_close(ld_fd);
 			CORE_LOCAL->pid = current_task->pid;
@@ -762,6 +772,7 @@ void syscall_execve(struct registers *regs) {
 
 	print("\b\b}\n");
 #endif
+	struct sched_task *current_task = CURRENT_TASK;
 	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path, true);
 	if(vfs_node == NULL) {
 		set_errno(ENOENT);
@@ -769,7 +780,29 @@ void syscall_execve(struct registers *regs) {
 		return;
 	}
 
-	struct sched_task *current_task = CURRENT_TASK;
+	if(current_task->effective_uid != 0) {
+		if(vfs_node->asset->stat->st_uid == current_task->effective_uid) {
+			if(!(vfs_node->asset->stat->st_mode & S_IXUSR)) {
+				set_errno(EACCES);
+				regs->rax = -1;
+				return;
+			}
+		} else if(vfs_node->asset->stat->st_gid == current_task->effective_gid) {
+			if(!(vfs_node->asset->stat->st_mode & S_IXGRP)) {
+				set_errno(EACCES);
+				regs->rax = -1;
+				return;
+			}
+		} else if(!(vfs_node->asset->stat->st_mode & S_IXOTH)) {
+			set_errno(EACCES);
+			regs->rax = -1;
+			return;
+		}
+	}
+
+	bool is_suid = vfs_node->asset->stat->st_mode & S_ISUID ? true : false;
+	bool is_sgid = vfs_node->asset->stat->st_mode & S_ISGID ? true : false;
+
 	struct sched_task *task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING);
 
 	bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
@@ -793,6 +826,16 @@ void syscall_execve(struct registers *regs) {
 	task->ppid = current_task->ppid;
 	task->exit_trigger = current_task->exit_trigger;
 
+	task->real_uid = current_task->real_uid;
+	task->effective_uid = is_suid ? vfs_node->asset->stat->st_uid : current_task->effective_uid;
+	task->saved_uid = task->effective_uid;
+
+	task->real_gid = current_task->real_gid;
+	task->effective_gid = is_sgid ? vfs_node->asset->stat->st_gid : current_task->effective_gid;
+	task->saved_gid = task->effective_gid;
+
+	task->umask = current_task->umask;
+
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
 
@@ -805,7 +848,7 @@ void syscall_fork(struct registers *regs) {
 	spinlock(&sched_lock);
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: fork\n");
+	print("syscall: [pid %x] fork\n", CORE_LOCAL->pid);
 #endif
 
 	struct sched_task *current_task = CURRENT_TASK;
@@ -826,6 +869,16 @@ void syscall_fork(struct registers *regs) {
 	task->status = TASK_WAITING;
 	task->page_table = vmm_fork_page_table(current_task->page_table);
 	task->cwd = current_task->cwd;
+
+	task->real_uid = current_task->real_uid;
+	task->effective_uid = current_task->effective_uid;
+	task->saved_uid = current_task->saved_uid;
+
+	task->real_gid = current_task->real_gid;
+	task->effective_gid = current_task->effective_gid;
+	task->saved_gid = current_task->saved_gid;
+
+	task->umask = current_task->umask;
 
 	task->event = alloc(sizeof(struct event));
 	task->event->task = task;
@@ -888,4 +941,120 @@ void syscall_getppid(struct registers *regs) {
 
 void syscall_gettid(struct registers *regs) {
 	regs->rax = CORE_LOCAL->tid;
+}
+
+void syscall_getuid(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] getuid\n", CORE_LOCAL->pid);
+#endif
+	regs->rax = CURRENT_TASK->real_uid;
+}
+
+void syscall_geteuid(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] geteuid\n", CORE_LOCAL->pid);
+#endif
+	regs->rax = CURRENT_TASK->effective_uid;
+}
+
+void syscall_getgid(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] getgid\n", CORE_LOCAL->pid);
+#endif
+	regs->rax = CURRENT_TASK->real_gid;
+}
+
+void syscall_getegid(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] getegid\n", CORE_LOCAL->pid);
+#endif
+	regs->rax = CURRENT_TASK->effective_gid;
+}
+
+void syscall_setuid(struct registers *regs) {
+	uid_t uid = regs->rdi;
+	struct sched_task *current_task = CURRENT_TASK;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] setuid: uid {%x}\n", CORE_LOCAL->pid, uid);
+#endif
+
+	if(current_task->real_uid == 0 || current_task->effective_uid == 0 || current_task->saved_uid == 0) {
+		current_task->real_uid = uid;
+		current_task->effective_uid = uid;
+		current_task->saved_uid = uid;
+		regs->rax = 0;
+		return;
+	}
+
+	if(current_task->real_uid == uid || current_task->effective_uid == uid || current_task->saved_uid == uid) {
+		current_task->effective_uid = uid;
+		regs->rax = 0;
+		return;
+	}
+
+	set_errno(EPERM);
+	regs->rax = -1;
+}
+
+void syscall_seteuid(struct registers *regs) {
+	uid_t euid = regs->rdi;
+	struct sched_task *current_task = CURRENT_TASK;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] seteuid: euid {%x}\n", CORE_LOCAL->pid, euid);
+#endif
+
+	if(current_task->real_uid == euid || current_task->effective_uid == euid || current_task->saved_uid == euid) {
+		current_task->effective_uid = euid;
+		regs->rax = 0;
+		return;
+	}
+
+	set_errno(EPERM);
+	regs->rax = -1;
+}
+
+void syscall_setgid(struct registers *regs) {
+	gid_t gid = regs->rdi;
+	struct sched_task *current_task = CURRENT_TASK;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] setgid: gid {%x}\n", CORE_LOCAL->pid, gid);
+#endif
+
+	if(current_task->real_gid == 0 || current_task->effective_gid == 0 || current_task->saved_gid == 0) {
+		current_task->real_gid = gid;
+		current_task->effective_gid = gid;
+		current_task->saved_gid = gid;
+		regs->rax = 0;
+		return;
+	}
+
+	if(current_task->real_gid == gid || current_task->effective_gid == gid || current_task->saved_gid == gid) {
+		current_task->effective_gid = gid;
+		regs->rax = 0;
+		return;
+	}
+
+	set_errno(EPERM);
+	regs->rax = -1;
+}
+
+void syscall_setegid(struct registers *regs) {
+	uid_t egid = regs->rdi;
+	struct sched_task *current_task = CURRENT_TASK;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] setegid: egid {%x}\n", CORE_LOCAL->pid, egid);
+#endif
+
+	if(current_task->real_gid == egid || current_task->effective_gid == egid || current_task->saved_gid == egid) {
+		current_task->effective_gid = egid;
+		regs->rax = 0;
+		return;
+	}
+
+	set_errno(EPERM);
+	regs->rax = -1;
 }

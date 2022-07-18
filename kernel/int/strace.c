@@ -34,6 +34,15 @@ extern void syscall_getcwd(struct registers*);
 extern void syscall_faccessat(struct registers*);
 extern void syscall_pipe(struct registers*);
 extern void syscall_ioctl(struct registers*);
+extern void syscall_umask(struct registers*);
+extern void syscall_getuid(struct registers*);
+extern void syscall_geteuid(struct registers*);
+extern void syscall_setuid(struct registers*);
+extern void syscall_seteuid(struct registers*);
+extern void syscall_getgid(struct registers*);
+extern void syscall_getegid(struct registers*);
+extern void syscall_setgid(struct registers*);
+extern void syscall_setegid(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -115,7 +124,16 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_getcwd, .name = "getcwd" }, // 27
 	{ .handler = syscall_chdir, .name = "chdir" }, // 28
 	{ .handler = syscall_faccessat, .name = "faccessat" }, // 29
-	{ .handler = syscall_pipe, .name = "pipe" } // 30
+	{ .handler = syscall_pipe, .name = "pipe" }, // 30
+	{ .handler = syscall_umask, .name = "umask" }, // 31
+	{ .handler = syscall_getuid, .name = "getuid" }, // 32
+	{ .handler = syscall_geteuid, .name = "geteuid" }, // 33
+	{ .handler = syscall_setuid, .name = "setuid" }, // 34
+	{ .handler = syscall_seteuid, .name = "seteuid" }, // 35
+	{ .handler = syscall_getgid, .name = "getgid" }, // 36
+	{ .handler = syscall_getegid, .name = "getegid" }, // 37
+	{ .handler = syscall_setgid, .name = "setgid" }, // 38
+	{ .handler = syscall_setegid, .name = "setegid" } // 39
 };
 
 extern void syscall_handler(struct registers *regs) {
@@ -137,6 +155,6 @@ extern void syscall_handler(struct registers *regs) {
 	}
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: %s returning %x with errno %d\n", syscall_list[syscall_number].name, regs->rax, get_errno());
+	print("syscall: [pid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid, syscall_list[syscall_number].name, regs->rax, get_errno());
 #endif
 }
