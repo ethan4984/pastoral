@@ -12,6 +12,39 @@
 
 static char fd__lock;
 
+
+static bool has_access(struct stat *st, uid_t uid, gid_t gid, int mode) {
+	if (uid == 0)
+		return true;
+
+	int flag_uid = 0, flag_gid = 0, flag_oth = 0;
+
+	if(mode & R_OK) {
+		flag_uid |= S_IRUSR; flag_gid |= S_IRGRP; flag_oth |= S_IROTH;
+	}
+	if(mode & W_OK) {
+		flag_uid |= S_IWUSR; flag_gid |= S_IWGRP; flag_oth |= S_IWOTH;
+	}
+	if(mode & X_OK) {
+		flag_uid |= S_IXUSR; flag_gid |= S_IXGRP; flag_oth |= S_IXOTH;
+	}
+
+	if(st->st_uid == uid) {
+		if((st->st_mode & flag_uid) != flag_uid)
+			return false;
+		return true;
+	} else if(st->st_gid == gid) {
+		if((st->st_mode & flag_gid) != flag_gid)
+			return false;
+		return true;
+	} else {
+		if((st->st_mode & flag_oth) != flag_oth)
+			return false;
+		return true;
+	}
+}
+
+
 struct fd_handle *fd_translate(int index) {
 	struct sched_task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
@@ -75,6 +108,12 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		return -1;
 	}
 
+	if((fd_handle->file_handle->flags & O_ACCMODE) != O_WRONLY
+		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
+		set_errno(EBADF);
+		return -1;
+	}
+
 	ssize_t ret;
 	if(S_ISFIFO(stat->st_mode) && fd_handle->file_handle->pipe) {
 		ret = asset->write(asset, fd_handle->file_handle->pipe->buffer, fd_handle->file_handle->position, count, buf);
@@ -106,6 +145,12 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 
 	if(asset->read == NULL) {
 		set_errno(EINVAL);
+		return -1;
+	}
+
+	if((fd_handle->file_handle->flags & O_ACCMODE) != O_RDONLY
+		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
+		set_errno(EBADF);
 		return -1;
 	}
 
@@ -189,6 +234,11 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		return -1;
 	}
 
+	// TODO: Remove this hack. Someone is pretending 0 is
+	// O_RDONLY, but it isn't.
+	if ((flags & O_ACCMODE) == 0)
+		flags |= O_RDONLY;
+
 	int relative = *path == '/' ? 0 : 1;
 	struct vfs_node *dir;
 
@@ -216,15 +266,34 @@ int fd_openat(int dirfd, const char *path, int flags) {
 			return -1;
 		}
 
-		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1); 
+		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1);
 		strcpy(name, path + find_last_char(path, '/'));
 
-		vfs_node = parent->filesystem->create(parent, name, S_IFREG);
+		// TODO: this should not be umask.
+		vfs_node = parent->filesystem->create(parent, name, S_IFREG | (CURRENT_TASK->umask));
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
 	} else if(flags & O_CREAT && flags & O_EXEC) {
 		set_errno(EEXIST);
+		return -1;
+	}
+
+	int access_mode = 0;
+	if((flags & O_ACCMODE) == O_RDONLY) {
+		access_mode = R_OK;
+	} else if((flags & O_ACCMODE) == O_WRONLY) {
+		access_mode = W_OK;
+	} else if((flags & O_ACCMODE) == O_RDWR) {
+		access_mode = R_OK | W_OK;
+	} else {
+		set_errno(EINVAL);
+		return -1;
+	}
+
+	if(!has_access(vfs_node->asset->stat, CURRENT_TASK->effective_uid,
+					CURRENT_TASK->effective_gid, access_mode)) {
+		set_errno(EACCES);
 		return -1;
 	}
 
@@ -249,7 +318,6 @@ int fd_openat(int dirfd, const char *path, int flags) {
 	}
 
 	hash_table_push(&current_task->fd_list, &new_fd_handle->fd_number, new_fd_handle, sizeof(new_fd_handle->fd_number));
-
 	return new_fd_handle->fd_number;
 }
 
@@ -740,6 +808,12 @@ void syscall_faccessat(struct registers *regs) {
 	print("syscall: [pid %x] faccessat: dirfd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, dirfd, path, mode, flags);
 #endif
 
+	if (!(mode & F_OK) && !(mode & (R_OK | W_OK | X_OK))) {
+		set_errno(EINVAL);
+		regs->rax = -1;
+		return;
+	}
+
 	int relative = *path == '/' ? 0 : 1;
 	struct vfs_node *dir;
 
@@ -771,9 +845,19 @@ void syscall_faccessat(struct registers *regs) {
 		set_errno(ENOENT);
 		regs->rax = -1;
 		return;
+	} else if (flags == F_OK) {
+		regs->rax = 0;
+		return;
 	}
 
-	// TODO actually check permissions
+	uid_t uid = flags & AT_EACCESS ? CURRENT_TASK->effective_uid : CURRENT_TASK->real_uid;
+	gid_t gid = flags & AT_EACCESS ? CURRENT_TASK->effective_gid : CURRENT_TASK->real_gid;
+
+	if(!has_access(vfs_node->asset->stat, uid, gid, mode)) {
+		set_errno(EACCES);
+		regs->rax = -1;
+		return;
+	}
 
 	regs->rax = 0;
 }
@@ -845,3 +929,16 @@ void syscall_ioctl(struct registers *regs) {
 
 	regs->rax = fd_handle->file_handle->asset->ioctl(fd_handle->file_handle->asset, fd, req, args);
 }
+
+void syscall_umask(struct registers *regs) {
+	mode_t mask = regs->rdi & 0777;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] umask: mask {%x}\n", CORE_LOCAL->pid, mask);
+#endif
+
+	regs->rax = CURRENT_TASK->umask;
+	CURRENT_TASK->umask = mask;
+}
+
+

@@ -71,6 +71,17 @@ struct sched_task {
 	size_t status;
 	int process_status;
 
+
+	uid_t real_uid;
+	uid_t effective_uid;
+	uid_t saved_uid;
+
+	gid_t real_gid;
+	gid_t effective_gid;
+	gid_t saved_gid;
+
+	mode_t umask;
+
 	VECTOR(struct sched_task*) children;
 
 	struct page_table *page_table;

@@ -4,13 +4,13 @@ index b781895..8ebcb71 100644
 +++ b/ports/mlibc-workdir/meson.build
 @@ -44,7 +44,7 @@ if not headers_only
  	c_compiler = meson.get_compiler('c')
- 
+
  	add_project_arguments('-nostdinc', '-fno-builtin', language: ['c', 'cpp'])
 -	add_project_arguments('-std=c++17', language: 'cpp')
 +	add_project_arguments('-std=gnu++17', language: 'cpp')
  	add_project_arguments('-fno-rtti', '-fno-exceptions', language: 'cpp')
  	add_project_link_arguments('-nostdlib', language: ['c', 'cpp'])
- 
+
 @@ -89,6 +89,10 @@ elif host_machine.system() == 'qword'
  	rtdl_include_dirs += include_directories('sysdeps/qword/include')
  	libc_include_dirs += include_directories('sysdeps/qword/include')
@@ -170,6 +170,15 @@ index 0000000..ddc5004
 +#define SYSCALL_CHDIR 28
 +#define SYSCALL_FACCESSAT 29
 +#define SYSCALL_PIPE 30
++#define SYSCALL_UMASK 31
++#define SYSCALL_GETUID 32
++#define SYSCALL_GETEUID 33
++#define SYSCALL_SETUID 34
++#define SYSCALL_SETEUID 35
++#define SYSCALL_GETGID 36
++#define SYSCALL_GETEGID 37
++#define SYSCALL_SETGID 38
++#define SYSCALL_SETEGID 39
 +
 +namespace mlibc {
 +
@@ -405,7 +414,7 @@ index 0000000..ddc5004
 +
 +int sys_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact) {
 +	mlibc::infoLogger() << "mlibc: " << __func__ << " is a stub!\n" << frg::endlog;
-+	return 0; 
++	return 0;
 +}
 +
 +int sys_pselect(int num_fds, fd_set *read_set, fd_set *write_set, fd_set *except_set,
@@ -514,7 +523,88 @@ index 0000000..ddc5004
 +		return errno;
 +	}
 +
-+	return 0; 
++	return 0;
++}
++
++int sys_umask(mode_t mode, mode_t *old) {
++	int errno, ret;
++	SYSCALL1(SYSCALL_UMASK, mode);
++
++	*old = ret;
++	return mode;
++}
++
++uid_t sys_getuid() {
++	int errno, ret;
++	SYSCALL0(SYSCALL_GETUID);
++
++	return ret;
++}
++
++uid_t sys_geteuid() {
++	int errno, ret;
++	SYSCALL0(SYSCALL_GETEUID);
++
++	return ret;
++}
++
++int sys_setuid(uid_t uid) {
++	int errno, ret;
++	SYSCALL1(SYSCALL_SETUID, uid);
++
++	if (ret == -1) {
++		return errno;
++	}
++
++	return 0;
++}
++
++int sys_seteuid(uid_t euid) {
++	int errno, ret;
++	SYSCALL1(SYSCALL_SETEUID, euid);
++
++	if (ret == -1) {
++		return errno;
++	}
++
++	return 0;
++}
++
++uid_t sys_getgid() {
++	int errno, ret;
++	SYSCALL0(SYSCALL_GETGID);
++
++	return ret;
++}
++
++uid_t sys_getegid() {
++	int errno, ret;
++	SYSCALL0(SYSCALL_GETEGID);
++
++	return ret;
++}
++
++
++int sys_setgid(uid_t gid) {
++	int errno, ret;
++	SYSCALL1(SYSCALL_SETGID, gid);
++
++	if (ret == -1) {
++		return errno;
++	}
++
++	return 0;
++}
++
++int sys_setegid(uid_t egid) {
++	int errno, ret;
++	SYSCALL1(SYSCALL_SETEGID, egid);
++
++	if (ret == -1) {
++		return errno;
++	}
++
++	return 0;
 +}
 +
 +} // namespace mlibc
