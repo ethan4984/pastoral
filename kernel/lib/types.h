@@ -59,7 +59,7 @@ struct timespec {
 #define S_IRUSR 0400
 #define S_IWUSR 0200
 #define S_IXUSR 0100
-#define S_IRXWG 070
+#define S_IRWXG 070
 #define S_IRGRP 040
 #define S_IWGRP 020
 #define S_IXGRP 010

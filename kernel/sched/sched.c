@@ -782,24 +782,11 @@ void syscall_execve(struct registers *regs) {
 		return;
 	}
 
-	if(current_task->effective_uid != 0) {
-		if(vfs_node->asset->stat->st_uid == current_task->effective_uid) {
-			if(!(vfs_node->asset->stat->st_mode & S_IXUSR)) {
-				set_errno(EACCES);
-				regs->rax = -1;
-				return;
-			}
-		} else if(vfs_node->asset->stat->st_gid == current_task->effective_gid) {
-			if(!(vfs_node->asset->stat->st_mode & S_IXGRP)) {
-				set_errno(EACCES);
-				regs->rax = -1;
-				return;
-			}
-		} else if(!(vfs_node->asset->stat->st_mode & S_IXOTH)) {
-			set_errno(EACCES);
-			regs->rax = -1;
-			return;
-		}
+	if(stat_has_access(vfs_node->asset->stat, current_task->effective_uid,
+		current_task->effective_gid, X_OK) == -1) {
+		set_errno(EACCES);
+		regs->rax = -1;
+		return;
 	}
 
 	bool is_suid = vfs_node->asset->stat->st_mode & S_ISUID ? true : false;

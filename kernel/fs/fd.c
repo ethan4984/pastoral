@@ -33,7 +33,34 @@ static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 	return 0;
 }
 
-static int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode) {
+static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
+	struct vfs_node *dirnode;
+	if(user_dir_lookup(dirfd, path, &dirnode) == -1) {
+		return -1;
+	}
+
+	bool symlink_follow = lookup_flags & AT_SYMLINK_NOFOLLOW ? true : false;
+	bool effective_ids = lookup_flags & AT_EACCESS ? true : false;
+
+	struct vfs_node *vfs_node = vfs_search_absolute(dirnode, path, symlink_follow);
+	if(vfs_node == NULL) {
+		return -1;
+	}
+
+	uid_t uid = effective_ids ? CURRENT_TASK->effective_uid : CURRENT_TASK->real_uid;
+	gid_t gid = effective_ids ? CURRENT_TASK->effective_gid : CURRENT_TASK->real_gid;
+
+	struct stat *stat = vfs_node->asset->stat;
+
+	if(stat_has_access(stat, uid, gid, mode) == -1) {
+		return -1;
+	}
+
+	*ret = vfs_node;
+	return 0;
+}
+
+int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode) {
 	if(uid == 0) {
 		return 0;
 	}
@@ -61,33 +88,6 @@ static int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode) {
 		return -1;
 	}
 
-}
-
-static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
-	struct vfs_node *dirnode;
-	if(user_dir_lookup(dirfd, path, &dirnode) == -1) {
-		return -1;
-	}
-
-	bool symlink_follow = lookup_flags & AT_SYMLINK_NOFOLLOW ? true : false;
-	bool effective_ids = lookup_flags & AT_EACCESS ? true : false;
-
-	struct vfs_node *vfs_node = vfs_search_absolute(dirnode, path, symlink_follow);
-	if(vfs_node == NULL) {
-		return -1;
-	}
-
-	uid_t uid = effective_ids ? CURRENT_TASK->effective_uid : CURRENT_TASK->real_uid;
-	gid_t gid = effective_ids ? CURRENT_TASK->effective_gid : CURRENT_TASK->real_gid;
-
-	struct stat *stat = vfs_node->asset->stat;
-
-	if(stat_has_access(stat, uid, gid, mode) == -1) {
-		return -1;
-	}
-
-	*ret = vfs_node;
-	return 0;
 }
 
 struct fd_handle *fd_translate(int index) {
@@ -308,11 +308,25 @@ int fd_openat(int dirfd, const char *path, int flags) {
 			return -1;
 		}
 
+		if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK) == -1) {
+			set_errno(EACCES);
+			return -1;
+		}
+
 		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1);
 		strcpy(name, path + find_last_char(path, '/'));
 
 		// TODO: this should not be umask.
 		vfs_node = parent->filesystem->create(parent, name, S_IFREG | (CURRENT_TASK->umask));
+		vfs_node->asset->stat->st_uid = CURRENT_TASK->effective_uid;
+
+		// Behave like Linux and Solaris. If the SGID bit of the parent directory is set,
+		// the group of the new file is going to be the GID of the parent directory.
+		// Otherwise, it's going to be the effective GID.
+		if(parent->asset->stat->st_mode & S_ISGID)
+			vfs_node->asset->stat->st_gid = parent->asset->stat->st_gid;
+		else
+			vfs_node->asset->stat->st_uid = CURRENT_TASK->effective_gid;
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
@@ -934,4 +948,56 @@ void syscall_umask(struct registers *regs) {
 	CURRENT_TASK->umask = mask;
 }
 
+static int stat_chmod(struct stat *stat, mode_t mode) {
+	if(CURRENT_TASK->effective_uid != stat->st_uid
+		|| CURRENT_TASK->effective_uid != 0) {
+		set_errno(EPERM);
+		return -1;
+	}
 
+	stat->st_mode |= (mode & (
+		S_IRWXU | S_IRWXG | S_IRWXO | S_ISUID | S_ISGID | S_ISVTX
+	));
+	return 0;
+}
+
+
+void syscall_fchmod(struct registers *regs) {
+	int fd = regs->rdi;
+	mode_t mode = regs->rsi;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] fchmod: fd {%x}, mode {%x}\n", CORE_LOCAL->pid, fd, mode);
+#endif
+
+	struct fd_handle *handle = fd_translate(fd);
+	if(handle == NULL) {
+		set_errno(EBADF);
+		regs->rax = -1;
+		return;
+	}
+
+	regs->rax = stat_chmod(handle->file_handle->asset->stat, mode);
+}
+
+
+void syscall_fchmodat(struct registers *regs) {
+	int fd = regs->rdi;
+	const char *path = (const char*) regs->rsi;
+	mode_t mode = regs->rdx;
+	int flags = regs->r8;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] fchmodat: fd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, fd, path, mode, flags);
+#endif
+
+	struct vfs_node *file;
+	user_lookup_at(fd, path, 0, flags, &file);
+	if (file == NULL) {
+		set_errno(ENOENT);
+		regs->rax = -1;
+		return;
+	}
+
+	regs->rax = stat_chmod(file->asset->stat, mode);
+}

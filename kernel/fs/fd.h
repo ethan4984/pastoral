@@ -76,6 +76,7 @@ static inline void file_put(struct file_handle *handle) {
 }
 
 
+int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode);
 struct fd_handle *fd_translate(int index);
 ssize_t fd_write(int fd, const void *buf, size_t count);
 ssize_t fd_read(int fd, void *buf, size_t count);
