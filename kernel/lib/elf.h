@@ -16,10 +16,10 @@
 #define ELF_LITTLE_ENDIAN 0x1
 #define ELF_MACH_X86_64 0x3e
 
-#define ELF_AT_ENTRY 10
-#define ELF_AT_PHDR 20
-#define ELF_AT_PHENT 21
-#define ELF_AT_PHNUM 22
+#define ELF_AT_ENTRY 9
+#define ELF_AT_PHDR 3
+#define ELF_AT_PHENT 4
+#define ELF_AT_PHNUM 5
 
 #define ELF_PT_NULL 0x0
 #define ELF_PT_LOAD 0x1

@@ -71,7 +71,6 @@ struct sched_task {
 	size_t status;
 	int process_status;
 
-
 	uid_t real_uid;
 	uid_t effective_uid;
 	uid_t saved_uid;

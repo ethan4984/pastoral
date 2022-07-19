@@ -328,6 +328,8 @@ static uint64_t sched_arg_placement(struct sched_arguments *arguments, uint64_t 
 	ptr[6] = ELF_AT_ENTRY; ptr[7] = aux->at_entry;
 	ptr[8] = 0; ptr[9] = 0;
 
+	print("setting to troll %x\n", ptr[5]);
+
 	*(--ptr) = 0;
 	ptr -= arguments->envp_cnt;
 
@@ -698,7 +700,7 @@ void syscall_exit(struct registers *regs) {
 		VECTOR_PUSH(parent->children, child);
 	}
 
-	VECTOR_REMOVE_BY_VALUE(sched_translate_pid(task->ppid)->children, task);
+	//VECTOR_REMOVE_BY_VALUE(sched_translate_pid(task->ppid)->children, task);
 
 	task->process_status = status | 0x200;
 	event_fire(task->exit_trigger);

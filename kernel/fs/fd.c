@@ -12,38 +12,83 @@
 
 static char fd__lock;
 
+static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
+	bool relative = *path != '/' ? true : false;
 
-static bool has_access(struct stat *st, uid_t uid, gid_t gid, int mode) {
-	if (uid == 0)
-		return true;
-
-	int flag_uid = 0, flag_gid = 0, flag_oth = 0;
-
-	if(mode & R_OK) {
-		flag_uid |= S_IRUSR; flag_gid |= S_IRGRP; flag_oth |= S_IROTH;
-	}
-	if(mode & W_OK) {
-		flag_uid |= S_IWUSR; flag_gid |= S_IWGRP; flag_oth |= S_IWOTH;
-	}
-	if(mode & X_OK) {
-		flag_uid |= S_IXUSR; flag_gid |= S_IXGRP; flag_oth |= S_IXOTH;
-	}
-
-	if(st->st_uid == uid) {
-		if((st->st_mode & flag_uid) != flag_uid)
-			return false;
-		return true;
-	} else if(st->st_gid == gid) {
-		if((st->st_mode & flag_gid) != flag_gid)
-			return false;
-		return true;
+	if(relative) {
+		if(dirfd == AT_FDCWD) {
+			*ret = CURRENT_TASK->cwd;
+		} else {
+			struct fd_handle *dir_handle = fd_translate(dirfd);
+			if(dir_handle == NULL) {
+				set_errno(EBADF);
+				return -1;
+			}
+			*ret = dir_handle->file_handle->vfs_node;
+		}
 	} else {
-		if((st->st_mode & flag_oth) != flag_oth)
-			return false;
-		return true;
+		*ret = vfs_root;
 	}
+
+	return 0;
 }
 
+static int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode) {
+	if(uid == 0) {
+		return 0;
+	}
+
+	mode_t mask_uid = 0, mask_gid = 0, mask_oth = 0;
+
+	if(mode & R_OK) { mask_uid |= S_IRUSR; mask_gid |= S_IRGRP; mask_oth |= S_IROTH; }
+	if(mode & W_OK) { mask_uid |= S_IWUSR; mask_gid |= S_IWGRP; mask_oth |= S_IWOTH; }
+	if(mode & X_OK) { mask_uid |= S_IXUSR; mask_gid |= S_IXGRP; mask_oth |= S_IXOTH; }
+
+	if(stat->st_uid == uid) {
+		if((stat->st_mode & mask_uid) == mask_uid) {
+			return 0;
+		}
+		return -1;
+	} else if(stat->st_gid == gid) {
+		if((stat->st_mode & mask_gid) == mask_gid) {
+			return 0;
+		}
+		return -1;
+	} else {
+		if((stat->st_mode & mask_oth) == mask_oth) {
+			return 0;
+		}
+		return -1;
+	}
+
+}
+
+static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
+	struct vfs_node *dirnode;
+	if(user_dir_lookup(dirfd, path, &dirnode) == -1) {
+		return -1;
+	}
+
+	bool symlink_follow = lookup_flags & AT_SYMLINK_NOFOLLOW ? true : false;
+	bool effective_ids = lookup_flags & AT_EACCESS ? true : false;
+
+	struct vfs_node *vfs_node = vfs_search_absolute(dirnode, path, symlink_follow);
+	if(vfs_node == NULL) {
+		return -1;
+	}
+
+	uid_t uid = effective_ids ? CURRENT_TASK->effective_uid : CURRENT_TASK->real_uid;
+	gid_t gid = effective_ids ? CURRENT_TASK->effective_gid : CURRENT_TASK->real_gid;
+
+	struct stat *stat = vfs_node->asset->stat;
+
+	if(stat_has_access(stat, uid, gid, mode) == -1) {
+		return -1;
+	}
+
+	*ret = vfs_node;
+	return 0;
+}
 
 struct fd_handle *fd_translate(int index) {
 	struct sched_task *current_task = CURRENT_TASK;
@@ -234,27 +279,24 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		return -1;
 	}
 
-	// TODO: Remove this hack. Someone is pretending 0 is
-	// O_RDONLY, but it isn't.
-	if ((flags & O_ACCMODE) == 0)
+	if((flags & O_ACCMODE) == 0)
 		flags |= O_RDONLY;
 
-	int relative = *path == '/' ? 0 : 1;
-	struct vfs_node *dir;
-
-	if(!relative) {
-		dir = vfs_root;
+	int access_mode = 0;
+	if((flags & O_ACCMODE) == O_RDONLY) {
+		access_mode = R_OK;
+	} else if((flags & O_ACCMODE) == O_WRONLY) {
+		access_mode = W_OK;
+	} else if((flags & O_ACCMODE) == O_RDWR) {
+		access_mode = R_OK | W_OK;
 	} else {
-		if(dirfd == AT_FDCWD) {
-			dir = CURRENT_TASK->cwd;
-		} else {
-			struct fd_handle *dir_handle = fd_translate(dirfd);
-			if(dir_handle == NULL) {
-				set_errno(EBADF);
-				return -1;
-			}
-			dir = dir_handle->file_handle->vfs_node;
-		}
+		set_errno(EINVAL);
+		return -1;
+	}
+
+	struct vfs_node *dir;
+	if(user_dir_lookup(dirfd, path, &dir) == -1) {
+		return -1;
 	}
 
 	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, true);
@@ -274,25 +316,9 @@ int fd_openat(int dirfd, const char *path, int flags) {
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		return -1;
-	} else if(flags & O_CREAT && flags & O_EXEC) {
-		set_errno(EEXIST);
-		return -1;
 	}
 
-	int access_mode = 0;
-	if((flags & O_ACCMODE) == O_RDONLY) {
-		access_mode = R_OK;
-	} else if((flags & O_ACCMODE) == O_WRONLY) {
-		access_mode = W_OK;
-	} else if((flags & O_ACCMODE) == O_RDWR) {
-		access_mode = R_OK | W_OK;
-	} else {
-		set_errno(EINVAL);
-		return -1;
-	}
-
-	if(!has_access(vfs_node->asset->stat, CURRENT_TASK->effective_uid,
-					CURRENT_TASK->effective_gid, access_mode)) {
+	if(stat_has_access(vfs_node->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, access_mode) == -1) {
 		set_errno(EACCES);
 		return -1;
 	}
@@ -814,47 +840,14 @@ void syscall_faccessat(struct registers *regs) {
 		return;
 	}
 
-	int relative = *path == '/' ? 0 : 1;
-	struct vfs_node *dir;
+	int lookup_flags = 0;
 
-	if(!relative) {
-		dir = vfs_root;
-	} else {
-		if(dirfd == AT_FDCWD) {
-			dir = CURRENT_TASK->cwd;
-		} else {
-			struct fd_handle *fd_handle = fd_translate(dirfd);
-			if(fd_handle == NULL) {
-				set_errno(EBADF);
-				regs->rax = -1;
-				return;
-			}
+	if(flags & AT_SYMLINK_NOFOLLOW) lookup_flags |= AT_SYMLINK_NOFOLLOW;
+	if(flags & AT_EMPTY_PATH) lookup_flags |= AT_EMPTY_PATH;
 
-			if(!S_ISDIR(fd_handle->file_handle->asset->stat->st_mode)) {
-				set_errno(EBADF);
-				regs->rax = -1;
-				return;
-			}
-
-			dir = fd_handle->file_handle->vfs_node;
-		}
-	}
-
-	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, true);
-	if(vfs_node == NULL) {
+	struct vfs_node *node;
+	if(user_lookup_at(dirfd, path, lookup_flags, mode, &node) == -1) {
 		set_errno(ENOENT);
-		regs->rax = -1;
-		return;
-	} else if (flags == F_OK) {
-		regs->rax = 0;
-		return;
-	}
-
-	uid_t uid = flags & AT_EACCESS ? CURRENT_TASK->effective_uid : CURRENT_TASK->real_uid;
-	gid_t gid = flags & AT_EACCESS ? CURRENT_TASK->effective_gid : CURRENT_TASK->real_gid;
-
-	if(!has_access(vfs_node->asset->stat, uid, gid, mode)) {
-		set_errno(EACCES);
 		regs->rax = -1;
 		return;
 	}
