@@ -76,10 +76,11 @@ static inline void file_put(struct file_handle *handle) {
 }
 
 
+int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode);
 struct fd_handle *fd_translate(int index);
 ssize_t fd_write(int fd, const void *buf, size_t count);
 ssize_t fd_read(int fd, void *buf, size_t count);
 off_t fd_seek(int fd, off_t offset, int whence);
-int fd_openat(int dirfd, const char *path, int flags);
+int fd_openat(int dirfd, const char *path, int flags, mode_t mode);
 int fd_close(int fd);
 int fd_generate_dirent(struct fd_handle *dir_handle, struct vfs_node *node, struct dirent *entry);

@@ -395,7 +395,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	CORE_LOCAL->pid = task->pid;
 
-	int fd = fd_openat(AT_FDCWD, path, O_RDONLY);
+	int fd = fd_openat(AT_FDCWD, path, O_RDONLY, 0);
 	if(fd == -1) {
 		fd_close(fd);
 		CORE_LOCAL->pid = current_task->pid;
@@ -418,7 +418,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	uint64_t entry_point = aux.at_entry;
 
 	if(ld_path) {
-		int ld_fd = fd_openat(AT_FDCWD, ld_path, O_RDONLY);
+		int ld_fd = fd_openat(AT_FDCWD, ld_path, O_RDONLY, 0);
 		if(ld_fd == -1) {
 			fd_close(ld_fd);
 			CORE_LOCAL->pid = current_task->pid;
@@ -782,24 +782,11 @@ void syscall_execve(struct registers *regs) {
 		return;
 	}
 
-	if(current_task->effective_uid != 0) {
-		if(vfs_node->asset->stat->st_uid == current_task->effective_uid) {
-			if(!(vfs_node->asset->stat->st_mode & S_IXUSR)) {
-				set_errno(EACCES);
-				regs->rax = -1;
-				return;
-			}
-		} else if(vfs_node->asset->stat->st_gid == current_task->effective_gid) {
-			if(!(vfs_node->asset->stat->st_mode & S_IXGRP)) {
-				set_errno(EACCES);
-				regs->rax = -1;
-				return;
-			}
-		} else if(!(vfs_node->asset->stat->st_mode & S_IXOTH)) {
-			set_errno(EACCES);
-			regs->rax = -1;
-			return;
-		}
+	if(stat_has_access(vfs_node->asset->stat, current_task->effective_uid,
+		current_task->effective_gid, X_OK) == -1) {
+		set_errno(EACCES);
+		regs->rax = -1;
+		return;
 	}
 
 	bool is_suid = vfs_node->asset->stat->st_mode & S_ISUID ? true : false;

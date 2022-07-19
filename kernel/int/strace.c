@@ -43,6 +43,8 @@ extern void syscall_getgid(struct registers*);
 extern void syscall_getegid(struct registers*);
 extern void syscall_setgid(struct registers*);
 extern void syscall_setegid(struct registers*);
+extern void syscall_fchmod(struct registers*);
+extern void syscall_fchmodat(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -133,7 +135,9 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_getgid, .name = "getgid" }, // 36
 	{ .handler = syscall_getegid, .name = "getegid" }, // 37
 	{ .handler = syscall_setgid, .name = "setgid" }, // 38
-	{ .handler = syscall_setegid, .name = "setegid" } // 39
+	{ .handler = syscall_setegid, .name = "setegid" }, // 39
+	{ .handler = syscall_fchmod, .name = "fchmod" }, // 40
+	{ .handler = syscall_fchmodat, .name = "fchmodat"} // 41
 };
 
 extern void syscall_handler(struct registers *regs) {
