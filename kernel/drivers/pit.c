@@ -1,32 +1,82 @@
 #include <int/idt.h> 
+#include <sched/sched.h>
 #include <int/apic.h>
 #include <lib/cpu.h>
 #include <time.h>
 #include <debug.h>
 #include <limine.h>
 
-#define TIMER_FREQ 1000
-#define PIT_FREQ 1193182
+#define PIT_FREQ 1000
 
 struct timespec clock_realtime;
 struct timespec clock_monotonic;
+
+VECTOR(struct timer*) timer_list;
 
 static volatile struct limine_boot_time_request limine_boot_time_request = {
 	.id = LIMINE_BOOT_TIME_REQUEST,
 	.revision = 0
 };
 
-void pit_handler(struct registers*, void*) {
-	struct timespec interval = { .tv_sec = 0, .tv_nsec = 1000000000 / TIMER_FREQ };
+struct timespec timespec_add(struct timespec a, struct timespec b) {
+	struct timespec ret = {
+		.tv_nsec = a.tv_nsec + b.tv_nsec,
+		.tv_sec = a.tv_sec + b.tv_sec
+	};
 
-	time_add_interval(&clock_realtime, &interval);
-	time_add_interval(&clock_monotonic, &interval);
+	if(ret.tv_nsec > TIMER_HZ) {
+		ret.tv_nsec -= TIMER_HZ;
+		ret.tv_sec++;
+	}
+
+	return ret;
+}
+
+struct timespec timespec_sub(struct timespec a, struct timespec b) {
+	struct timespec ret = {
+		.tv_nsec = a.tv_nsec - b.tv_nsec,
+		.tv_sec = a.tv_sec - b.tv_sec
+	};
+
+	if(ret.tv_nsec < 0) {
+		ret.tv_nsec += TIMER_HZ;
+		ret.tv_sec--;
+	}
+
+	if(ret.tv_sec < 0) {
+		ret.tv_nsec = 0;
+		ret.tv_sec = 0;
+	}
+
+	return ret;
+}
+
+void pit_handler(struct registers*, void*) {
+	struct timespec interval = { .tv_sec = 0, .tv_nsec = TIMER_HZ / PIT_FREQ };
+
+	clock_realtime = timespec_add(clock_realtime, interval);
+	clock_monotonic = timespec_add(clock_monotonic, interval);
+
+	for(size_t i = 0; i < timer_list.length; i++) {
+		struct timer *timer = timer_list.data[i];
+
+		timer->timespec = timespec_sub(timer->timespec, interval);
+
+		if(timer->timespec.tv_nsec == 0 && timer->timespec.tv_sec == 0) {
+			for(size_t j = 0; j < timer->triggers.length; j++) {
+				struct event_trigger *trigger = timer->triggers.data[j];
+				event_fire(trigger);
+			}
+			
+			VECTOR_REMOVE_BY_INDEX(timer_list, i);
+		}
+	}
 }
 
 void pit_init() {
-	int divisor = PIT_FREQ / TIMER_FREQ;
+	int divisor = 1193182 / PIT_FREQ;
 
-	if((TIMER_FREQ % TIMER_FREQ) > (TIMER_FREQ / 2)) { // round up
+	if((1193182 % PIT_FREQ) > (PIT_FREQ / 2)) { // round up
 		divisor++;
 	}
 

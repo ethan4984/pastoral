@@ -12,7 +12,8 @@
 #define EVENT_PROC_EXIT 0
 #define EVENT_FD_READ 1
 #define EVENT_FD_WRITE 2
-#define EVENT_HDA_CMD 3
+#define EVENT_TIMER_TRIGGE 3
+#define EVENT_HDA_CMD 4
 
 struct event_trigger {
 	struct sched_task *agent_task;
@@ -27,6 +28,9 @@ struct event {
 	struct sched_thread *thread;
 
 	VECTOR(struct event_trigger*) triggers;
+
+	struct timespec timer;
+	struct event_trigger *timer_trigger;
 
 	int pending;
 	char lock;
