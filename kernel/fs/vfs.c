@@ -65,7 +65,7 @@ void vfs_init() {
 	vfs_root = alloc(sizeof(struct asset));
 
 	vfs_root->name = "/";
-	vfs_root->asset = vfs_default_asset(S_IFDIR);
+	vfs_root->asset = vfs_default_asset(S_IFDIR | S_IRWXU | S_IRGRP | S_IXGRP | S_IXOTH);
 	vfs_root->filesystem = &ramfs_filesystem;
 	vfs_root->parent = NULL;
 
@@ -78,7 +78,7 @@ void vfs_init() {
 	struct vfs_node *last_directory = alloc(sizeof(struct vfs_node));
 
 	current_directory->name = ".";
-	current_directory->asset = vfs_default_asset(S_IFDIR);
+	current_directory->asset = vfs_default_asset(S_IFDIR | S_IRWXU | S_IRGRP | S_IXGRP | S_IXOTH);
 	current_directory->filesystem = NULL;
 	current_directory->parent = vfs_root;
 
@@ -88,7 +88,7 @@ void vfs_init() {
 	current_directory->asset->resize = ramfs_resize;
 
 	last_directory->name = "..";
-	last_directory->asset = vfs_default_asset(S_IFDIR);
+	last_directory->asset = vfs_default_asset(S_IFDIR | S_IRWXU | S_IRGRP | S_IXGRP | S_IXOTH);
 	last_directory->filesystem = NULL;
 	last_directory->parent = vfs_root;
 

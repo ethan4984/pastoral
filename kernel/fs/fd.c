@@ -30,20 +30,64 @@ static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 		*ret = vfs_root;
 	}
 
+	if(*ret == NULL) {
+		*ret = vfs_root;
+	}
+
 	return 0;
 }
 
 static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
-	struct vfs_node *dirnode;
-	if(user_dir_lookup(dirfd, path, &dirnode) == -1) {
+	struct vfs_node *parent;
+	if(user_dir_lookup(dirfd, path, &parent) == -1) {
 		return -1;
 	}
 
 	bool symlink_follow = lookup_flags & AT_SYMLINK_NOFOLLOW ? true : false;
 	bool effective_ids = lookup_flags & AT_EACCESS ? true : false;
 
-	struct vfs_node *vfs_node = vfs_search_absolute(dirnode, path, symlink_follow);
+	VECTOR(const char*) subpath_list = { 0 };
+
+	char *str = alloc(strlen(path));
+	strcpy(str, path); 
+
+	while(*str == '/') *str++ = 0;
+
+	while(*str) {
+		const char *subpath = str;
+
+		while(*str && *str != '/') str++;
+		while(*str == '/') *str++ = 0;
+		
+		VECTOR_PUSH(subpath_list, subpath);
+	}
+
+	size_t i = 0;
+	for(; i < (subpath_list.length - 1); i++) {
+		if((parent->asset->stat->st_mode & S_IXUSR) == 0) {
+			set_errno(EACCES);
+			return -1;
+		}
+
+		parent = vfs_search_relative(parent, subpath_list.data[i], true);
+		if(parent == NULL) {
+			set_errno(ENOENT);
+			return -1;
+		}
+
+		if(parent->mountpoint) {
+			parent = parent->mountpoint;
+		}
+	}
+
+	if((parent->asset->stat->st_mode & S_IXUSR) == 0) {
+		set_errno(EACCES);
+		return -1;
+	}
+
+	struct vfs_node *vfs_node = vfs_search_relative(parent, subpath_list.data[i], symlink_follow);
 	if(vfs_node == NULL) {
+		set_errno(ENOENT);
 		return -1;
 	}
 
@@ -53,6 +97,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 	struct stat *stat = vfs_node->asset->stat;
 
 	if(stat_has_access(stat, uid, gid, mode) == -1) {
+		set_errno(EACCES);
 		return -1;
 	}
 
@@ -850,7 +895,6 @@ void syscall_faccessat(struct registers *regs) {
 #endif
 
 	if (!(mode & F_OK) && !(mode & (R_OK | W_OK | X_OK))) {
-		set_errno(EINVAL);
 		regs->rax = -1;
 		return;
 	}
@@ -863,7 +907,6 @@ void syscall_faccessat(struct registers *regs) {
 
 	struct vfs_node *node;
 	if(user_lookup_at(dirfd, path, lookup_flags, mode, &node) == -1) {
-		set_errno(ENOENT);
 		regs->rax = -1;
 		return;
 	}
