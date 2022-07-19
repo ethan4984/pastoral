@@ -273,12 +273,13 @@ ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, cons
 	return cnt;
 }
 
-int fd_openat(int dirfd, const char *path, int flags) {
+int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	if(strlen(path) > MAX_PATH_LENGTH) {
 		set_errno(ENAMETOOLONG);
 		return -1;
 	}
 
+	mode &= (S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX | S_ISUID | S_ISGID);
 	if((flags & O_ACCMODE) == 0)
 		flags |= O_RDONLY;
 
@@ -316,8 +317,7 @@ int fd_openat(int dirfd, const char *path, int flags) {
 		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1);
 		strcpy(name, path + find_last_char(path, '/'));
 
-		// TODO: this should not be umask.
-		vfs_node = parent->filesystem->create(parent, name, S_IFREG | (CURRENT_TASK->umask));
+		vfs_node = parent->filesystem->create(parent, name, S_IFREG | (mode & (CURRENT_TASK->umask)));
 		vfs_node->asset->stat->st_uid = CURRENT_TASK->effective_uid;
 
 		// Behave like Linux and Solaris. If the SGID bit of the parent directory is set,
@@ -619,12 +619,13 @@ void syscall_openat(struct registers *regs) {
 	int dirfd = regs->rdi;
 	const char *pathname = (const char*)regs->rsi;
 	int flags = regs->rdx;
+	mode_t mode = regs->r8;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] open: dirfd {%x}, pathname {%s}, flags {%x}\n", CORE_LOCAL->pid, dirfd, pathname, flags);
 #endif
 
-	regs->rax = fd_openat(dirfd, pathname, flags);
+	regs->rax = fd_openat(dirfd, pathname, flags, mode);
 }
 
 void syscall_close(struct registers *regs) {

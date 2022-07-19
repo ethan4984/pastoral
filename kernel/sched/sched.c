@@ -395,7 +395,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	CORE_LOCAL->pid = task->pid;
 
-	int fd = fd_openat(AT_FDCWD, path, O_RDONLY);
+	int fd = fd_openat(AT_FDCWD, path, O_RDONLY, 0);
 	if(fd == -1) {
 		fd_close(fd);
 		CORE_LOCAL->pid = current_task->pid;
@@ -418,7 +418,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	uint64_t entry_point = aux.at_entry;
 
 	if(ld_path) {
-		int ld_fd = fd_openat(AT_FDCWD, ld_path, O_RDONLY);
+		int ld_fd = fd_openat(AT_FDCWD, ld_path, O_RDONLY, 0);
 		if(ld_fd == -1) {
 			fd_close(ld_fd);
 			CORE_LOCAL->pid = current_task->pid;
