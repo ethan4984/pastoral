@@ -56,8 +56,9 @@ int initramfs() {
 		struct asset *asset = alloc(sizeof(struct asset));
 		struct stat *stat = alloc(sizeof(struct stat));
 
-		stat->st_uid = octal_to_decimal(ustar_header->uid);
-		stat->st_gid = octal_to_decimal(ustar_header->gid);
+		// Initramfs files are root's property.
+		stat->st_uid = 0;
+		stat->st_gid = 0;
 		stat->st_size = octal_to_decimal(ustar_header->size);
 		stat->st_mode = octal_to_decimal(ustar_header->mode);
 		stat->st_blksize = 512;

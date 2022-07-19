@@ -857,6 +857,7 @@ void syscall_faccessat(struct registers *regs) {
 
 	int lookup_flags = 0;
 
+	if(mode == F_OK) mode = 0;
 	if(flags & AT_SYMLINK_NOFOLLOW) lookup_flags |= AT_SYMLINK_NOFOLLOW;
 	if(flags & AT_EMPTY_PATH) lookup_flags |= AT_EMPTY_PATH;
 
