@@ -950,7 +950,7 @@ void syscall_umask(struct registers *regs) {
 
 static int stat_chmod(struct stat *stat, mode_t mode) {
 	if(CURRENT_TASK->effective_uid != stat->st_uid
-		|| CURRENT_TASK->effective_uid != 0) {
+		&& CURRENT_TASK->effective_uid != 0) {
 		set_errno(EPERM);
 		return -1;
 	}
