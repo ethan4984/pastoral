@@ -11,7 +11,7 @@
 struct timespec clock_realtime;
 struct timespec clock_monotonic;
 
-VECTOR(struct timer*) timer_list;
+typeof(timer_list) timer_list;
 
 static volatile struct limine_boot_time_request limine_boot_time_request = {
 	.id = LIMINE_BOOT_TIME_REQUEST,
@@ -65,6 +65,10 @@ void pit_handler(struct registers*, void*) {
 		if(timer->timespec.tv_nsec == 0 && timer->timespec.tv_sec == 0) {
 			for(size_t j = 0; j < timer->triggers.length; j++) {
 				struct event_trigger *trigger = timer->triggers.data[j];
+
+				trigger->agent_task = CURRENT_TASK;
+				trigger->agent_thread = CURRENT_THREAD;
+
 				event_fire(trigger);
 			}
 			

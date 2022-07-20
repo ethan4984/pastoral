@@ -20,6 +20,7 @@
 #include <fs/vfs.h>
 #include <fs/initramfs.h>
 #include <sched/sched.h>
+#include <time.h>
 #include <hash.h>
 
 static volatile struct limine_stack_size_request limine_stack_size_request = {

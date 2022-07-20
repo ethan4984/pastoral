@@ -12,6 +12,8 @@ struct timer {
 	VECTOR(struct event_trigger*) triggers;
 };
 
+extern VECTOR(struct timer*) timer_list;
+
 extern struct timespec clock_realtime;
 extern struct timespec clock_monotonic;
 

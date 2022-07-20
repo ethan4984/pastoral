@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <fs/fd.h>
 #include <drivers/terminal.h>
+#include <time.h>
 
 static struct hash_table task_list;
 
@@ -593,6 +594,22 @@ int event_fire(struct event_trigger *trigger) {
 	spinrelease(&event->lock);
 
 	asm volatile ("sti");
+
+	return 0;
+}
+
+int event_create_timer(struct event *event, struct timespec *timespec) {
+	event->timespec = timespec;
+	event->timer_trigger = alloc(sizeof(struct event_trigger));
+
+	event->timer_trigger->event = event;
+	event->timer_trigger->event_type = EVENT_TIMER_TRIGGER;
+
+	struct timer *timer = alloc(sizeof(struct timer));
+	timer->timespec = *timespec;
+
+	VECTOR_PUSH(timer->triggers, event->timer_trigger);
+	VECTOR_PUSH(timer_list, timer);
 
 	return 0;
 }

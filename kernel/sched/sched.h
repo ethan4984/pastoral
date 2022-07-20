@@ -12,7 +12,7 @@
 #define EVENT_PROC_EXIT 0
 #define EVENT_FD_READ 1
 #define EVENT_FD_WRITE 2
-#define EVENT_TIMER_TRIGGE 3
+#define EVENT_TIMER_TRIGGER 3
 #define EVENT_HDA_CMD 4
 
 struct event_trigger {
@@ -29,7 +29,7 @@ struct event {
 
 	VECTOR(struct event_trigger*) triggers;
 
-	struct timespec timer;
+	struct timespec *timespec;
 	struct event_trigger *timer_trigger;
 
 	int pending;
@@ -114,6 +114,7 @@ void sched_yield();
 
 int event_append_trigger(struct event *event, struct event_trigger *trigger);
 int event_wait(struct event *event, int event_type);
+int event_create_timer(struct event *event, struct timespec *timespec);
 int event_fire(struct event_trigger *trigger);
 
 extern char sched_lock;
