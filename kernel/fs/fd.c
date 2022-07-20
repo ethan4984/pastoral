@@ -10,7 +10,6 @@
 #include <time.h>
 #include <mm/pmm.h>
 
-static char fd__lock;
 
 static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 	bool relative = *path != '/' ? true : false;
@@ -37,7 +36,13 @@ static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 	return 0;
 }
 
+
 static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
+	if(*path == '/' && *(path + 1) == '\0') {
+		*ret = vfs_root;
+		return 0;
+	}
+
 	struct vfs_node *parent;
 	if(user_dir_lookup(dirfd, path, &parent) == -1) {
 		return -1;
@@ -49,7 +54,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 	VECTOR(const char*) subpath_list = { 0 };
 
 	char *str = alloc(strlen(path));
-	strcpy(str, path); 
+	strcpy(str, path);
 
 	while(*str == '/') *str++ = 0;
 
@@ -58,13 +63,13 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 
 		while(*str && *str != '/') str++;
 		while(*str == '/') *str++ = 0;
-		
+
 		VECTOR_PUSH(subpath_list, subpath);
 	}
 
 	size_t i = 0;
 	for(; i < (subpath_list.length - 1); i++) {
-		if((parent->asset->stat->st_mode & S_IXUSR) == 0) {
+		if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
 		}
@@ -80,7 +85,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 		}
 	}
 
-	if((parent->asset->stat->st_mode & S_IXUSR) == 0) {
+	if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
 		set_errno(EACCES);
 		return -1;
 	}
@@ -135,15 +140,20 @@ int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode) {
 
 }
 
+static struct fd_handle *fd_translate_unlocked(int index) {
+	struct sched_task *current_task = CURRENT_TASK;
+	return hash_table_search(&current_task->fd_list, &index, sizeof(index));
+}
+
 struct fd_handle *fd_translate(int index) {
 	struct sched_task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
 		return NULL;
 	}
 
-	spinlock(&fd__lock);
-	struct fd_handle *handle = hash_table_search(&current_task->fd_list, &index, sizeof(index));
-	spinrelease(&fd__lock);
+	spinlock(&current_task->fd_lock);
+	struct fd_handle *handle = fd_translate_unlocked(index);
+	spinrelease(&current_task->fd_lock);
 
 	return handle;
 }
@@ -190,16 +200,19 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		return -1;
 	}
 
+	file_lock(fd_handle->file_handle);
 	struct asset *asset = fd_handle->file_handle->asset;
 	struct stat *stat = asset->stat;
 
 	if(asset->write == NULL) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EINVAL);
 		return -1;
 	}
 
 	if((fd_handle->file_handle->flags & O_ACCMODE) != O_WRONLY
 		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EBADF);
 		return -1;
 	}
@@ -208,6 +221,9 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	if(S_ISFIFO(stat->st_mode) && fd_handle->file_handle->pipe) {
 		ret = asset->write(asset, fd_handle->file_handle->pipe->buffer, fd_handle->file_handle->position, count, buf);
 	} else {
+		if (fd_handle->file_handle->flags & O_APPEND) {
+			fd_handle->file_handle->position = stat->st_size;
+		}
 		ret = asset->write(asset, NULL, fd_handle->file_handle->position, count, buf);
 	}
 
@@ -215,6 +231,7 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		fd_handle->file_handle->position += ret;
 	}
 
+	file_unlock(fd_handle->file_handle);
 	return ret;
 }
 
@@ -225,8 +242,10 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 		return -1;
 	}
 
+	file_lock(fd_handle->file_handle);
 	struct stat *stat = fd_handle->file_handle->asset->stat;
 	if(S_ISDIR(stat->st_mode)) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EISDIR);
 		return -1;
 	}
@@ -234,12 +253,14 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 	struct asset *asset = fd_handle->file_handle->asset;
 
 	if(asset->read == NULL) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EINVAL);
 		return -1;
 	}
 
 	if((fd_handle->file_handle->flags & O_ACCMODE) != O_RDONLY
 		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EBADF);
 		return -1;
 	}
@@ -255,12 +276,12 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 		fd_handle->file_handle->position += ret;
 	}
 
+	file_unlock(fd_handle->file_handle);
 	return ret;
 }
 
 ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void *buf) {
 	spinlock(&asset->lock);
-
 	struct stat *stat = asset->stat;
 
 	if(offset > stat->st_size) {
@@ -278,13 +299,11 @@ ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void 
 	memcpy8(buf, out + offset, cnt);
 
 	spinrelease(&asset->lock);
-
 	return cnt;
 }
 
 ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, const void *buf) {
 	spinlock(&asset->lock);
-
 	struct stat *stat = asset->stat;
 
 	if(offset >= PIPE_BUFFER_SIZE) {
@@ -314,7 +333,6 @@ ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, cons
 	memcpy8(out + offset, buf, cnt);
 
 	spinrelease(&asset->lock);
-
 	return cnt;
 }
 
@@ -340,6 +358,11 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		return -1;
 	}
 
+	if((flags & O_TRUNC) && !(access_mode & W_OK)) {
+		set_errno(EINVAL);
+		return -1;
+	}
+
 	struct vfs_node *dir;
 	if(user_dir_lookup(dirfd, path, &dir) == -1) {
 		return -1;
@@ -348,13 +371,9 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, true);
 
 	if(flags & O_CREAT && vfs_node == NULL) {
-		struct vfs_node *parent = vfs_parent_dir(dir, path);
-		if(parent == NULL) {
-			set_errno(ENOENT);
-			return -1;
-		}
+		struct vfs_node *parent = dir;
 
-		if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK) == -1) {
+		if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK | X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
 		}
@@ -362,7 +381,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1);
 		strcpy(name, path + find_last_char(path, '/'));
 
-		vfs_node = parent->filesystem->create(parent, name, S_IFREG | (mode & (CURRENT_TASK->umask)));
+		vfs_node = parent->filesystem->create(parent, name, S_IFREG | (mode & ~(CURRENT_TASK->umask)));
 		vfs_node->asset->stat->st_uid = CURRENT_TASK->effective_uid;
 
 		// Behave like Linux and Solaris. If the SGID bit of the parent directory is set,
@@ -372,8 +391,16 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 			vfs_node->asset->stat->st_gid = parent->asset->stat->st_gid;
 		else
 			vfs_node->asset->stat->st_uid = CURRENT_TASK->effective_gid;
+	} else if((flags & O_CREAT) && (flags & O_EXCL)) {
+		set_errno(EEXIST);
+		return -1;
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
+		return -1;
+	}
+
+	if(!(flags & O_DIRECTORY) && S_ISDIR(vfs_node->asset->stat->st_mode)) {
+		set_errno(EISDIR);
 		return -1;
 	}
 
@@ -381,6 +408,9 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		set_errno(EACCES);
 		return -1;
 	}
+
+	if(flags & O_TRUNC)
+		vfs_node->asset->resize(vfs_node->asset, NULL, 0);
 
 	struct fd_handle *new_fd_handle = alloc(sizeof(struct fd_handle));
 	struct file_handle *new_file_handle = alloc(sizeof(struct file_handle));
@@ -406,23 +436,35 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	return new_fd_handle->fd_number;
 }
 
+
+static void fd_close_unlocked(struct fd_handle *handle) {
+	struct sched_task *current_task = CURRENT_TASK;
+	file_put(handle->file_handle);
+	hash_table_delete(&current_task->fd_list, &handle->fd_number, sizeof(handle->fd_number));
+	bitmap_free(&current_task->fd_bitmap, handle->fd_number);
+	free(handle);
+}
+
+
 int fd_close(int fd) {
-	struct fd_handle *fd_handle = fd_translate(fd);
+	struct sched_task *current_task = CURRENT_TASK;
+
+	spinlock(&current_task->fd_lock);
+	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
+		spinrelease(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
-	struct sched_task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
+		spinrelease(&current_task->fd_lock);
 		set_errno(ENOENT);
 		return -1;
 	}
 
-	file_put(fd_handle->file_handle);
-
-	hash_table_delete(&current_task->fd_list, &fd_handle->fd_number, sizeof(fd_handle->fd_number));
-	bitmap_free(&current_task->fd_bitmap, fd_handle->fd_number);
+	fd_close_unlocked(fd_handle);
+	spinrelease(&current_task->fd_lock);
 
 	return 0;
 }
@@ -436,7 +478,6 @@ int fd_stat(int fd, void *buffer) {
 
 	struct stat *stat = buffer;
 	*stat = *fd_handle->file_handle->asset->stat;
-
 	return 0;
 }
 
@@ -496,8 +537,12 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 }
 
 int fd_dup(int fd) {
-	struct fd_handle *fd_handle = fd_translate(fd);
+	struct sched_task *current_task = CURRENT_TASK;
+	spinlock(&current_task->fd_lock);
+
+	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
+		spinrelease(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
@@ -505,36 +550,43 @@ int fd_dup(int fd) {
 	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
 	*new_handle = *fd_handle;
 	file_get(new_handle->file_handle);
-	new_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
 
-	hash_table_push(&CURRENT_TASK->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	new_handle->fd_number = bitmap_alloc(&current_task->fd_bitmap);
+	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	spinrelease(&current_task->fd_lock);
 
 	return new_handle->fd_number;
 }
 
 int fd_dup2(int oldfd, int newfd) {
-	struct fd_handle *oldfd_handle = fd_translate(oldfd);
+	struct sched_task *current_task = CURRENT_TASK;
+	spinlock(&current_task->fd_lock);
+
+	struct fd_handle *oldfd_handle = fd_translate_unlocked(oldfd), *new_handle;;
 	if(oldfd_handle == NULL) {
+		spinrelease(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
 	if(oldfd == newfd) {
+		spinrelease(&current_task->fd_lock);
 		return newfd;
 	}
 
-	if(BIT_TEST(CURRENT_TASK->fd_bitmap.data, newfd)) {
-		fd_close(newfd);
+	new_handle = alloc(sizeof(struct fd_handle));
+	*new_handle = *oldfd_handle;
+	new_handle->fd_number = newfd;
+	file_get(new_handle->file_handle);
+
+	if(BIT_TEST(current_task->fd_bitmap.data, newfd)) {
+		fd_close_unlocked(fd_translate_unlocked(newfd));
 	} else {
-		BIT_SET(CURRENT_TASK->fd_bitmap.data, newfd);
+		BIT_SET(current_task->fd_bitmap.data, newfd);
 	}
 
-	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
-	*new_handle = *oldfd_handle;
-	file_get(new_handle->file_handle);
-	new_handle->fd_number = newfd;
-
-	hash_table_push(&CURRENT_TASK->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	spinrelease(&current_task->fd_lock);
 
 	return new_handle->fd_number;
 }
@@ -578,6 +630,49 @@ int fd_generate_dirent(struct fd_handle *dir_handle, struct vfs_node *node, stru
 
 	return 0;
 }
+
+
+int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
+	struct vfs_node *node;
+
+	// Restricted chown: only root may change the owner.
+	if(CURRENT_TASK->effective_uid != 0) {
+		set_errno(EPERM);
+		return -1;
+	}
+
+	if(uid == -1 && gid == -1)
+		return 0;
+
+	if(!(flag & AT_EMPTY_PATH) && !strlen(path)) {
+		set_errno(EINVAL);
+		return -1;
+	}
+
+	if(flag & AT_EMPTY_PATH) {
+		struct fd_handle *handle = fd_translate(fd);
+		if(!handle) {
+			set_errno(EBADF);
+			return -1;
+		}
+
+		node = handle->file_handle->vfs_node;
+	} else {
+		// We are only interested in the node and we are superuser, so with a mode of 0
+		// we can get away with it.
+		if(user_lookup_at(fd, path, flag & AT_SYMLINK_NOFOLLOW, 0, &node) == -1) {
+			return -1;
+		}
+	}
+
+	if(uid != -1)
+		node->asset->stat->st_uid = uid;
+	if(gid != -1)
+		node->asset->stat->st_gid = gid;
+
+	return 0;
+}
+
 
 void syscall_dup2(struct registers *regs) {
 	int oldfd = regs->rdi;
@@ -664,7 +759,7 @@ void syscall_openat(struct registers *regs) {
 	int dirfd = regs->rdi;
 	const char *pathname = (const char*)regs->rsi;
 	int flags = regs->rdx;
-	mode_t mode = regs->r8;
+	mode_t mode = regs->r10;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] open: dirfd {%x}, pathname {%s}, flags {%x}\n", CORE_LOCAL->pid, dirfd, pathname, flags);
@@ -685,7 +780,7 @@ void syscall_close(struct registers *regs) {
 
 void syscall_fcntl(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] fcntl: fd {%x}, cmd {%x}\n", CORE_LOCAL->pid, regs->rdi, regs->rsi);
+	print("syscall: [pid %x] fcntl: fd {%x}, cmd {%x}, data {%x}\n", CORE_LOCAL->pid, regs->rdi, regs->rsi, regs->rdx);
 #endif
 
 	struct fd_handle *fd_handle = fd_translate(regs->rdi);
@@ -700,14 +795,20 @@ void syscall_fcntl(struct registers *regs) {
 			regs->rax = fd_dup(regs->rdi);
 			break;
 		case F_GETFD:
+			fd_lock(fd_handle);
 			regs->rax = fd_handle->flags;
+			fd_unlock(fd_handle);
 			break;
 		case F_SETFD:
+			fd_lock(fd_handle);
 			fd_handle->flags = regs->rdx;
 			regs->rax = 0;
+			fd_unlock(fd_handle);
 			break;
 		case F_GETFL:
+			file_lock(fd_handle->file_handle);
 			regs->rax = fd_handle->file_handle->flags;
+			file_unlock(fd_handle->file_handle);
 			break;
 		case F_SETFL: {
 			if (regs->rdx & O_ACCMODE) {
@@ -716,8 +817,10 @@ void syscall_fcntl(struct registers *regs) {
 				regs->rax = -1;
 				break;
 			}
+			file_lock(fd_handle->file_handle);
 			fd_handle->file_handle->flags = regs->rdx;
 			regs->rax = 0;
+			file_unlock(fd_handle->file_handle);
 			break;
 		}
 		default:
@@ -810,14 +913,13 @@ void syscall_chdir(struct registers *regs) {
 	print("syscall: [pid %x] chdir: path {%s}\n", CORE_LOCAL->pid, path);
 #endif
 
-	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path, true);
-	if(vfs_node == NULL) {
-		set_errno(ENOENT);
+	struct vfs_node *node;
+	if (user_lookup_at(AT_FDCWD, path, 0, X_OK, &node) == -1) {
 		regs->rax = -1;
 		return;
 	}
 
-	CURRENT_TASK->cwd = vfs_node;
+	CURRENT_TASK->cwd = node;
 
 	regs->rax = 0;
 }
@@ -878,8 +980,10 @@ void syscall_pipe(struct registers *regs) {
 	read_asset->stat = pipe_stat;
 	write_asset->stat = pipe_stat;
 
+	spinlock(&CURRENT_TASK->fd_lock);
 	hash_table_push(&CURRENT_TASK->fd_list, &read_fd_handle->fd_number, read_fd_handle, sizeof(read_fd_handle->fd_number));
 	hash_table_push(&CURRENT_TASK->fd_list, &write_fd_handle->fd_number, write_fd_handle, sizeof(write_fd_handle->fd_number));
+	spinrelease(&CURRENT_TASK->fd_lock);
 
 	regs->rax = 0;
 }
@@ -1030,7 +1134,7 @@ void syscall_fchmodat(struct registers *regs) {
 	int fd = regs->rdi;
 	const char *path = (const char*) regs->rsi;
 	mode_t mode = regs->rdx;
-	int flags = regs->r8;
+	int flags = regs->r10;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] fchmodat: fd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, fd, path, mode, flags);
@@ -1045,4 +1149,19 @@ void syscall_fchmodat(struct registers *regs) {
 	}
 
 	regs->rax = stat_chmod(file->asset->stat, mode);
+}
+
+
+void syscall_fchownat(struct registers *regs) {
+	int fd = regs->rdi;
+	const char *path = (const char*) regs->rsi;
+	uid_t uid = regs->rdx;
+	gid_t gid = regs->r10;
+	int flag = regs->r8;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] fchownat: fd {%x}, path {%s}, uid {%x}, gid {%x}, flag {%x}\n", CORE_LOCAL->pid, fd, path, uid, gid, flag);
+#endif
+
+	regs->rax = fd_fchownat(fd, path, uid, gid, flag);
 }

@@ -84,3 +84,4 @@ off_t fd_seek(int fd, off_t offset, int whence);
 int fd_openat(int dirfd, const char *path, int flags, mode_t mode);
 int fd_close(int fd);
 int fd_generate_dirent(struct fd_handle *dir_handle, struct vfs_node *node, struct dirent *entry);
+int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag);

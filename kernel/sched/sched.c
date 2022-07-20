@@ -267,7 +267,7 @@ struct sched_task *sched_default_task() {
 	task->effective_gid = 0;
 	task->saved_gid = 0;
 
-	task->umask = 0777;
+	task->umask = 022;
 
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,
