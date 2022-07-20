@@ -49,7 +49,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 	VECTOR(const char*) subpath_list = { 0 };
 
 	char *str = alloc(strlen(path));
-	strcpy(str, path); 
+	strcpy(str, path);
 
 	while(*str == '/') *str++ = 0;
 
@@ -58,7 +58,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 
 		while(*str && *str != '/') str++;
 		while(*str == '/') *str++ = 0;
-		
+
 		VECTOR_PUSH(subpath_list, subpath);
 	}
 
@@ -362,7 +362,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1);
 		strcpy(name, path + find_last_char(path, '/'));
 
-		vfs_node = parent->filesystem->create(parent, name, S_IFREG | (mode & (CURRENT_TASK->umask)));
+		vfs_node = parent->filesystem->create(parent, name, S_IFREG | (mode & ~(CURRENT_TASK->umask)));
 		vfs_node->asset->stat->st_uid = CURRENT_TASK->effective_uid;
 
 		// Behave like Linux and Solaris. If the SGID bit of the parent directory is set,
@@ -664,7 +664,7 @@ void syscall_openat(struct registers *regs) {
 	int dirfd = regs->rdi;
 	const char *pathname = (const char*)regs->rsi;
 	int flags = regs->rdx;
-	mode_t mode = regs->r8;
+	mode_t mode = regs->r10;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] open: dirfd {%x}, pathname {%s}, flags {%x}\n", CORE_LOCAL->pid, dirfd, pathname, flags);
@@ -1030,7 +1030,7 @@ void syscall_fchmodat(struct registers *regs) {
 	int fd = regs->rdi;
 	const char *path = (const char*) regs->rsi;
 	mode_t mode = regs->rdx;
-	int flags = regs->r8;
+	int flags = regs->r10;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] fchmodat: fd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, fd, path, mode, flags);
