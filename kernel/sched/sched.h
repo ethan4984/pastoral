@@ -54,9 +54,11 @@ struct sched_thread {
 };
 
 struct sched_task {
+	char fd_lock;
 	struct hash_table fd_list;
 	struct bitmap fd_bitmap;
 
+	char tid_lock;
 	struct hash_table thread_list;
 	struct bitmap tid_bitmap;
 

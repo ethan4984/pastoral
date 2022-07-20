@@ -10,7 +10,6 @@
 #include <time.h>
 #include <mm/pmm.h>
 
-static char fd__lock;
 
 static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 	bool relative = *path != '/' ? true : false;
@@ -141,15 +140,20 @@ int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode) {
 
 }
 
+static struct fd_handle *fd_translate_unlocked(int index) {
+	struct sched_task *current_task = CURRENT_TASK;
+	return hash_table_search(&current_task->fd_list, &index, sizeof(index));
+}
+
 struct fd_handle *fd_translate(int index) {
 	struct sched_task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
 		return NULL;
 	}
 
-	spinlock(&fd__lock);
-	struct fd_handle *handle = hash_table_search(&current_task->fd_list, &index, sizeof(index));
-	spinrelease(&fd__lock);
+	spinlock(&current_task->fd_lock);
+	struct fd_handle *handle = fd_translate_unlocked(index);
+	spinrelease(&current_task->fd_lock);
 
 	return handle;
 }
@@ -196,16 +200,19 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		return -1;
 	}
 
+	file_lock(fd_handle->file_handle);
 	struct asset *asset = fd_handle->file_handle->asset;
 	struct stat *stat = asset->stat;
 
 	if(asset->write == NULL) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EINVAL);
 		return -1;
 	}
 
 	if((fd_handle->file_handle->flags & O_ACCMODE) != O_WRONLY
 		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EBADF);
 		return -1;
 	}
@@ -224,6 +231,7 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		fd_handle->file_handle->position += ret;
 	}
 
+	file_unlock(fd_handle->file_handle);
 	return ret;
 }
 
@@ -234,8 +242,10 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 		return -1;
 	}
 
+	file_lock(fd_handle->file_handle);
 	struct stat *stat = fd_handle->file_handle->asset->stat;
 	if(S_ISDIR(stat->st_mode)) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EISDIR);
 		return -1;
 	}
@@ -243,12 +253,14 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 	struct asset *asset = fd_handle->file_handle->asset;
 
 	if(asset->read == NULL) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EINVAL);
 		return -1;
 	}
 
 	if((fd_handle->file_handle->flags & O_ACCMODE) != O_RDONLY
 		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
+		file_unlock(fd_handle->file_handle);
 		set_errno(EBADF);
 		return -1;
 	}
@@ -264,12 +276,12 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 		fd_handle->file_handle->position += ret;
 	}
 
+	file_unlock(fd_handle->file_handle);
 	return ret;
 }
 
 ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void *buf) {
 	spinlock(&asset->lock);
-
 	struct stat *stat = asset->stat;
 
 	if(offset > stat->st_size) {
@@ -287,13 +299,11 @@ ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void 
 	memcpy8(buf, out + offset, cnt);
 
 	spinrelease(&asset->lock);
-
 	return cnt;
 }
 
 ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, const void *buf) {
 	spinlock(&asset->lock);
-
 	struct stat *stat = asset->stat;
 
 	if(offset >= PIPE_BUFFER_SIZE) {
@@ -323,7 +333,6 @@ ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, cons
 	memcpy8(out + offset, buf, cnt);
 
 	spinrelease(&asset->lock);
-
 	return cnt;
 }
 
@@ -427,23 +436,35 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	return new_fd_handle->fd_number;
 }
 
+
+static void fd_close_unlocked(struct fd_handle *handle) {
+	struct sched_task *current_task = CURRENT_TASK;
+	file_put(handle->file_handle);
+	hash_table_delete(&current_task->fd_list, &handle->fd_number, sizeof(handle->fd_number));
+	bitmap_free(&current_task->fd_bitmap, handle->fd_number);
+	free(handle);
+}
+
+
 int fd_close(int fd) {
-	struct fd_handle *fd_handle = fd_translate(fd);
+	struct sched_task *current_task = CURRENT_TASK;
+
+	spinlock(&current_task->fd_lock);
+	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
+		spinrelease(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
-	struct sched_task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
+		spinrelease(&current_task->fd_lock);
 		set_errno(ENOENT);
 		return -1;
 	}
 
-	file_put(fd_handle->file_handle);
-
-	hash_table_delete(&current_task->fd_list, &fd_handle->fd_number, sizeof(fd_handle->fd_number));
-	bitmap_free(&current_task->fd_bitmap, fd_handle->fd_number);
+	fd_close_unlocked(fd_handle);
+	spinrelease(&current_task->fd_lock);
 
 	return 0;
 }
@@ -457,7 +478,6 @@ int fd_stat(int fd, void *buffer) {
 
 	struct stat *stat = buffer;
 	*stat = *fd_handle->file_handle->asset->stat;
-
 	return 0;
 }
 
@@ -517,8 +537,12 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 }
 
 int fd_dup(int fd) {
-	struct fd_handle *fd_handle = fd_translate(fd);
+	struct sched_task *current_task = CURRENT_TASK;
+	spinlock(&current_task->fd_lock);
+
+	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
+		spinrelease(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
@@ -526,36 +550,43 @@ int fd_dup(int fd) {
 	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
 	*new_handle = *fd_handle;
 	file_get(new_handle->file_handle);
-	new_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
 
-	hash_table_push(&CURRENT_TASK->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	new_handle->fd_number = bitmap_alloc(&current_task->fd_bitmap);
+	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	spinrelease(&current_task->fd_lock);
 
 	return new_handle->fd_number;
 }
 
 int fd_dup2(int oldfd, int newfd) {
-	struct fd_handle *oldfd_handle = fd_translate(oldfd);
+	struct sched_task *current_task = CURRENT_TASK;
+	spinlock(&current_task->fd_lock);
+
+	struct fd_handle *oldfd_handle = fd_translate_unlocked(oldfd), *new_handle;;
 	if(oldfd_handle == NULL) {
+		spinrelease(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
 	if(oldfd == newfd) {
+		spinrelease(&current_task->fd_lock);
 		return newfd;
 	}
 
-	if(BIT_TEST(CURRENT_TASK->fd_bitmap.data, newfd)) {
-		fd_close(newfd);
+	new_handle = alloc(sizeof(struct fd_handle));
+	*new_handle = *oldfd_handle;
+	new_handle->fd_number = newfd;
+	file_get(new_handle->file_handle);
+
+	if(BIT_TEST(current_task->fd_bitmap.data, newfd)) {
+		fd_close_unlocked(fd_translate_unlocked(newfd));
 	} else {
-		BIT_SET(CURRENT_TASK->fd_bitmap.data, newfd);
+		BIT_SET(current_task->fd_bitmap.data, newfd);
 	}
 
-	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
-	*new_handle = *oldfd_handle;
-	file_get(new_handle->file_handle);
-	new_handle->fd_number = newfd;
-
-	hash_table_push(&CURRENT_TASK->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	spinrelease(&current_task->fd_lock);
 
 	return new_handle->fd_number;
 }
@@ -706,7 +737,7 @@ void syscall_close(struct registers *regs) {
 
 void syscall_fcntl(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] fcntl: fd {%x}, cmd {%x}\n", CORE_LOCAL->pid, regs->rdi, regs->rsi);
+	print("syscall: [pid %x] fcntl: fd {%x}, cmd {%x}, data {%x}\n", CORE_LOCAL->pid, regs->rdi, regs->rsi, regs->rdx);
 #endif
 
 	struct fd_handle *fd_handle = fd_translate(regs->rdi);
@@ -721,14 +752,20 @@ void syscall_fcntl(struct registers *regs) {
 			regs->rax = fd_dup(regs->rdi);
 			break;
 		case F_GETFD:
+			fd_lock(fd_handle);
 			regs->rax = fd_handle->flags;
+			fd_unlock(fd_handle);
 			break;
 		case F_SETFD:
+			fd_lock(fd_handle);
 			fd_handle->flags = regs->rdx;
 			regs->rax = 0;
+			fd_unlock(fd_handle);
 			break;
 		case F_GETFL:
+			file_lock(fd_handle->file_handle);
 			regs->rax = fd_handle->file_handle->flags;
+			file_unlock(fd_handle->file_handle);
 			break;
 		case F_SETFL: {
 			if (regs->rdx & O_ACCMODE) {
@@ -737,8 +774,10 @@ void syscall_fcntl(struct registers *regs) {
 				regs->rax = -1;
 				break;
 			}
+			file_lock(fd_handle->file_handle);
 			fd_handle->file_handle->flags = regs->rdx;
 			regs->rax = 0;
+			file_unlock(fd_handle->file_handle);
 			break;
 		}
 		default:
@@ -898,8 +937,10 @@ void syscall_pipe(struct registers *regs) {
 	read_asset->stat = pipe_stat;
 	write_asset->stat = pipe_stat;
 
+	spinlock(&CURRENT_TASK->fd_lock);
 	hash_table_push(&CURRENT_TASK->fd_list, &read_fd_handle->fd_number, read_fd_handle, sizeof(read_fd_handle->fd_number));
 	hash_table_push(&CURRENT_TASK->fd_list, &write_fd_handle->fd_number, write_fd_handle, sizeof(write_fd_handle->fd_number));
+	spinrelease(&CURRENT_TASK->fd_lock);
 
 	regs->rax = 0;
 }
