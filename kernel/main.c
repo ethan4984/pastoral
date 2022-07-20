@@ -77,7 +77,7 @@ void pastoral_thread() {
 		.argv_cnt = 1
 	};
 
-	struct sched_task *task = sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_WAITING);
+	struct sched_task *task = sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_WAITING, 1);
 	if(task == NULL) {
 		panic("unable to start init process");
 	}

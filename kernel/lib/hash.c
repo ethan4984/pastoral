@@ -45,7 +45,7 @@ void hash_table_push(struct hash_table *table, void *key, void *data, size_t key
 	size_t index = hash & (table->capacity - 1);
 
 	for(; index < table->capacity; index++) {
-		if(table->keys[index] == NULL) {
+		if(table->keys[index] == NULL || memcmp(table->keys[index], key, key_size) == 0) {
 			table->keys[index] = key;
 			table->data[index] = data;
 			return;

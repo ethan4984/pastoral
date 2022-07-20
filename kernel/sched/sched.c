@@ -381,7 +381,7 @@ struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, ui
 	return thread;
 }
 
-struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status) {
+struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status, int init) {
 	spinlock(&sched_lock);
 
 	struct sched_task *task = sched_default_task();
@@ -440,61 +440,63 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		entry_point = ld_aux.at_entry;
 	}
 
-	struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
-		*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
-		*stderr_fd_handle = alloc(sizeof(struct fd_handle));
+	if(init) {
+		struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
+			*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
+			*stderr_fd_handle = alloc(sizeof(struct fd_handle));
 
-	struct file_handle *stdin_file_handle = alloc(sizeof(struct file_handle)),
-		*stdout_file_handle = alloc(sizeof(struct file_handle)),
-		*stderr_file_handle = alloc(sizeof(struct file_handle));
+		struct file_handle *stdin_file_handle = alloc(sizeof(struct file_handle)),
+			*stdout_file_handle = alloc(sizeof(struct file_handle)),
+			*stderr_file_handle = alloc(sizeof(struct file_handle));
 
-	struct asset *stdin_asset = alloc(sizeof(struct asset)),
-		*stdout_asset = alloc(sizeof(struct asset)),
-		*stderr_asset = alloc(sizeof(struct asset));
+		struct asset *stdin_asset = alloc(sizeof(struct asset)),
+			*stdout_asset = alloc(sizeof(struct asset)),
+			*stderr_asset = alloc(sizeof(struct asset));
 
-	struct stat *stdin_stat = alloc(sizeof(struct stat)),
-		*stdout_stat = alloc(sizeof(struct stat)),
-		*stderr_stat = alloc(sizeof(struct stat));
+		struct stat *stdin_stat = alloc(sizeof(struct stat)),
+			*stdout_stat = alloc(sizeof(struct stat)),
+			*stderr_stat = alloc(sizeof(struct stat));
 
-	fd_init(stdin_fd_handle);
-	fd_init(stdout_fd_handle);
-	fd_init(stderr_fd_handle);
+		fd_init(stdin_fd_handle);
+		fd_init(stdout_fd_handle);
+		fd_init(stderr_fd_handle);
 
-	file_init(stdin_file_handle);
-	file_init(stdout_file_handle);
-	file_init(stderr_file_handle);
+		file_init(stdin_file_handle);
+		file_init(stdout_file_handle);
+		file_init(stderr_file_handle);
 
-	stdin_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
-	stdin_fd_handle->file_handle = stdin_file_handle;
-	stdout_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
-	stdout_fd_handle->file_handle = stdout_file_handle;
-	stderr_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
-	stderr_fd_handle->file_handle = stderr_file_handle;
+		stdin_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
+		stdin_fd_handle->file_handle = stdin_file_handle;
+		stdout_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
+		stdout_fd_handle->file_handle = stdout_file_handle;
+		stderr_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
+		stderr_fd_handle->file_handle = stderr_file_handle;
 
-	stdin_file_handle->flags = O_RDONLY;
-	stdin_file_handle->asset = stdin_asset;
-	stdin_asset->read = terminal_read;
-	stdin_asset->ioctl = terminal_ioctl;
-	stdin_asset->stat = stdin_stat;
-	stdin_stat->st_mode = S_IRUSR | S_IWUSR;
+		stdin_file_handle->flags = O_RDONLY;
+		stdin_file_handle->asset = stdin_asset;
+		stdin_asset->read = terminal_read;
+		stdin_asset->ioctl = terminal_ioctl;
+		stdin_asset->stat = stdin_stat;
+		stdin_stat->st_mode = S_IRUSR | S_IWUSR;
 
-	stdout_file_handle->flags = O_WRONLY;
-	stdout_file_handle->asset = stdout_asset;
-	stdout_asset->write = terminal_write;
-	stdout_asset->ioctl = terminal_ioctl;
-	stdout_asset->stat = stdout_stat;
-	stdout_stat->st_mode = S_IRUSR | S_IWUSR;
+		stdout_file_handle->flags = O_WRONLY;
+		stdout_file_handle->asset = stdout_asset;
+		stdout_asset->write = terminal_write;
+		stdout_asset->ioctl = terminal_ioctl;
+		stdout_asset->stat = stdout_stat;
+		stdout_stat->st_mode = S_IRUSR | S_IWUSR;
 
-	stderr_file_handle->flags = O_WRONLY;
-	stderr_file_handle->asset = stderr_asset;
-	stderr_asset->write = terminal_write;
-	stderr_asset->ioctl = terminal_ioctl;
-	stderr_asset->stat = stderr_stat;
-	stderr_stat->st_mode = S_IRUSR | S_IWUSR;
+		stderr_file_handle->flags = O_WRONLY;
+		stderr_file_handle->asset = stderr_asset;
+		stderr_asset->write = terminal_write;
+		stderr_asset->ioctl = terminal_ioctl;
+		stderr_asset->stat = stderr_stat;
+		stderr_stat->st_mode = S_IRUSR | S_IWUSR;
 
-	hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
-	hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
-	hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
+		hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
+		hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
+		hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
+	}
 
 	struct sched_thread *thread = sched_thread_exec(task, entry_point, cs, &aux, arguments);
 
@@ -809,10 +811,10 @@ void syscall_execve(struct registers *regs) {
 	bool is_suid = vfs_node->asset->stat->st_mode & S_ISUID ? true : false;
 	bool is_sgid = vfs_node->asset->stat->st_mode & S_ISGID ? true : false;
 
-	struct sched_task *task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING);
+	struct sched_task *task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING, 0);
 
 	bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
-	for(size_t i = 3; i < task->fd_bitmap.size; i++) {
+	for(size_t i = 0; i < task->fd_bitmap.size; i++) {
 		if(BIT_TEST(task->fd_bitmap.data, i)) {
 			struct fd_handle *handle = fd_translate(i);
 			if(handle->flags & O_CLOEXEC) {

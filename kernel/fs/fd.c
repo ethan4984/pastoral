@@ -547,15 +547,20 @@ int fd_dup(int fd) {
 		return -1;
 	}
 
-	struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
-	*new_handle = *fd_handle;
-	file_get(new_handle->file_handle);
+	struct fd_handle *handle = alloc(sizeof(struct fd_handle));
+	*handle = (struct fd_handle) {
+		.file_handle = alloc(sizeof(struct file_handle)),
+		.fd_number = bitmap_alloc(&current_task->fd_bitmap),
+		.flags = fd_handle->flags
+	};
 
-	new_handle->fd_number = bitmap_alloc(&current_task->fd_bitmap);
-	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	*handle->file_handle = *fd_handle->file_handle;
+
+	file_get(handle->file_handle);
+	hash_table_push(&current_task->fd_list, &handle->fd_number, handle, sizeof(handle->fd_number));
 	spinrelease(&current_task->fd_lock);
 
-	return new_handle->fd_number;
+	return handle->fd_number;
 }
 
 int fd_dup2(int oldfd, int newfd) {
@@ -586,6 +591,7 @@ int fd_dup2(int oldfd, int newfd) {
 	}
 
 	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+
 	spinrelease(&current_task->fd_lock);
 
 	return new_handle->fd_number;
