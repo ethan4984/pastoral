@@ -37,7 +37,13 @@ static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 	return 0;
 }
 
+
 static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
+	if(*path == '/' && *(path + 1) == '\0') {
+		*ret = vfs_root;
+		return 0;
+	}
+
 	struct vfs_node *parent;
 	if(user_dir_lookup(dirfd, path, &parent) == -1) {
 		return -1;
@@ -64,7 +70,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 
 	size_t i = 0;
 	for(; i < (subpath_list.length - 1); i++) {
-		if((parent->asset->stat->st_mode & S_IXUSR) == 0) {
+		if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
 		}
@@ -80,7 +86,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 		}
 	}
 
-	if((parent->asset->stat->st_mode & S_IXUSR) == 0) {
+	if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
 		set_errno(EACCES);
 		return -1;
 	}
@@ -208,6 +214,9 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	if(S_ISFIFO(stat->st_mode) && fd_handle->file_handle->pipe) {
 		ret = asset->write(asset, fd_handle->file_handle->pipe->buffer, fd_handle->file_handle->position, count, buf);
 	} else {
+		if (fd_handle->file_handle->flags & O_APPEND) {
+			fd_handle->file_handle->position = stat->st_size;
+		}
 		ret = asset->write(asset, NULL, fd_handle->file_handle->position, count, buf);
 	}
 
@@ -340,6 +349,11 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		return -1;
 	}
 
+	if((flags & O_TRUNC) && !(access_mode & W_OK)) {
+		set_errno(EINVAL);
+		return -1;
+	}
+
 	struct vfs_node *dir;
 	if(user_dir_lookup(dirfd, path, &dir) == -1) {
 		return -1;
@@ -348,13 +362,9 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, true);
 
 	if(flags & O_CREAT && vfs_node == NULL) {
-		struct vfs_node *parent = vfs_parent_dir(dir, path);
-		if(parent == NULL) {
-			set_errno(ENOENT);
-			return -1;
-		}
+		struct vfs_node *parent = dir;
 
-		if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK) == -1) {
+		if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK | X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
 		}
@@ -372,8 +382,16 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 			vfs_node->asset->stat->st_gid = parent->asset->stat->st_gid;
 		else
 			vfs_node->asset->stat->st_uid = CURRENT_TASK->effective_gid;
+	} else if((flags & O_CREAT) && (flags & O_EXCL)) {
+		set_errno(EEXIST);
+		return -1;
 	} else if(vfs_node == NULL) {
 		set_errno(ENOENT);
+		return -1;
+	}
+
+	if(!(flags & O_DIRECTORY) && S_ISDIR(vfs_node->asset->stat->st_mode)) {
+		set_errno(EISDIR);
 		return -1;
 	}
 
@@ -381,6 +399,9 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		set_errno(EACCES);
 		return -1;
 	}
+
+	if(flags & O_TRUNC)
+		vfs_node->asset->resize(vfs_node->asset, NULL, 0);
 
 	struct fd_handle *new_fd_handle = alloc(sizeof(struct fd_handle));
 	struct file_handle *new_file_handle = alloc(sizeof(struct file_handle));
@@ -810,14 +831,13 @@ void syscall_chdir(struct registers *regs) {
 	print("syscall: [pid %x] chdir: path {%s}\n", CORE_LOCAL->pid, path);
 #endif
 
-	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path, true);
-	if(vfs_node == NULL) {
-		set_errno(ENOENT);
+	struct vfs_node *node;
+	if (user_lookup_at(AT_FDCWD, path, 0, X_OK, &node) == -1) {
 		regs->rax = -1;
 		return;
 	}
 
-	CURRENT_TASK->cwd = vfs_node;
+	CURRENT_TASK->cwd = node;
 
 	regs->rax = 0;
 }

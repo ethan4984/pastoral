@@ -27,7 +27,7 @@ struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, int mod
 	asset->stat->st_blksize = 512;
 	asset->stat->st_nlink = 1;
 	asset->stat->st_mode = mode;
-	
+
 	asset->stat->st_atim = clock_realtime;
 	asset->stat->st_mtim = clock_realtime;
 	asset->stat->st_ctim = clock_realtime;
@@ -74,7 +74,7 @@ ssize_t ramfs_read(struct asset *asset, void*, off_t offset, off_t cnt, void *bu
 	memcpy8(buf, ramfs_handle->buffer + offset, cnt);
 
 	spinrelease(&asset->lock);
-	
+
 	return cnt;
 }
 
@@ -101,7 +101,7 @@ ssize_t ramfs_write(struct asset *asset, void*, off_t offset, off_t cnt, const v
 		stat->st_size = offset + cnt;
 		ramfs_handle->buffer = realloc(ramfs_handle->buffer, stat->st_size);
 	}
-	
+
 	memcpy8(ramfs_handle->buffer + offset, buf, cnt);
 
 	spinrelease(&asset->lock);
