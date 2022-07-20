@@ -631,6 +631,49 @@ int fd_generate_dirent(struct fd_handle *dir_handle, struct vfs_node *node, stru
 	return 0;
 }
 
+
+int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
+	struct vfs_node *node;
+
+	// Restricted chown: only root may change the owner.
+	if(CURRENT_TASK->effective_uid != 0) {
+		set_errno(EPERM);
+		return -1;
+	}
+
+	if(uid == -1 && gid == -1)
+		return 0;
+
+	if(!(flag & AT_EMPTY_PATH) && !strlen(path)) {
+		set_errno(EINVAL);
+		return -1;
+	}
+
+	if(flag & AT_EMPTY_PATH) {
+		struct fd_handle *handle = fd_translate(fd);
+		if(!handle) {
+			set_errno(EBADF);
+			return -1;
+		}
+
+		node = handle->file_handle->vfs_node;
+	} else {
+		// We are only interested in the node and we are superuser, so with a mode of 0
+		// we can get away with it.
+		if(user_lookup_at(fd, path, flag & AT_SYMLINK_NOFOLLOW, 0, &node) == -1) {
+			return -1;
+		}
+	}
+
+	if(uid != -1)
+		node->asset->stat->st_uid = uid;
+	if(gid != -1)
+		node->asset->stat->st_gid = gid;
+
+	return 0;
+}
+
+
 void syscall_dup2(struct registers *regs) {
 	int oldfd = regs->rdi;
 	int newfd = regs->rsi;
@@ -1106,4 +1149,19 @@ void syscall_fchmodat(struct registers *regs) {
 	}
 
 	regs->rax = stat_chmod(file->asset->stat, mode);
+}
+
+
+void syscall_fchownat(struct registers *regs) {
+	int fd = regs->rdi;
+	const char *path = (const char*) regs->rsi;
+	uid_t uid = regs->rdx;
+	gid_t gid = regs->r10;
+	int flag = regs->r8;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] fchownat: fd {%x}, path {%s}, uid {%x}, gid {%x}, flag {%x}\n", CORE_LOCAL->pid, fd, path, uid, gid, flag);
+#endif
+
+	regs->rax = fd_fchownat(fd, path, uid, gid, flag);
 }
