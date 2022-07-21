@@ -51,6 +51,9 @@ struct sched_thread {
 	size_t user_stack_size;
 	size_t errno;
 
+	char sig_lock;
+	struct signal_queue signal_queue;
+
 	struct registers regs;
 };
 

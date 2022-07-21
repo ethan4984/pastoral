@@ -32,6 +32,17 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 	return 0;
 }
 
+int sigpending(sigset_t *set) {
+	struct sched_thread *thread = CURRENT_THREAD;
+	if(thread == NULL) {
+		panic(""); 
+	}
+
+	*set = thread->signal_queue.sigpending;
+
+	return 0;
+}
+
 void syscall_sigaction(struct registers *regs) {
 	int sig = regs->rdi;
 	const struct sigaction *act = (void*)regs->rsi;
@@ -42,4 +53,14 @@ void syscall_sigaction(struct registers *regs) {
 #endif
 
 	regs->rax = sigaction(sig, act, old);
+}
+
+void syscall_sigpending(struct registers *regs) {
+	sigset_t *set = (void*)regs->rdi;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] sigaction: {%x}\n", CORE_LOCAL->pid, set);
+#endif
+
+	regs->rax = sigpending(set);
 }

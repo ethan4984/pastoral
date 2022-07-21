@@ -47,6 +47,7 @@ extern void syscall_fchmod(struct registers*);
 extern void syscall_fchmodat(struct registers*);
 extern void syscall_fchownat(struct registers*);
 extern void syscall_sigaction(struct registers*);
+extern void syscall_sigpending(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -141,7 +142,8 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_fchmod, .name = "fchmod" }, // 40
 	{ .handler = syscall_fchmodat, .name = "fchmodat" }, // 41
 	{ .handler = syscall_fchownat, .name = "fchownat" }, // 42
-	{ .handler = syscall_sigaction, .name = "sigaction" } // 43
+	{ .handler = syscall_sigaction, .name = "sigaction" }, // 43
+	{ .handler = syscall_sigpending, .name = "sigpending" } // 44
 };
 
 extern void syscall_handler(struct registers *regs) {
