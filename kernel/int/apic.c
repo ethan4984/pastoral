@@ -93,6 +93,66 @@ int ioapic_set_irq_redirection(uint32_t lapic_id, uint8_t vector, uint8_t irq, b
 	return -1;
 }
 
+// redirect if necessary and mask all ISA IRQ's
+void ioapic_redirect_all_isa_irqs(void)
+{
+	/*
+	Algorithm taken from apoptOS:
+		https://github.com/Tix3Dev/apoptOS/blob/ca04813f3f1d8fb8f1c4292dd95409a86165b80e/src/kernel/hardware/apic/apic.c#L251-L286
+	Under following license:
+		This file is part of a modern x86_64 UNIX-like microkernel-based
+		operating system which is called apoptOS
+		Everything is openly developed on GitHub: https://github.com/Tix3Dev/apoptOS
+		Copyright (C) 2022  Yves Vollmeier <https://github.com/Tix3Dev>
+		This program is free software: you can redistribute it and/or modify
+		it under the terms of the GNU General Public License as published by
+		the Free Software Foundation, either version 3 of the License, or
+		(at your option) any later version.
+		This program is distributed in the hope that it will be useful,
+		but WITHOUT ANY WARRANTY; without even the implied warranty of
+		MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+		GNU General Public License for more details.
+		You should have received a copy of the GNU General Public License
+		along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+	// first redirect all ISO's
+	for (size_t isos_i = 0; isos_i < madt_isos_i; isos_i++)
+	{
+	    ioapic_set_gsi_redirect(lapic_get_id(), madt_isos[isos_i]->irq_source + 32,
+		    madt_isos[isos_i]->gsi, madt_isos[isos_i]->flags, true);
+	}
+
+	// and then redirect the rest of ISA IRQ's, skipping the already set ISO's
+	uint8_t vector = 0;
+	for (uint8_t gsi = 0; gsi < 16; gsi++, vector++)
+	{
+	    // check if current GSI is already set, if yes decrease vector
+	    // so next iteration it's still the same
+	    if (ioapic_get_vector_from_gsi(gsi) >= 32)
+	    {
+		vector--;
+		continue;
+	    }
+
+    retry:
+	    // check if current vector is from a ISO, if yes retry
+	    for (size_t isos_i = 0; isos_i < madt_isos_i; isos_i++)
+	    {
+		if (madt_isos[isos_i]->irq_source == vector)
+		{
+		    vector++;
+		    goto retry;
+		}
+	    }
+
+	    ioapic_set_gsi_redirect(lapic_get_id(), vector + 32, gsi, 0, true);
+	}	
+
+	*/
+
+	print("apic: fix me - ISA IRQ redirection!\n");
+}
+
 void apic_init() {
 	madt_hdr = acpi_find_sdt("APIC");
 
@@ -164,9 +224,12 @@ void apic_init() {
 	outb(0xa1, 0xff);
 	outb(0x21, 0xff);
 
-	for(size_t i = 0; i < 16; i++) {
-		ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), i + 32, i, true);
-	}
+	// shouldn't be used anymore - undefined behavior might result
+	// for(size_t i = 0; i < 16; i++) {
+	// 	ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), i + 32, i, true);
+	// }
+	
+	ioapic_redirect_all_isa_irqs();
 
 	kernel_mappings.map_page(&kernel_mappings, (rdmsr(MSR_LAPIC_BASE) & 0xfffff000) + HIGH_VMA, (rdmsr(MSR_LAPIC_BASE) & 0xfffff000), VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_G | VMM_FLAGS_PS);
 
