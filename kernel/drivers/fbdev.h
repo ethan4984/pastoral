@@ -3,6 +3,10 @@
 #include <limine.h>
 #include <types.h>
 
+
+#define FBDEV_MAJOR 29
+
+
 #define FBIOGET_VSCREENINFO 0x4600
 #define FBIOPUT_VSCREENINFO 0x4601
 #define FBIOGET_FSCREENINFO 0x4602
@@ -77,8 +81,6 @@ struct fb_var_screeninfo {
 };
 
 struct fb_device {
-	struct vfs_node *vfs_node;
-
 	struct fb_var_screeninfo *var;
 	struct fb_fix_screeninfo *fix;
 };

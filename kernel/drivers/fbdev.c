@@ -6,13 +6,18 @@
 #include <errno.h>
 #include <debug.h>
 #include <cpu.h>
+#include <fs/cdev.h>
+
 
 VECTOR(struct fb_device*) fbdev_list;
+static int fb_minor = 0;
+
 
 static ssize_t fbdev_write(struct asset *asset, void*, off_t offset, off_t cnt, const void *buf);
 static ssize_t fbdev_read(struct asset *asset, void*, off_t offset, off_t cnt, void *buf);
 static int fbdev_ioctl(struct asset *asset, int fd, uint64_t req, void *args);
 static void *fbdev_shared(struct asset *asset, void*, off_t offset);
+
 
 void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 	struct fb_device *device = alloc(sizeof(struct fb_device));
@@ -48,7 +53,7 @@ void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 		.red = (struct fb_bitfield) { framebuffer->red_mask_shift, framebuffer->red_mask_size, 0 },
 		.green = (struct fb_bitfield) { framebuffer->green_mask_shift, framebuffer->green_mask_size, 0 },
 		.blue = (struct fb_bitfield) { framebuffer->blue_mask_shift, framebuffer->blue_mask_size, 0 },
-		.transp = (struct fb_bitfield) { 0, 0, 0 }, 
+		.transp = (struct fb_bitfield) { 0, 0, 0 },
 		.nonstd = 0,
 		.activate = 0,
 		.height = -1,
@@ -68,28 +73,20 @@ void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 		.reserved = { 0 }
 	};
 
-	char *device_path = alloc(MAX_PATH_LENGTH);
-	sprint(device_path, "/dev/fb%d", fbdev_list.length);
 
 	struct asset *asset = alloc(sizeof(struct asset));
-	struct stat *stat = alloc(sizeof(struct stat));
-
-	stat->st_mode = 0666 | S_IFCHR;
-
 	asset->ioctl = fbdev_ioctl;
 	asset->write = fbdev_write;
 	asset->read = fbdev_read;
 	asset->shared = fbdev_shared;
-	asset->stat = stat;
 	asset->something = device;
 
-	struct vfs_node *vfs_node = vfs_create_node_deep(NULL, asset, NULL, device_path);
-
-	device->vfs_node = vfs_node;
+	struct cdev fb_cdev;
+	fb_cdev.asset = asset;
+	cdev_register(makedev(FBDEV_MAJOR, fb_minor++), &fb_cdev);
+	print("fbdev: registered dev with major %x minor %x\n", FBDEV_MAJOR, fb_minor - 1);
 
 	VECTOR_PUSH(fbdev_list, device);
-
-	print("fbdev: %s initialised\n", device_path);
 }
 
 static ssize_t fbdev_write(struct asset *asset, void*, off_t offset, off_t cnt, const void *buf) {
@@ -103,7 +100,7 @@ static ssize_t fbdev_write(struct asset *asset, void*, off_t offset, off_t cnt, 
 		cnt = device->fix->smem_len - offset;
 	}
 
-	memcpy8((void*)device->fix->smem_start, buf, cnt); 
+	memcpy8((void*)device->fix->smem_start, buf, cnt);
 
 	return cnt;
 }
@@ -119,7 +116,7 @@ static ssize_t fbdev_read(struct asset *asset, void*, off_t offset, off_t cnt, v
 		cnt = device->fix->smem_len - offset;
 	}
 
-	memcpy8(buf, (void*)device->fix->smem_start, cnt); 
+	memcpy8(buf, (void*)device->fix->smem_start, cnt);
 
 	return cnt;
 }
@@ -149,7 +146,7 @@ static int fbdev_ioctl(struct asset *asset, int, uint64_t req, void *args) {
 			break;
 		case FBIOBLANK:
 			break;
-		default: 
+		default:
 			set_errno(EINVAL);
 			return -1;
 	}

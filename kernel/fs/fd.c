@@ -9,7 +9,7 @@
 #include <debug.h>
 #include <time.h>
 #include <mm/pmm.h>
-
+#include <fs/cdev.h>
 
 static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 	bool relative = *path != '/' ? true : false;
@@ -206,7 +206,7 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 
 	if(asset->write == NULL) {
 		file_unlock(fd_handle->file_handle);
-		set_errno(EINVAL);
+		set_errno(ENODEV);
 		return -1;
 	}
 
@@ -254,7 +254,7 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 
 	if(asset->read == NULL) {
 		file_unlock(fd_handle->file_handle);
-		set_errno(EINVAL);
+		set_errno(ENODEV);
 		return -1;
 	}
 
@@ -412,6 +412,18 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	if(flags & O_TRUNC)
 		vfs_node->asset->resize(vfs_node->asset, NULL, 0);
 
+	struct asset *new_asset = vfs_node->asset;
+	if(S_ISCHR(vfs_node->asset->stat->st_mode)) {
+		if(cdev_open(new_asset->stat->st_rdev, &new_asset) == -1)
+			return -1;
+		new_asset->stat = vfs_node->asset->stat;
+	} else {
+		if(new_asset->open) {
+			if(new_asset->open(new_asset) == -1)
+				return -1;
+		}
+	}
+
 	struct fd_handle *new_fd_handle = alloc(sizeof(struct fd_handle));
 	struct file_handle *new_file_handle = alloc(sizeof(struct file_handle));
 
@@ -423,7 +435,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	new_fd_handle->flags = (flags & O_CLOEXEC) ? FD_CLOEXEC : 0;
 
 	new_file_handle->vfs_node = vfs_node;
-	new_file_handle->asset = vfs_node->asset;
+	new_file_handle->asset = new_asset;
 	new_file_handle->flags = flags & ~O_CLOEXEC;
 
 	struct sched_task *current_task = CURRENT_TASK;
@@ -439,6 +451,10 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 static void fd_close_unlocked(struct fd_handle *handle) {
 	struct sched_task *current_task = CURRENT_TASK;
+
+	if(handle->file_handle->asset->close)
+		handle->file_handle->asset->close(handle->file_handle->asset);
+
 	file_put(handle->file_handle);
 	hash_table_delete(&current_task->fd_list, &handle->fd_number, sizeof(handle->fd_number));
 	bitmap_free(&current_task->fd_bitmap, handle->fd_number);
@@ -968,9 +984,7 @@ void syscall_pipe(struct registers *regs) {
 	write_asset->write = pipe_write;
 
 	struct stat *pipe_stat = alloc(sizeof(struct stat));
-	pipe_stat->st_atim = clock_realtime;
-	pipe_stat->st_mtim = clock_realtime;
-	pipe_stat->st_ctim = clock_realtime;
+	stat_init(pipe_stat);
 	pipe_stat->st_mode = S_IFIFO | S_IWUSR;
 
 	// Do we want to support full duplex pipes? If so,

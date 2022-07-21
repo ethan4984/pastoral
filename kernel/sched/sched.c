@@ -465,6 +465,10 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		file_init(stdout_file_handle);
 		file_init(stderr_file_handle);
 
+		stat_init(stdin_stat);
+		stat_init(stdout_stat);
+		stat_init(stderr_stat);
+
 		stdin_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
 		stdin_fd_handle->file_handle = stdin_file_handle;
 		stdout_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
