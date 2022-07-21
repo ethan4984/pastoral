@@ -81,6 +81,8 @@ struct timespec {
 #define F_GETOWN 10
 #define F_SETOWN 11
 
+#define FD_CLOEXEC 1
+
 #define O_APPEND 0x8
 #define O_CREAT 0x10
 #define O_DIRECTORY 0x20
