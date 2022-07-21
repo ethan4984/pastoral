@@ -30,7 +30,7 @@ sources:
     subdir: 'ports'
     git: 'https://github.com/ethan4984/mlibc'
     branch: 'master'
-    commit: '2637b433ba1660fd964d87bd15c7109ae6be52af'
+    commit: '7ffe696cd77b779a7919099d8fd9aff3e92b9b41'
     rolling_version: true
     version: '0.0pl@ROLLING_ID@'
 
