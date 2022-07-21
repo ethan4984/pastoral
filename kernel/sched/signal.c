@@ -54,19 +54,19 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 	spinlock(&thread->sig_lock);
 
 	if(oldset) {
-		*oldset = thread->signal_queue.sigpending;
+		*oldset = thread->sigmask;
 	}
 
 	if(set) {
 		switch(how) {
 			case SIG_BLOCK:
-				thread->signal_queue.sigpending |= *set;
+				thread->sigmask |= *set;
 				break;
 			case SIG_UNBLOCK:
-				thread->signal_queue.sigpending &= ~(*set);
+				thread->sigmask &= ~(*set);
 				break; 
 			case SIG_SETMASK:
-				thread->signal_queue.sigpending = *set;
+				thread->sigmask = *set;
 				break;
 			default:
 				set_errno(EINVAL); 
