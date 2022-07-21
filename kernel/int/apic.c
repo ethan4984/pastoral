@@ -2,6 +2,7 @@
 #include <debug.h>
 #include <mm/vmm.h>
 #include <drivers/hpet.h>
+#include <string.h>
 #include <cpu.h>
 
 typeof(madt_ent0_list) madt_ent0_list;
@@ -86,11 +87,11 @@ int ioapic_set_irq_redirection(uint32_t lapic_id, uint8_t vector, uint8_t irq, b
 
 		if(irq <= ioapic->maximum_redirection_entry && irq >= ioapic->madt1->gsi_base) {
 			ioapic_write_redirection_table(ioapic, (irq - ioapic->madt1->gsi_base) * 2, entry);
-			return 0;
+			return irq;
 		}
 	}
 
-	return -1;
+	return irq;
 }
 
 void apic_init() {
@@ -164,8 +165,12 @@ void apic_init() {
 	outb(0xa1, 0xff);
 	outb(0x21, 0xff);
 
+	uint64_t irq_bitmap = 0;
 	for(size_t i = 0; i < 16; i++) {
-		ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), i + 32, i, true);
+		if(!BIT_TEST((uint8_t*)&irq_bitmap, i)) {
+			int irq = ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), i + 32, i, true);
+			BIT_SET((uint8_t*)&irq_bitmap, irq);
+		}
 	}
 
 	kernel_mappings.map_page(&kernel_mappings, (rdmsr(MSR_LAPIC_BASE) & 0xfffff000) + HIGH_VMA, (rdmsr(MSR_LAPIC_BASE) & 0xfffff000), VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_G | VMM_FLAGS_PS);
@@ -174,4 +179,6 @@ void apic_init() {
 	xapic_write(XAPIC_SINT_OFF, xapic_read(XAPIC_SINT_OFF) | 0x1ff);
 
 	asm volatile ("mov %0, %%cr8" :: "r"(0ull));
+
+	for(;;);
 }
