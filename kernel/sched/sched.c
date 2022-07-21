@@ -329,8 +329,6 @@ static uint64_t sched_arg_placement(struct sched_arguments *arguments, uint64_t 
 	ptr[6] = ELF_AT_ENTRY; ptr[7] = aux->at_entry;
 	ptr[8] = 0; ptr[9] = 0;
 
-	print("setting to troll %x\n", ptr[5]);
-
 	*(--ptr) = 0;
 	ptr -= arguments->envp_cnt;
 

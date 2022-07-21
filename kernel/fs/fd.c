@@ -9,7 +9,7 @@
 #include <debug.h>
 #include <time.h>
 #include <mm/pmm.h>
-#include <fs/cdev.h>
+//#include <fs/cdev.h>
 
 static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 	bool relative = *path != '/' ? true : false;
@@ -414,8 +414,8 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 	struct asset *new_asset = vfs_node->asset;
 	if(S_ISCHR(vfs_node->asset->stat->st_mode)) {
-		if(cdev_open(new_asset->stat->st_rdev, &new_asset) == -1)
-			return -1;
+		/*if(cdev_open(new_asset->stat->st_rdev, &new_asset) == -1)
+			return -1;*/
 		new_asset->stat = vfs_node->asset->stat;
 	} else {
 		if(new_asset->open) {
@@ -603,9 +603,9 @@ int fd_dup2(int oldfd, int newfd) {
 
 	if(BIT_TEST(current_task->fd_bitmap.data, newfd)) {
 		fd_close_unlocked(fd_translate_unlocked(newfd));
-	} else {
-		BIT_SET(current_task->fd_bitmap.data, newfd);
 	}
+
+	BIT_SET(current_task->fd_bitmap.data, newfd);
 
 	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 

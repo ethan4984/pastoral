@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <debug.h>
 #include <cpu.h>
-#include <fs/cdev.h>
+//#include <fs/cdev.h>
 
 
 VECTOR(struct fb_device*) fbdev_list;
@@ -81,10 +81,10 @@ void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 	asset->shared = fbdev_shared;
 	asset->something = device;
 
-	struct cdev fb_cdev;
+	/*struct cdev fb_cdev;
 	fb_cdev.asset = asset;
 	cdev_register(makedev(FBDEV_MAJOR, fb_minor++), &fb_cdev);
-	print("fbdev: registered dev with major %x minor %x\n", FBDEV_MAJOR, fb_minor - 1);
+	print("fbdev: registered dev with major %x minor %x\n", FBDEV_MAJOR, fb_minor - 1);*/
 
 	VECTOR_PUSH(fbdev_list, device);
 }
