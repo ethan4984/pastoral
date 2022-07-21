@@ -22,6 +22,8 @@ typedef int64_t blkcnt_t;
 typedef int64_t time_t;
 typedef int64_t clockid_t;
 
+typedef uint64_t sigset_t;
+
 struct timespec {
 	time_t tv_sec;
 	long tv_nsec;

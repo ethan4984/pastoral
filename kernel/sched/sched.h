@@ -8,6 +8,7 @@
 #include <bitmap.h>
 #include <hash.h>
 #include <elf.h>
+#include <sched/signal.h>
 
 #define EVENT_PROC_EXIT 0
 #define EVENT_FD_READ 1
@@ -86,6 +87,9 @@ struct sched_task {
 	gid_t saved_gid;
 
 	mode_t umask;
+
+	char sig_lock;
+	struct sigaction sigactions[32];
 
 	VECTOR(struct sched_task*) children;
 
