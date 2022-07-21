@@ -122,6 +122,7 @@ int main(int argc, char **argv) {
 		}
 
 		printf("user password: ");
+		fflush(stdin);
 		fflush(stdout);
 		scanf("%31s", pwbuf1);
 	}
@@ -133,6 +134,7 @@ int main(int argc, char **argv) {
 		}
 
 		printf("group password: ");
+		fflush(stdin);
 		fflush(stdout);
 		scanf("%31s", pwbuf2);
 	}
@@ -151,13 +153,13 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	if(setuid(pw_ent->pw_uid) < 0) {
-		fprintf(stderr, "setuid failure: %s\n", serrno);
+	if(setgid(gr_ent->gr_gid) < 0) {
+		fprintf(stderr, "setgid failure: %s\n", serrno);
 		return 1;
 	}
 
-	if(setgid(gr_ent->gr_gid) < 0) {
-		fprintf(stderr, "setgid failure: %s\n", serrno);
+	if(setuid(pw_ent->pw_uid) < 0) {
+		fprintf(stderr, "setuid failure: %s\n", serrno);
 		return 1;
 	}
 

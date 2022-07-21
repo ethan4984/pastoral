@@ -991,7 +991,7 @@ void syscall_setuid(struct registers *regs) {
 	print("syscall: [pid %x] setuid: uid {%x}\n", CORE_LOCAL->pid, uid);
 #endif
 
-	if(current_task->real_uid == 0 || current_task->effective_uid == 0 || current_task->saved_uid == 0) {
+	if(current_task->effective_uid == 0) {
 		current_task->real_uid = uid;
 		current_task->effective_uid = uid;
 		current_task->saved_uid = uid;
@@ -1035,7 +1035,7 @@ void syscall_setgid(struct registers *regs) {
 	print("syscall: [pid %x] setgid: gid {%x}\n", CORE_LOCAL->pid, gid);
 #endif
 
-	if(current_task->real_gid == 0 || current_task->effective_gid == 0 || current_task->saved_gid == 0) {
+	if(current_task->effective_uid == 0) {
 		current_task->real_gid = gid;
 		current_task->effective_gid = gid;
 		current_task->saved_gid = gid;
