@@ -52,6 +52,7 @@ struct sched_thread {
 	size_t errno;
 
 	char sig_lock;
+	sigset_t sigmask;
 	struct signal_queue signal_queue;
 
 	struct registers regs;
