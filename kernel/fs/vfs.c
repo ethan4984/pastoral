@@ -12,10 +12,8 @@ struct asset *vfs_default_asset(mode_t mode) {
 	struct asset *asset = alloc(sizeof(struct asset));
 
 	asset->stat = alloc(sizeof(struct stat));
+	stat_init(asset->stat);
 	asset->stat->st_mode = mode;
-	asset->stat->st_atim = clock_realtime;
-	asset->stat->st_mtim = clock_realtime;
-	asset->stat->st_ctim = clock_realtime;
 
 	asset->event = alloc(sizeof(struct event));
 	asset->trigger = alloc(sizeof(struct event_trigger));

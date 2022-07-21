@@ -465,6 +465,10 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		file_init(stdout_file_handle);
 		file_init(stderr_file_handle);
 
+		stat_init(stdin_stat);
+		stat_init(stdout_stat);
+		stat_init(stderr_stat);
+
 		stdin_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
 		stdin_fd_handle->file_handle = stdin_file_handle;
 		stdout_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
@@ -987,7 +991,7 @@ void syscall_setuid(struct registers *regs) {
 	print("syscall: [pid %x] setuid: uid {%x}\n", CORE_LOCAL->pid, uid);
 #endif
 
-	if(current_task->real_uid == 0 || current_task->effective_uid == 0 || current_task->saved_uid == 0) {
+	if(current_task->effective_uid == 0) {
 		current_task->real_uid = uid;
 		current_task->effective_uid = uid;
 		current_task->saved_uid = uid;
@@ -1031,7 +1035,7 @@ void syscall_setgid(struct registers *regs) {
 	print("syscall: [pid %x] setgid: gid {%x}\n", CORE_LOCAL->pid, gid);
 #endif
 
-	if(current_task->real_gid == 0 || current_task->effective_gid == 0 || current_task->saved_gid == 0) {
+	if(current_task->effective_uid == 0) {
 		current_task->real_gid = gid;
 		current_task->effective_gid = gid;
 		current_task->saved_gid = gid;

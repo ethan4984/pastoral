@@ -10,7 +10,10 @@ typedef int64_t ssize_t;
 typedef ssize_t pid_t;
 typedef ssize_t tid_t;
 
-typedef uint64_t dev_t;
+// TODO: Create mlibc major/minor/makedev macros.
+//typedef uint64_t dev_t;
+typedef uint16_t dev_t;
+
 typedef uint64_t ino_t;
 typedef int32_t mode_t;
 typedef int32_t nlink_t;
@@ -123,6 +126,16 @@ struct timespec {
 #define W_OK 4
 #define X_OK 8
 
+// TODO: create mlibc major/minor/makedev macros.
+//#define major(dev) ((dev)) & 0xffffffff)
+//#define minor(dev) ((dev >> 32) & 0xffffffff)
+//#define makedev(major, minor) ((((dev_t) (minor & 0xffffffff)) << 32) | (((dev_t) (major & 0xffffffff))))
+#define major(dev) (((dev) >> 8) & 0xff)
+#define minor(dev) ((dev) & 0xff)
+#define makedev(M, m) ((((dev_t) (M & 0xff)) << 8) | (((dev_t) (m & 0xff))))
+
+#include <lib/time.h>
+
 struct stat {
 	dev_t st_dev;
 	ino_t st_ino;
@@ -139,6 +152,14 @@ struct stat {
 	blkcnt_t st_blocks;
 };
 
+
+static inline void stat_init(struct stat *st) {
+	st->st_atim = clock_realtime;
+	st->st_ctim = clock_realtime;
+	st->st_mtim = clock_realtime;
+}
+
+
 struct dirent {
 	ino_t d_ino;
 	off_t d_off;
@@ -150,7 +171,11 @@ struct dirent {
 struct event;
 struct event_trigger;
 
+struct vfs_node;
+
 struct asset {
+	int (*open)(struct asset*);
+	int (*close)(struct asset*);
 	ssize_t (*read)(struct asset*, void*, off_t, off_t, void*);
 	ssize_t (*write)(struct asset*, void*, off_t, off_t, const void*);
 	int (*ioctl)(struct asset*, int fd, uint64_t req, void *args);

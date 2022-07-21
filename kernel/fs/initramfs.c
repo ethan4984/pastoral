@@ -57,6 +57,7 @@ int initramfs() {
 		struct stat *stat = alloc(sizeof(struct stat));
 
 		// Initramfs files are root's property.
+		stat_init(stat);
 		stat->st_uid = 0;
 		stat->st_gid = 0;
 		stat->st_size = octal_to_decimal(ustar_header->size);
@@ -65,10 +66,6 @@ int initramfs() {
 		stat->st_blocks = DIV_ROUNDUP(stat->st_size, stat->st_blksize);
 		stat->st_ino = ramfs_handle->inode;
 		stat->st_nlink = 1;
-
-		stat->st_atim = clock_realtime;
-		stat->st_ctim = clock_realtime;
-		stat->st_mtim = clock_realtime;
 
 		asset->stat = stat;
 		asset->read = ramfs_read;

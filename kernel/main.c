@@ -58,6 +58,18 @@ void pastoral_thread() {
 
 	for(uint64_t i = 0; i < framebuffer_count; i++) {
 		fbdev_init_device(framebuffers[i]);
+		char *device_path = alloc(MAX_PATH_LENGTH);
+		sprint(device_path, "/dev/fb%d", i);
+
+		struct stat *stat = alloc(sizeof(struct stat));
+		stat_init(stat);
+		stat->st_mode = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) | S_IFCHR;
+		stat->st_rdev = makedev(FBDEV_MAJOR, i);
+
+		struct asset *asset = alloc(sizeof(struct asset));
+		asset->stat = stat;
+
+		vfs_create_node_deep(NULL, asset, NULL, device_path);
 	}
 
 	char *argv[] = { "/usr/bin/bash", NULL };
