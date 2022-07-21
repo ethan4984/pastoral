@@ -39,6 +39,10 @@
 #define SIGRTMAX 33
 #define SIGCANCEL 34
 
+#define SIG_BLOCK 0
+#define SIG_UNBLOCK 1
+#define SIG_SETMASK 2
+
 #define SIGMASK(SIG) (1ull << ((SIG) - 1))
 
 union sigval {

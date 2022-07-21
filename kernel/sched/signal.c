@@ -38,7 +38,44 @@ int sigpending(sigset_t *set) {
 		panic(""); 
 	}
 
+	spinlock(&thread->sig_lock);
 	*set = thread->signal_queue.sigpending;
+	spinrelease(&thread->sig_lock);
+
+	return 0;
+}
+
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
+	struct sched_thread *thread = CURRENT_THREAD;
+	if(thread == NULL) {
+		panic(""); 
+	}
+
+	spinlock(&thread->sig_lock);
+
+	if(oldset) {
+		*oldset = thread->signal_queue.sigpending;
+	}
+
+	if(set) {
+		switch(how) {
+			case SIG_BLOCK:
+				thread->signal_queue.sigpending |= *set;
+				break;
+			case SIG_UNBLOCK:
+				thread->signal_queue.sigpending &= ~(*set);
+				break; 
+			case SIG_SETMASK:
+				thread->signal_queue.sigpending = *set;
+				break;
+			default:
+				set_errno(EINVAL); 
+				spinrelease(&thread->sig_lock);
+				return -1;
+		}
+	}
+
+	spinrelease(&thread->sig_lock);
 
 	return 0;
 }
@@ -59,8 +96,20 @@ void syscall_sigpending(struct registers *regs) {
 	sigset_t *set = (void*)regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] sigaction: {%x}\n", CORE_LOCAL->pid, set);
+	print("syscall: [pid %x] sigpending: set {%x}\n", CORE_LOCAL->pid, set);
 #endif
 
 	regs->rax = sigpending(set);
+}
+
+void syscall_sigprocmask(struct registers *regs) {
+	int how = regs->rdi;
+	const sigset_t *set = (void*)regs->rsi;
+	sigset_t *oldset = (void*)regs->rdx;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] sigprocmask: how {%x}, set {%x}, oldset {%x}\n", CORE_LOCAL->pid, how, set, oldset);
+#endif
+
+	regs->rax = sigprocmask(how, set, oldset);
 }
