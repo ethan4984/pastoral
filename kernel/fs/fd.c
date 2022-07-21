@@ -420,7 +420,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 	new_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
 	new_fd_handle->file_handle = new_file_handle;
-	new_fd_handle->flags = flags & O_CLOEXEC;
+	new_fd_handle->flags = (flags & O_CLOEXEC) ? FD_CLOEXEC : 0;
 
 	new_file_handle->vfs_node = vfs_node;
 	new_file_handle->asset = vfs_node->asset;
@@ -536,7 +536,7 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 	return 0;
 }
 
-int fd_dup(int fd) {
+int fd_dup(int fd, bool clear_cloexec) {
 	struct sched_task *current_task = CURRENT_TASK;
 	spinlock(&current_task->fd_lock);
 
@@ -548,13 +548,13 @@ int fd_dup(int fd) {
 	}
 
 	struct fd_handle *handle = alloc(sizeof(struct fd_handle));
-	*handle = (struct fd_handle) {
-		.file_handle = alloc(sizeof(struct file_handle)),
-		.fd_number = bitmap_alloc(&current_task->fd_bitmap),
-		.flags = fd_handle->flags
-	};
+	*handle = *fd_handle;
+	handle->fd_number = bitmap_alloc(&current_task->fd_bitmap);
 
-	*handle->file_handle = *fd_handle->file_handle;
+	if (clear_cloexec)
+		handle->flags &= ~FD_CLOEXEC;
+	else
+		handle->flags |= FD_CLOEXEC;
 
 	file_get(handle->file_handle);
 	hash_table_push(&current_task->fd_list, &handle->fd_number, handle, sizeof(handle->fd_number));
@@ -582,6 +582,7 @@ int fd_dup2(int oldfd, int newfd) {
 	new_handle = alloc(sizeof(struct fd_handle));
 	*new_handle = *oldfd_handle;
 	new_handle->fd_number = newfd;
+	new_handle->flags &= ~FD_CLOEXEC;
 	file_get(new_handle->file_handle);
 
 	if(BIT_TEST(current_task->fd_bitmap.data, newfd)) {
@@ -698,7 +699,7 @@ void syscall_dup(struct registers *regs) {
 	print("syscall: [pid %x] dup: fd {%x}\n", CORE_LOCAL->pid, fd);
 #endif
 
-	regs->rax = fd_dup(fd);
+	regs->rax = fd_dup(fd, true);
 }
 
 void syscall_stat(struct registers *regs) {
@@ -798,7 +799,10 @@ void syscall_fcntl(struct registers *regs) {
 
 	switch(regs->rsi) {
 		case F_DUPFD:
-			regs->rax = fd_dup(regs->rdi);
+			regs->rax = fd_dup(regs->rdi, true);
+			break;
+		case F_DUPFD_CLOEXEC:
+			regs->rax = fd_dup(regs->rdi, false);
 			break;
 		case F_GETFD:
 			fd_lock(fd_handle);
