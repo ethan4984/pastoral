@@ -272,7 +272,6 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 }
 
 ssize_t pipe_read(struct file_handle *file, void *buf, size_t cnt, off_t offset) {
-	file_lock(file);
 	struct stat *stat = file->stat;
 	const void *out = file->pipe->buffer;
 
@@ -291,12 +290,10 @@ ssize_t pipe_read(struct file_handle *file, void *buf, size_t cnt, off_t offset)
 	memcpy8(buf, out + offset, cnt);
 	offset += cnt;
 
-	file_unlock(file);
 	return cnt;
 }
 
 ssize_t pipe_write(struct file_handle *file, const void *buf, size_t cnt, off_t offset) {
-	file_lock(file);
 	struct stat *stat = file->stat;
 	void *out = file->pipe->buffer;
 
@@ -326,7 +323,6 @@ ssize_t pipe_write(struct file_handle *file, const void *buf, size_t cnt, off_t 
 
 	memcpy8(out + offset, buf, cnt);
 
-	file_unlock(file);
 	return cnt;
 }
 
