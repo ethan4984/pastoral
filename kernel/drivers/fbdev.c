@@ -1,4 +1,5 @@
 #include <drivers/fbdev.h>
+#include <fs/fd.h>
 #include <fs/vfs.h>
 #include <limine.h>
 #include <vector.h>
@@ -12,11 +13,17 @@
 VECTOR(struct fb_device*) fbdev_list;
 static int fb_minor = 0;
 
+static ssize_t fbdev_read(struct file_handle *file, void *buf, size_t cnt, off_t off);
+static ssize_t fbdev_write(struct file_handle *file, const void *buf, size_t cnt, off_t off);
+static int fbdev_ioctl(struct file_handle *file, uint64_t req, void *args);
+static void *fbdev_shared(struct file_handle *file, void*, off_t offset);
 
-static ssize_t fbdev_write(struct asset *asset, void*, off_t offset, off_t cnt, const void *buf);
-static ssize_t fbdev_read(struct asset *asset, void*, off_t offset, off_t cnt, void *buf);
-static int fbdev_ioctl(struct asset *asset, int fd, uint64_t req, void *args);
-static void *fbdev_shared(struct asset *asset, void*, off_t offset);
+static struct file_ops fbdev_ops = {
+	.read = fbdev_read,
+	.write = fbdev_write,
+	.ioctl = fbdev_ioctl,
+	.shared = fbdev_shared
+};
 
 
 void fbdev_init_device(struct limine_framebuffer *framebuffer) {
@@ -73,24 +80,17 @@ void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 		.reserved = { 0 }
 	};
 
-
-	struct asset *asset = alloc(sizeof(struct asset));
-	asset->ioctl = fbdev_ioctl;
-	asset->write = fbdev_write;
-	asset->read = fbdev_read;
-	asset->shared = fbdev_shared;
-	asset->something = device;
-
-	struct cdev fb_cdev;
-	fb_cdev.asset = asset;
-	cdev_register(makedev(FBDEV_MAJOR, fb_minor++), &fb_cdev);
+	struct cdev *fb_cdev = alloc(sizeof(struct cdev));
+	fb_cdev->fops = &fbdev_ops;
+	fb_cdev->private_data = device;
+	cdev_register(makedev(FBDEV_MAJOR, fb_minor++), fb_cdev);
 	print("fbdev: registered dev with major %x minor %x\n", FBDEV_MAJOR, fb_minor - 1);
 
 	VECTOR_PUSH(fbdev_list, device);
 }
 
-static ssize_t fbdev_write(struct asset *asset, void*, off_t offset, off_t cnt, const void *buf) {
-	struct fb_device *device = asset->something;
+static ssize_t fbdev_write(struct file_handle *file, const void *buf, size_t cnt, off_t offset) {
+	struct fb_device *device = file->private_data;
 	if(device == NULL) {
 		set_errno(EBADF);
 		return -1;
@@ -105,8 +105,8 @@ static ssize_t fbdev_write(struct asset *asset, void*, off_t offset, off_t cnt, 
 	return cnt;
 }
 
-static ssize_t fbdev_read(struct asset *asset, void*, off_t offset, off_t cnt, void *buf) {
-	struct fb_device *device = asset->something;
+static ssize_t fbdev_read(struct file_handle *file, void *buf, size_t cnt, off_t offset) {
+	struct fb_device *device = file->private_data;
 	if(device == NULL) {
 		set_errno(EBADF);
 		return -1;
@@ -121,8 +121,8 @@ static ssize_t fbdev_read(struct asset *asset, void*, off_t offset, off_t cnt, v
 	return cnt;
 }
 
-static void *fbdev_shared(struct asset *asset, void*, off_t offset) {
-	struct fb_device *device = asset->something;
+static void *fbdev_shared(struct file_handle *file, void*, off_t offset) {
+	struct fb_device *device = file->private_data;
 	if(device == NULL) {
 		set_errno(EBADF);
 		return (void*)-1;
@@ -131,8 +131,8 @@ static void *fbdev_shared(struct asset *asset, void*, off_t offset) {
 	return (void*)(device->fix->smem_start - HIGH_VMA + offset);
 }
 
-static int fbdev_ioctl(struct asset *asset, int, uint64_t req, void *args) {
-	struct fb_device *device = asset->something;
+static int fbdev_ioctl(struct file_handle *file, uint64_t req, void *args) {
+	struct fb_device *device = file->private_data;
 
 	switch(req) {
 		case FBIOGET_VSCREENINFO:

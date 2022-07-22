@@ -53,7 +53,6 @@ int initramfs() {
 
 		hash_table_push(&ramfs_node_list, &ramfs_handle->inode, ramfs_handle, sizeof(ramfs_handle->inode));
 
-		struct asset *asset = alloc(sizeof(struct asset));
 		struct stat *stat = alloc(sizeof(struct stat));
 
 		// Initramfs files are root's property.
@@ -67,14 +66,6 @@ int initramfs() {
 		stat->st_ino = ramfs_handle->inode;
 		stat->st_nlink = 1;
 
-		asset->stat = stat;
-		asset->read = ramfs_read;
-		asset->write = ramfs_write;
-		asset->resize = ramfs_resize;
-		asset->event = alloc(sizeof(struct event));
-		asset->trigger = alloc(sizeof(struct event_trigger));
-		asset->trigger->event = asset->event;
-
 		switch(ustar_header->typeflag) {
 			case USTAR_REGTYPE:
 				stat->st_mode |= S_IFREG;
@@ -87,9 +78,9 @@ int initramfs() {
 				break;
 		}
 
-		struct vfs_node *node = vfs_create_node_deep(NULL, asset, &ramfs_filesystem, ustar_header->name);
+		struct vfs_node *node = vfs_create_node_deep(NULL, &ramfs_fops, &ramfs_filesystem, stat, ustar_header->name);
 
-		if(S_ISLNK(node->asset->stat->st_mode)) {
+		if(S_ISLNK(node->stat->st_mode)) {
 			node->symlink = ustar_header->linkname;
 		}
 

@@ -165,7 +165,7 @@ void reschedule(struct registers *regs, void*) {
 
 	next_task->event_waiting = 0;
 
-	for(size_t i = 0; i < SIGNAL_MAX; i++) {
+/*	for(size_t i = 0; i < SIGNAL_MAX; i++) {
 		if(next_thread->signal_queue.sigpending & (1 << i)) {
 			struct signal *signal = &next_thread->signal_queue.queue[i];
 			struct sigaction *action = signal->sigaction;
@@ -184,18 +184,18 @@ void reschedule(struct registers *regs, void*) {
 				next_thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
 				next_thread->regs.rdi = signal->signum;
 				next_thread->regs.rsi = (uint64_t)siginfo;
-				next_thread->regs.rdx = (uint64_t)ucontext; 
+				next_thread->regs.rdx = (uint64_t)ucontext;
 			} else {
 				next_thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
 				next_thread->regs.rdi = signal->signum;
 			}
 
 			next_thread->signal_queue.sigpending &= ~(1 << i);
-			
+
 			break;
 		}
 	}
-
+*/
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
 	}
@@ -854,15 +854,15 @@ void syscall_execve(struct registers *regs) {
 		return;
 	}
 
-	if(stat_has_access(vfs_node->asset->stat, current_task->effective_uid,
+	if(stat_has_access(vfs_node->stat, current_task->effective_uid,
 		current_task->effective_gid, X_OK) == -1) {
 		set_errno(EACCES);
 		regs->rax = -1;
 		return;
 	}
 
-	bool is_suid = vfs_node->asset->stat->st_mode & S_ISUID ? true : false;
-	bool is_sgid = vfs_node->asset->stat->st_mode & S_ISGID ? true : false;
+	bool is_suid = vfs_node->stat->st_mode & S_ISUID ? true : false;
+	bool is_sgid = vfs_node->stat->st_mode & S_ISGID ? true : false;
 
 	struct sched_task *task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING);
 	struct sched_thread *thread = sched_translate_tid(task->pid, 0);
@@ -891,11 +891,11 @@ void syscall_execve(struct registers *regs) {
 	thread->pid = task->pid;
 
 	task->real_uid = current_task->real_uid;
-	task->effective_uid = is_suid ? vfs_node->asset->stat->st_uid : current_task->effective_uid;
+	task->effective_uid = is_suid ? vfs_node->stat->st_uid : current_task->effective_uid;
 	task->saved_uid = task->effective_uid;
 
 	task->real_gid = current_task->real_gid;
-	task->effective_gid = is_sgid ? vfs_node->asset->stat->st_gid : current_task->effective_gid;
+	task->effective_gid = is_sgid ? vfs_node->stat->st_gid : current_task->effective_gid;
 	task->saved_gid = task->effective_gid;
 
 	task->pgid = current_task->pgid;

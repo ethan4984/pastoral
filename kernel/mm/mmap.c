@@ -57,7 +57,6 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 	}
 
 	file_get(handle->file_handle);
-	struct vfs_node *vfs_node = handle->file_handle->vfs_node;
 	offset = offset & ~(0xfff);
 
 	uint64_t flags = VMM_FILE_FLAG | VMM_SHARE_FLAG | VMM_FLAGS_NX;
@@ -67,7 +66,7 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 	if(prot & MMAP_PROT_EXEC) flags &= ~(VMM_FLAGS_NX);
 
 	for(size_t i = 0; i < DIV_ROUNDUP(length, PAGE_SIZE); i++) {
-		struct page *page = hash_table_search(&vfs_node->shared_pages, &offset, sizeof(offset));
+		struct page *page = hash_table_search(&handle->file_handle->vfs_node->shared_pages, &offset, sizeof(offset));
 		struct page *new_page = alloc(sizeof(struct page));
 
 		if(page) {
@@ -88,10 +87,10 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 			uint64_t frame;
 			uint64_t extra_flags = 0;
 
-			if(vfs_node->asset->shared == NULL) {
+			if(handle->file_handle->ops->shared == NULL) {
 				frame = pmm_alloc(1, 1);
 			} else {
-				frame = (uint64_t)vfs_node->asset->shared(vfs_node->asset, NULL, offset);
+				frame = (uint64_t)handle->file_handle->ops->shared(handle->file_handle, NULL, offset);
 				extra_flags |= VMM_FLAGS_P;
 			}
 
@@ -100,7 +99,7 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 				.paddr = frame,
 				.size = PAGE_SIZE,
 				.flags = flags | extra_flags,
-				.node = handle->file_handle->vfs_node,
+				.file = handle->file_handle,
 				.offset = offset,
 				.pml_entry = page_table->map_page(page_table, vaddr, frame, flags | extra_flags),
 				.reference = alloc(sizeof(int))
@@ -110,7 +109,7 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 		}
 
 		hash_table_push(page_table->pages, &new_page->vaddr, new_page, sizeof(new_page->vaddr));
-		hash_table_push(&vfs_node->shared_pages, &new_page->offset, new_page, sizeof(new_page->vaddr));
+		hash_table_push(&handle->file_handle->vfs_node->shared_pages, &new_page->offset, new_page, sizeof(new_page->vaddr));
 
 		offset += PAGE_SIZE;
 		vaddr += PAGE_SIZE;
@@ -145,7 +144,7 @@ static int mmap_private_pages(struct page_table *page_table, uintptr_t vaddr, in
 			.paddr = frame,
 			.size = PAGE_SIZE,
 			.flags = flags,
-			.node = handle->file_handle->vfs_node,
+			.file = handle->file_handle,
 			.offset = offset,
 			.pml_entry = page_table->map_page(page_table, vaddr, frame, flags),
 			.reference = alloc(sizeof(int))
@@ -316,17 +315,15 @@ int munmap(struct page_table *page_table, void *addr, size_t length) {
 		struct page *page = hash_table_search(CURRENT_TASK->page_table->pages, &base, sizeof(base));
 
 		if(page) {
-			struct vfs_node *node = page->node;
-
 			if(page->flags & VMM_SHARE_FLAG) {
 				(*page->reference)--;
 
-				if(*page->reference == 0 && node) {
-					if(node->asset->shared == NULL) {
-						node->asset->write(node->asset, NULL, page->offset, PAGE_SIZE, (void*)(page->paddr + HIGH_VMA));
+				if(*page->reference == 0 && page->file) {
+					if(page->file->ops->shared == NULL) {
+						page->file->ops->write(page->file, (void*)(page->paddr + HIGH_VMA), PAGE_SIZE, page->offset);
 					}
 
-					hash_table_delete(&node->shared_pages, &page->vaddr, sizeof(page->vaddr));
+					hash_table_delete(&page->file->vfs_node->shared_pages, &page->vaddr, sizeof(page->vaddr));
 				}
 			}
 
