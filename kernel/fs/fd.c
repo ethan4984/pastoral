@@ -277,8 +277,8 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 	}
 
 	stat_update_time(stat, STAT_ACCESS);
-
 	file_unlock(fd_handle->file_handle);
+
 	return ret;
 }
 
@@ -382,11 +382,8 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		stat->st_mode = S_IFREG | (mode & ~(CURRENT_TASK->umask));
 		stat->st_uid = CURRENT_TASK->effective_uid;
 
-		vfs_node = vfs_create_node_deep(parent, parent->fops, parent->filesystem, stat, path);
+		vfs_node = parent->filesystem->create(parent, name, stat);
 
-		// Behave like Linux and Solaris. If the SGID bit of the parent directory is set,
-		// the group of the new file is going to be the GID of the parent directory.
-		// Otherwise, it's going to be the effective GID.
 		if(parent->stat->st_mode & S_ISGID)
 			vfs_node->stat->st_gid = parent->stat->st_gid;
 		else

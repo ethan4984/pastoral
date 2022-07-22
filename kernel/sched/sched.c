@@ -101,6 +101,24 @@ void reschedule(struct registers *regs, void*) {
 		return;
 	}
 
+	/*struct sched_task *next_task = find_next_task();
+	if(next_task == NULL) {
+		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
+			next_task = CURRENT_TASK;
+		} else {
+			sched_idle();
+		}
+	}
+
+	struct sched_thread *next_thread = find_next_thread(next_task);
+	if(next_thread == NULL) {
+		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
+			next_thread = CURRENT_THREAD; 
+		} else {
+			sched_idle();
+		}
+	}*/
+
 	struct sched_task *next_task = find_next_task();
 	if(next_task == NULL) {
 		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
@@ -120,12 +138,12 @@ void reschedule(struct registers *regs, void*) {
 	}
 
 	if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-		struct sched_task *last_task = sched_translate_pid(CORE_LOCAL->pid);
+		struct sched_task *last_task = CURRENT_TASK;
 		if(last_task == NULL) {
 			sched_idle();
 		}
 
-		struct sched_thread *last_thread = sched_translate_tid(CORE_LOCAL->pid, CORE_LOCAL->tid);
+		struct sched_thread *last_thread = CURRENT_THREAD;
 		if(last_thread == NULL) {
 			sched_idle();
 		}
@@ -165,7 +183,7 @@ void reschedule(struct registers *regs, void*) {
 
 	next_task->event_waiting = 0;
 
-/*	for(size_t i = 0; i < SIGNAL_MAX; i++) {
+	/*for(size_t i = 0; i < SIGNAL_MAX; i++) {
 		if(next_thread->signal_queue.sigpending & (1 << i)) {
 			struct signal *signal = &next_thread->signal_queue.queue[i];
 			struct sigaction *action = signal->sigaction;
@@ -194,8 +212,8 @@ void reschedule(struct registers *regs, void*) {
 
 			break;
 		}
-	}
-*/
+	}*/
+
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
 	}
@@ -675,7 +693,7 @@ void syscall_waitpid(struct registers *regs) {
 	int options = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: waitpid: pid {%x}, status {%x}, options {%x}\n", pid, (uintptr_t)status, options);
+	print("syscall: [pid %x] waitpid: pid {%x}, status {%x}, options {%x}\n", CURRENT_TASK->pid, pid, (uintptr_t)status, options);
 #endif
 
 	asm volatile ("cli");
@@ -719,7 +737,7 @@ void syscall_waitpid(struct registers *regs) {
 
 void syscall_exit(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: exit\n");
+	print("syscall: [pid %x] exit\n", CURRENT_TASK->pid);
 #endif
 
 	asm volatile ("cli");
@@ -768,11 +786,14 @@ void syscall_exit(struct registers *regs) {
 
 	for(size_t i = 0; i < task->children.length; i++) {
 		struct sched_task *child = task->children.data[i];
+		
+		child->exit_trigger->event = parent->event;
 		child->ppid = 1;
+
 		VECTOR_PUSH(parent->children, child);
 	}
 
-	//VECTOR_REMOVE_BY_VALUE(sched_translate_pid(task->ppid)->children, task);
+	VECTOR_REMOVE_BY_VALUE(sched_translate_pid(task->ppid)->children, task);
 
 	task->process_status = status | 0x200;
 	event_fire(task->exit_trigger);
@@ -854,6 +875,9 @@ void syscall_execve(struct registers *regs) {
 		return;
 	}
 
+	struct sched_task *parent = sched_translate_pid(current_task->ppid);
+	VECTOR_REMOVE_BY_VALUE(parent->children, current_task);
+
 	if(stat_has_access(vfs_node->stat, current_task->effective_uid,
 		current_task->effective_gid, X_OK) == -1) {
 		set_errno(EACCES);
@@ -904,8 +928,9 @@ void syscall_execve(struct registers *regs) {
 	task->session = current_task->session;
 
 	task->umask = current_task->umask;
-
 	task->has_execved = 1;
+
+	VECTOR_PUSH(parent->children, task);
 
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;

@@ -45,7 +45,7 @@ static volatile struct limine_framebuffer_request limine_framebuffer_request = {
 };
 
 void init_process() {
-	char *argv[] = { "/usr/bin/bash", NULL };
+	char *argv[] = { "/init", NULL };
 	char *envp[] = {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -62,7 +62,7 @@ void init_process() {
 		.argv_cnt = 1
 	};
 
-	struct sched_task *task = sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_YIELD);
+	struct sched_task *task = sched_task_exec("/usr/sbin/init", 0x43, arguments, TASK_YIELD);
 	if(task == NULL) {
 		panic("unable to start init process");
 	}

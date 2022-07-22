@@ -31,7 +31,6 @@ size_t ramfs_inode_cnt;
 char ramfs_lock;
 
 struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, struct stat *stat) {
-
 	stat->st_ino = ramfs_inode_cnt++;
 	stat->st_blksize = 512;
 	stat->st_nlink = 1;
@@ -90,8 +89,8 @@ ssize_t ramfs_write(struct file_handle *file, const void *buf, size_t cnt, off_t
 	}
 
 	if(offset + cnt > stat->st_size) {
-		//stat->st_size += offset + cnt - stat->st_size;
 		stat->st_size = offset + cnt;
+		stat->st_blocks = DIV_ROUNDUP(stat->st_size, stat->st_blksize);
 		ramfs_handle->buffer = realloc(ramfs_handle->buffer, stat->st_size);
 	}
 
