@@ -22,7 +22,7 @@ Kernel:
 - Timers (HPET/PIT/APIC)
 
 Userland:
-- Many ports, including:
+- Pastorals userspace is powered by ![mlibc](https://github.com/managarm/mlibc) which facilitates many ports, including:
   - bash
   - binutils
   - coreutils
