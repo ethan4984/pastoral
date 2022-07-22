@@ -12,16 +12,14 @@ Bootloader:
 - Limine, using the Limine boot protocol
 
 Kernel:
-- GDT, TSS and IDT
-- VMM and PMM, including a slab allocator
-- ACPI table parsing
-- XAPIC and X2APIC
-- HPET
-- PCI
-- VFS, RAMFS, INITRAMFS
-- SMP
-- Preemptive multicore scheduler
-- Kernel library
+- x86 system tables and architecture subsystems (GDT/IDT/TSS/EHCI/XAPIC/X2APIC/LA57)
+- Module bitmap PMM
+- VMM equipped with CoW and demand paging
+- Slab allocator
+- Unix-like VFS, FDs, Permissions (uids/gids)
+- Preemptive multicore (SMP) scheduler
+- Sessions and process groups
+- Timers (HPET/PIT/APIC)
 
 Userland:
 - Many ports, including:
@@ -29,7 +27,6 @@ Userland:
   - binutils
   - coreutils
   - gcc
-- Terminal
 
 # Dependencies
 
@@ -49,9 +46,7 @@ You will need the following packages installed (depending on your linux distribu
   - `cd user`
   - `make build_toolchain`
   - `cd ..`
-- Build rest
-  - `make all`
-- Run!
+- Run
   - `make run`
 
 # Contributing
