@@ -43,6 +43,8 @@
 #define SIG_UNBLOCK 1
 #define SIG_SETMASK 2
 
+#define SIGNAL_MAX 34
+
 #define SIGMASK(SIG) (1ull << ((SIG) - 1))
 
 union sigval {
@@ -72,6 +74,7 @@ struct sigaction {
 };
 
 struct signal_queue;
+struct event_trigger;
 
 struct signal {
 	int refcnt;
@@ -79,13 +82,15 @@ struct signal {
 	struct siginfo *siginfo;
 	struct sigaction *sigaction;
 
+	struct event_trigger *trigger;
+
 	struct signal_queue *queue;
 };
 
 struct sched_thread;
 
 struct signal_queue {
-	VECTOR(struct signal*) pending;
+	struct signal signal_queue[SIGNAL_MAX];
 	sigset_t sigpending;
 
 	struct sched_thread *thread;	

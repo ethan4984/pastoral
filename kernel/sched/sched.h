@@ -14,7 +14,8 @@
 #define EVENT_FD_READ 1
 #define EVENT_FD_WRITE 2
 #define EVENT_TIMER_TRIGGER 3
-#define EVENT_HDA_CMD 4
+#define EVENT_SIGNAL 4
+#define EVENT_HDA_CMD 5
 
 struct event_trigger {
 	struct sched_task *agent_task;
@@ -53,6 +54,7 @@ struct sched_thread {
 
 	char sig_lock;
 	sigset_t sigmask;
+	struct event sigwait;
 	struct signal_queue signal_queue;
 
 	struct registers regs;
@@ -93,7 +95,7 @@ struct sched_task {
 	mode_t umask;
 
 	char sig_lock;
-	struct sigaction sigactions[32];
+	struct sigaction sigactions[SIGNAL_MAX];
 
 	VECTOR(struct sched_task*) children;
 

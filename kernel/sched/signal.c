@@ -9,7 +9,7 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 		panic("");
 	}
 
-	if((sig < 1 && sig > 32) || (sig == SIGKILL || sig == SIGSTOP)) {
+	if((sig < 1 && sig > 34) || (sig == SIGKILL || sig == SIGSTOP)) {
 		set_errno(EINVAL);
 		return -1;
 	}
@@ -80,6 +80,87 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 	return 0;
 }
 
+int signal_check_permissions(struct sched_task *sender, struct sched_task *target) {
+	if(sender->real_uid == 0 || sender->effective_uid == 0) {
+		return 0;
+	}
+
+	if(sender->real_uid == target->real_uid || sender->real_uid == target->effective_uid) {
+		return 0;
+	}
+
+	if(sender->effective_uid == target->real_uid || sender->effective_uid == target->effective_uid) {
+		return 0;
+	}
+
+	return -1;
+}
+
+int signal_is_valid(int sig) {
+	if(sig < 1 || sig > 34) {
+		return -1;
+	}
+
+	return 0;
+}
+
+int signal_send(struct sched_thread *sender, struct sched_thread *target, int sig) {
+	if(signal_is_valid(sig) == -1 && sig != 0) {
+		set_errno(EINVAL);
+		return -1;
+	}
+
+	struct sched_task *sender_task = sched_translate_pid(sender->pid);
+	struct sched_task *target_task = sched_translate_pid(target->pid);
+
+	spinlock(&target->sig_lock);
+
+	if(signal_check_permissions(sender_task, target_task) == -1) {
+		set_errno(EPERM);
+		spinrelease(&target->sig_lock);
+		return -1;
+	}
+
+	struct signal_queue *queue = &target->signal_queue;
+	struct signal *signal = &queue->signal_queue[sig - 1];
+
+	signal->refcnt = 1;
+	signal->siginfo = alloc(sizeof(struct siginfo));
+	signal->sigaction = &target_task->sigactions[sig - 1];
+	signal->trigger = alloc(sizeof(struct event_trigger));
+	*signal->trigger = (struct event_trigger) { .event = &target->sigwait, .event_type = EVENT_SIGNAL };
+	signal->queue = queue; 
+
+	queue->sigpending |= SIGMASK(sig);
+
+	spinrelease(&target->sig_lock);
+
+	return 0;
+}
+
+int kill(pid_t pid, int sig) {
+	if(sig < 1 && sig > 34) {
+		set_errno(EINVAL);
+		return -1;
+	}
+
+	if(pid > 0) {
+		struct sched_task *target = sched_translate_pid(CORE_LOCAL->pid);
+		if(target == NULL) {
+			set_errno(ESRCH);
+			return 0;
+		}
+	} else if(pid == 0) {
+		// TODO implement process groups
+	} else if(pid == -1) {
+		// TODO implement process groups
+	} else {
+		// TODO implement process groups
+	}
+
+	return -1;
+}
+
 void syscall_sigaction(struct registers *regs) {
 	int sig = regs->rdi;
 	const struct sigaction *act = (void*)regs->rsi;
@@ -112,4 +193,15 @@ void syscall_sigprocmask(struct registers *regs) {
 #endif
 
 	regs->rax = sigprocmask(how, set, oldset);
+}
+
+void syscall_kill(struct registers *regs) {
+	pid_t pid = regs->rdi;
+	int sig = regs->rsi;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] kill: pid {%x}, sig {%x}\n", CORE_LOCAL->pid, pid, sig);
+#endif
+
+	regs->rax = kill(pid, sig);
 }
