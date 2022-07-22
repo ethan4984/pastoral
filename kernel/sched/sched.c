@@ -158,6 +158,37 @@ void reschedule(struct registers *regs, void*) {
 
 	next_task->event_waiting = 0;
 
+	for(size_t i = 0; i < SIGNAL_MAX; i++) {
+		if(next_thread->signal_queue.sigpending & (1 << i)) {
+			struct signal *signal = &next_thread->signal_queue.queue[i];
+			struct sigaction *action = signal->sigaction;
+
+			next_thread->regs.rsp -= 128;
+			next_thread->regs.rsp &= -16ll;
+
+			if(action->sa_flags & SA_SIGINFO) {
+				next_thread->regs.rsp -= sizeof(struct siginfo);
+				struct siginfo *siginfo = (void*)next_thread->regs.rsp;
+
+				// TODO use a proper ucontext
+				next_thread->regs.rsp -= sizeof(struct registers);
+				struct registers *ucontext = (void*)next_thread->regs.rsp;
+
+				next_thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
+				next_thread->regs.rdi = signal->signum;
+				next_thread->regs.rsi = (uint64_t)siginfo;
+				next_thread->regs.rdx = (uint64_t)ucontext; 
+			} else {
+				next_thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
+				next_thread->regs.rdi = signal->signum;
+			}
+
+			next_thread->signal_queue.sigpending &= ~(1 << i);
+			
+			break;
+		}
+	}
+
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
 	}

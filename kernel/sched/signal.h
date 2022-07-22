@@ -43,6 +43,15 @@
 #define SIG_UNBLOCK 1
 #define SIG_SETMASK 2
 
+#define SA_NOCLDSTOP 1
+#define SA_NOCLDWAIT 2
+#define SA_SIGINFO 4
+#define SA_ONSTACK 0x08000000
+#define SA_RESTART 0x10000000
+#define SA_NODEFER 0x40000000
+#define SA_RESETHAND 0x80000000
+#define SA_RESTORER 0x04000000
+
 #define SIGNAL_MAX 34
 
 #define SIGMASK(SIG) (1ull << ((SIG) - 1))
@@ -78,6 +87,7 @@ struct event_trigger;
 
 struct signal {
 	int refcnt;
+	int signum;
 
 	struct siginfo *siginfo;
 	struct sigaction *sigaction;
@@ -90,7 +100,7 @@ struct signal {
 struct sched_thread;
 
 struct signal_queue {
-	struct signal signal_queue[SIGNAL_MAX];
+	struct signal queue[SIGNAL_MAX];
 	sigset_t sigpending;
 
 	struct sched_thread *thread;	

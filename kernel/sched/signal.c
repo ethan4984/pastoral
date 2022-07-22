@@ -121,17 +121,17 @@ int signal_send(struct sched_thread *sender, struct sched_thread *target, int si
 		return -1;
 	}
 
-	struct signal_queue *queue = &target->signal_queue;
-	struct signal *signal = &queue->signal_queue[sig - 1];
+	struct signal_queue *signal_queue = &target->signal_queue;
+	struct signal *signal = &signal_queue->queue[sig - 1];
 
 	signal->refcnt = 1;
 	signal->siginfo = alloc(sizeof(struct siginfo));
 	signal->sigaction = &target_task->sigactions[sig - 1];
 	signal->trigger = alloc(sizeof(struct event_trigger));
 	*signal->trigger = (struct event_trigger) { .event = &target->sigwait, .event_type = EVENT_SIGNAL };
-	signal->queue = queue; 
+	signal->queue = signal_queue; 
 
-	queue->sigpending |= SIGMASK(sig);
+	signal_queue->sigpending |= SIGMASK(sig);
 
 	spinrelease(&target->sig_lock);
 
