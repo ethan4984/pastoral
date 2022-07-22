@@ -188,6 +188,11 @@ int kill(pid_t pid, int sig) {
 		panic("");
 	}
 
+	struct sched_task *current_task = CURRENT_TASK; 
+	if(current_task == NULL) {
+		panic("");
+	}
+
 	if(pid > 0) {
 		struct sched_thread *target = sched_translate_tid(pid, 0);
 		if(target == NULL) {
@@ -197,14 +202,57 @@ int kill(pid_t pid, int sig) {
 
 		signal_send(sender, target, sig);
 	} else if(pid == 0) {
-		// TODO implement process groups
+		struct process_group *group = current_task->group;
+
+		for(size_t i = 0; i < group->process_list.length; i++) {
+			struct sched_thread *target = sched_translate_tid(group->process_list.data[i]->pid, 0);
+			if(target == NULL) {
+				set_errno(ESRCH);
+				return -1;
+			}
+
+			signal_send(sender, target, sig);
+		}
 	} else if(pid == -1) {
-		// TODO implement process groups
+		struct process_group *group = current_task->group;
+
+		for(size_t i = 0; i < group->process_list.length; i++) {
+			pid_t pid = group->process_list.data[i]->pid;
+			if(pid == 1) {
+				continue;
+			}
+
+			struct sched_thread *target = sched_translate_tid(pid, 0);
+			if(target == NULL) {
+				set_errno(ESRCH);
+				return -1;
+			}
+
+			signal_send(sender, target, sig);
+		}
 	} else {
-		// TODO implement process groups
+		struct session *session = current_task->session;
+		struct process_group *group = hash_table_search(&session->group_list, &pid, sizeof(pid));
+
+		if(group == NULL) {
+			set_errno(ESRCH);
+			return -1;
+		}
+
+		for(size_t i = 0; i < group->process_list.length; i++) {
+			pid_t pid = group->process_list.data[i]->pid;
+
+			struct sched_thread *target = sched_translate_tid(pid, 0);
+			if(target == NULL) {
+				set_errno(ESRCH);
+				return -1;
+			}
+
+			signal_send(sender, target, sig);
+		}
 	}
 
-	return -1;
+	return 0;
 }
 
 void syscall_sigaction(struct registers *regs) {
