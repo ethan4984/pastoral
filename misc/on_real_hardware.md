@@ -5,4 +5,4 @@ This test was conducted on the following machine
 
 As we can see, it worked flawlessly: 
 
-![alt text](misc/images/on_real_hardware.jpg)
+![alt text](/misc/images/on_real_hardware.jpg)
