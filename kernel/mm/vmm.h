@@ -6,7 +6,7 @@
 #define VMM_FLAGS_P (1 << 0)
 #define VMM_FLAGS_RW (1 << 1)
 #define VMM_FLAGS_US (1 << 2)
-#define VMM_FLAGS_PWT (1 << 3) 
+#define VMM_FLAGS_PWT (1 << 3)
 #define VMM_FLAGS_PCD (1 << 4)
 #define VMM_FLAGS_A (1 << 5)
 #define VMM_FLAGS_D (1 << 6)
@@ -31,7 +31,7 @@ struct page {
 	uint64_t size;
 	uint64_t flags;
 
-	struct vfs_node *node;
+	struct file_handle *file;
 	off_t offset;
 
 	uint64_t *pml_entry;

@@ -75,9 +75,9 @@ void init_process() {
 		*stdout_file_handle = alloc(sizeof(struct file_handle)),
 		*stderr_file_handle = alloc(sizeof(struct file_handle));
 
-	struct asset *stdin_asset = alloc(sizeof(struct asset)),
-		*stdout_asset = alloc(sizeof(struct asset)),
-		*stderr_asset = alloc(sizeof(struct asset));
+	struct file_ops *stdin_fops = alloc(sizeof(struct file_ops)),
+		*stdout_fops = alloc(sizeof(struct file_ops)),
+		*stderr_fops = alloc(sizeof(struct file_ops));
 
 	struct stat *stdin_stat = alloc(sizeof(struct stat)),
 		*stdout_stat = alloc(sizeof(struct stat)),
@@ -103,25 +103,25 @@ void init_process() {
 	stderr_fd_handle->file_handle = stderr_file_handle;
 
 	stdin_file_handle->flags = O_RDONLY;
-	stdin_file_handle->asset = stdin_asset;
-	stdin_asset->read = terminal_read;
-	stdin_asset->ioctl = terminal_ioctl;
-	stdin_asset->stat = stdin_stat;
-	stdin_stat->st_mode = S_IRUSR | S_IWUSR;
+	stdin_file_handle->ops = stdin_fops;
+	stdin_file_handle->stat = stdin_stat;
+	stdin_stat->st_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+	stdin_fops->read = terminal_read;
+	stdin_fops->ioctl = terminal_ioctl;
 
 	stdout_file_handle->flags = O_WRONLY;
-	stdout_file_handle->asset = stdout_asset;
-	stdout_asset->write = terminal_write;
-	stdout_asset->ioctl = terminal_ioctl;
-	stdout_asset->stat = stdout_stat;
-	stdout_stat->st_mode = S_IRUSR | S_IWUSR;
+	stdout_file_handle->ops = stdout_fops;
+	stdout_file_handle->stat = stdout_stat;
+	stdout_stat->st_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+	stdout_fops->write = terminal_write;
+	stdout_fops->ioctl = terminal_ioctl;
 
 	stderr_file_handle->flags = O_WRONLY;
-	stderr_file_handle->asset = stderr_asset;
-	stderr_asset->write = terminal_write;
-	stderr_asset->ioctl = terminal_ioctl;
-	stderr_asset->stat = stderr_stat;
-	stderr_stat->st_mode = S_IRUSR | S_IWUSR;
+	stderr_file_handle->ops = stderr_fops;
+	stderr_file_handle->stat = stderr_stat;
+	stderr_stat->st_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+	stderr_fops->write = terminal_write;
+	stderr_fops->ioctl = terminal_ioctl;
 
 	hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
 	hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
@@ -136,7 +136,7 @@ void init_process() {
 	task->session = parent->session;
 	task->pgid = parent->pgid;
 	task->group = parent->group;
-	
+
 	VECTOR_PUSH(task->group->process_list, task);
 
 	task->status = TASK_WAITING;
@@ -162,12 +162,9 @@ void pastoral_thread() {
 		struct stat *stat = alloc(sizeof(struct stat));
 		stat_init(stat);
 		stat->st_mode = (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) | S_IFCHR;
-		stat->st_rdev = makedev(FBDEV_MAJOR, i);
+		stat->st_rdev = makedev(FBDEV_MAJOR, (i));
 
-		struct asset *asset = alloc(sizeof(struct asset));
-		asset->stat = stat;
-
-		vfs_create_node_deep(NULL, asset, NULL, device_path);
+		vfs_create_node_deep(NULL, NULL, NULL, stat, device_path);
 	}
 
 	init_process();

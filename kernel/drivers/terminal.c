@@ -43,7 +43,7 @@ void ps2_handler(struct registers*, void*) {
 		'J', 'K', 'L', ':', '\'', '~', '\0', '\\', 'Z', 'X', 'C', 'V',
 		'B', 'N', 'M', '<', '>',  '?', '\0', '\0', '\0', ' '
 	};
-	
+
 	uint8_t keycode = inb(0x60);
 	char character = '\0';
 
@@ -79,7 +79,7 @@ void ps2_handler(struct registers*, void*) {
 	}
 }
 
-ssize_t terminal_read(struct asset*, void*, off_t, off_t, void *buffer) {
+ssize_t terminal_read(struct file_handle*, void *buffer, size_t cnt, off_t) {
 	volatile struct terminal *terminal = (volatile struct terminal*)current_terminal;
 
 	while(!terminal->stream_index);
@@ -87,7 +87,7 @@ ssize_t terminal_read(struct asset*, void*, off_t, off_t, void *buffer) {
 	for(size_t i = 0; i < terminal->stream_index; i++) {
 		*(char*)(buffer + i) = terminal->stream[i];
 	}
-	
+
 	limine_terminal_print(terminal->stream, terminal->stream_index);
 
 	ssize_t read = terminal->stream_index;
@@ -96,12 +96,12 @@ ssize_t terminal_read(struct asset*, void*, off_t, off_t, void *buffer) {
 	return read;
 }
 
-ssize_t terminal_write(struct asset*, void*, off_t, off_t cnt, const void *buffer) {
+ssize_t terminal_write(struct file_handle*, const void *buffer, size_t cnt, off_t) {
 	limine_terminal_print((void*)buffer, cnt);
 	return cnt;
 }
 
-int terminal_ioctl(struct asset*, int, uint64_t req, void *args) {
+int terminal_ioctl(struct file_handle*, uint64_t req, void *args) {
 	switch(req) {
 		case TIOCGWINSZ:
 			struct winsize *winsize = args;
@@ -155,7 +155,7 @@ void limine_terminal_init() {
 
 		terminal->limine_terminal = limine_terminals[i];
 		terminal->stream = alloc(0x1000);
-		terminal->stream_capacity = 0x1000; 
+		terminal->stream_capacity = 0x1000;
 
 		VECTOR_PUSH(terminal_list, terminal);
 	}

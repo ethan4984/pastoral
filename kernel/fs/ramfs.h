@@ -1,5 +1,6 @@
 #pragma once
 
+#include <fs/fd.h>
 #include <fs/vfs.h>
 #include <hash.h>
 
@@ -13,8 +14,5 @@ extern char ramfs_lock;
 
 extern struct hash_table ramfs_node_list;
 extern struct filesystem ramfs_filesystem;
+extern struct file_ops ramfs_fops;
 
-struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, int mode);
-ssize_t ramfs_read(struct asset *asset, void*, off_t offset, off_t cnt, void *buf);
-ssize_t ramfs_write(struct asset *asset, void*, off_t offset, off_t cnt, const void *buf);
-int ramfs_resize(struct asset *asset, void*, off_t cnt);

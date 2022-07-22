@@ -434,14 +434,9 @@ int vmm_file_map(struct page_table *page_table, uintptr_t address) {
 				return 0;
 			}
 
-			struct vfs_node *node = page->node;
-			if(node == NULL) {
-				return 0;
-			}
-
 			invlpg(address);
 
-			int ret = node->asset->read(node->asset, NULL, page->offset, PAGE_SIZE, (void*)(page->paddr + HIGH_VMA)) == -1 ? 0 : 1;
+			int ret = page->file->ops->read(page->file, (void*)(page->paddr + HIGH_VMA), PAGE_SIZE, page->offset) == -1 ? 0 : 1;
 			if(ret) {
 				*lowest_level = *lowest_level | VMM_FLAGS_P;
 			}

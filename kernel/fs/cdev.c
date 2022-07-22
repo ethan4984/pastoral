@@ -6,17 +6,20 @@
 static char cdev_lock;
 static struct hash_table cdev_list;
 
-int cdev_open(dev_t dev, struct asset **asset) {
+int cdev_open(struct vfs_node *node, struct file_handle *file) {
 	spinlock(&cdev_lock);
-	*asset = hash_table_search(&cdev_list, &dev, sizeof(dev_t));
-	if(!(*asset)) {
+	struct cdev *dev = hash_table_search(&cdev_list, &file->stat->st_rdev, sizeof(dev_t));
+	if(!dev) {
 		spinrelease(&cdev_lock);
 		set_errno(ENODEV);
 		return -1;
 	}
-	if((*asset)->open) {
+
+	file->ops = dev->fops;
+	file->private_data = dev->private_data;
+	if(file->ops->open) {
 		spinrelease(&cdev_lock);
-		int ret = (*asset)->open(*asset);
+		int ret = file->ops->open(node, file);
 		return ret;
 	}
 
@@ -32,7 +35,7 @@ int cdev_register(dev_t dev, struct cdev *cdev) {
 		return -1;
 	}
 
-	hash_table_push(&cdev_list, &dev, cdev->asset, sizeof(dev_t));
+	hash_table_push(&cdev_list, &dev, cdev, sizeof(dev_t));
 	spinrelease(&cdev_lock);
 	return 0;
 }

@@ -69,7 +69,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 
 	size_t i = 0;
 	for(; i < (subpath_list.length - 1); i++) {
-		if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
+		if(stat_has_access(parent->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
 		}
@@ -85,7 +85,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 		}
 	}
 
-	if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
+	if(stat_has_access(parent->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
 		set_errno(EACCES);
 		return -1;
 	}
@@ -99,7 +99,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 	uid_t uid = effective_ids ? CURRENT_TASK->effective_uid : CURRENT_TASK->real_uid;
 	gid_t gid = effective_ids ? CURRENT_TASK->effective_gid : CURRENT_TASK->real_gid;
 
-	struct stat *stat = vfs_node->asset->stat;
+	struct stat *stat = vfs_node->stat;
 
 	if(stat_has_access(stat, uid, gid, mode) == -1) {
 		set_errno(EACCES);
@@ -165,7 +165,7 @@ off_t fd_seek(int fd, off_t offset, int whence) {
 		return -1;
 	}
 
-	struct stat *stat = fd_handle->file_handle->asset->stat;
+	struct stat *stat = fd_handle->file_handle->stat;
 	if(S_ISFIFO(stat->st_mode) || S_ISSOCK(stat->st_mode)) {
 		set_errno(ESPIPE);
 		return -1;
@@ -201,10 +201,9 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	}
 
 	file_lock(fd_handle->file_handle);
-	struct asset *asset = fd_handle->file_handle->asset;
-	struct stat *stat = asset->stat;
+	struct stat *stat = fd_handle->file_handle->stat;
 
-	if(asset->write == NULL) {
+	if(fd_handle->file_handle->ops->write == NULL) {
 		file_unlock(fd_handle->file_handle);
 		set_errno(ENODEV);
 		return -1;
@@ -217,16 +216,14 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		return -1;
 	}
 
-	ssize_t ret;
-	if(S_ISFIFO(stat->st_mode) && fd_handle->file_handle->pipe) {
-		ret = asset->write(asset, fd_handle->file_handle->pipe->buffer, fd_handle->file_handle->position, count, buf);
-	} else {
-		if (fd_handle->file_handle->flags & O_APPEND) {
-			fd_handle->file_handle->position = stat->st_size;
-		}
-		ret = asset->write(asset, NULL, fd_handle->file_handle->position, count, buf);
+	if ((fd_handle->file_handle->flags & O_APPEND) && !(S_ISFIFO(stat->st_mode))) {
+		fd_handle->file_handle->position = stat->st_size;
 	}
 
+	ssize_t ret;
+	off_t off = fd_handle->file_handle->position;
+
+	ret = fd_handle->file_handle->ops->write(fd_handle->file_handle, buf, count, off);
 	if(ret != -1) {
 		fd_handle->file_handle->position += ret;
 	}
@@ -243,16 +240,14 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 	}
 
 	file_lock(fd_handle->file_handle);
-	struct stat *stat = fd_handle->file_handle->asset->stat;
+	struct stat *stat = fd_handle->file_handle->stat;
 	if(S_ISDIR(stat->st_mode)) {
 		file_unlock(fd_handle->file_handle);
 		set_errno(EISDIR);
 		return -1;
 	}
 
-	struct asset *asset = fd_handle->file_handle->asset;
-
-	if(asset->read == NULL) {
+	if(fd_handle->file_handle->ops->read == NULL) {
 		file_unlock(fd_handle->file_handle);
 		set_errno(ENODEV);
 		return -1;
@@ -266,12 +261,8 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 	}
 
 	ssize_t ret;
-	if(S_ISFIFO(stat->st_mode) && fd_handle->file_handle->pipe) {
-		ret = asset->read(asset, fd_handle->file_handle->pipe->buffer, fd_handle->file_handle->position, count, buf);
-	} else {
-		ret = asset->read(asset, NULL, fd_handle->file_handle->position, count, buf);
-	}
-
+	off_t off = fd_handle->file_handle->position;
+	ret = fd_handle->file_handle->ops->read(fd_handle->file_handle, buf, count, off);
 	if(ret != -1) {
 		fd_handle->file_handle->position += ret;
 	}
@@ -280,12 +271,13 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 	return ret;
 }
 
-ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void *buf) {
-	spinlock(&asset->lock);
-	struct stat *stat = asset->stat;
+ssize_t pipe_read(struct file_handle *file, void *buf, size_t cnt, off_t offset) {
+	file_lock(file);
+	struct stat *stat = file->stat;
+	const void *out = file->pipe->buffer;
 
 	if(offset > stat->st_size) {
-		event_wait(asset->event, EVENT_FD_WRITE);
+		event_wait(file->event, EVENT_FD_WRITE);
 	}
 
 	stat->st_atim = clock_realtime;
@@ -297,14 +289,16 @@ ssize_t pipe_read(struct asset *asset, void *out, off_t offset, off_t cnt, void 
 	}
 
 	memcpy8(buf, out + offset, cnt);
+	offset += cnt;
 
-	spinrelease(&asset->lock);
+	file_unlock(file);
 	return cnt;
 }
 
-ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, const void *buf) {
-	spinlock(&asset->lock);
-	struct stat *stat = asset->stat;
+ssize_t pipe_write(struct file_handle *file, const void *buf, size_t cnt, off_t offset) {
+	file_lock(file);
+	struct stat *stat = file->stat;
+	void *out = file->pipe->buffer;
 
 	if(offset >= PIPE_BUFFER_SIZE) {
 		set_errno(EINVAL);
@@ -316,10 +310,10 @@ ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, cons
 	}
 
 	if(offset > stat->st_size) {
-		asset->trigger->event_type = EVENT_FD_WRITE;
-		asset->trigger->agent_task = CURRENT_TASK;
-		asset->trigger->agent_thread = CURRENT_THREAD;
-		event_fire(asset->trigger);
+		file->trigger->event_type = EVENT_FD_WRITE;
+		file->trigger->agent_task = CURRENT_TASK;
+		file->trigger->agent_thread = CURRENT_THREAD;
+		event_fire(file->trigger);
 	}
 
 	stat->st_atim = clock_realtime;
@@ -332,7 +326,7 @@ ssize_t pipe_write(struct asset *asset, void *out, off_t offset, off_t cnt, cons
 
 	memcpy8(out + offset, buf, cnt);
 
-	spinrelease(&asset->lock);
+	file_unlock(file);
 	return cnt;
 }
 
@@ -372,8 +366,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 	if(flags & O_CREAT && vfs_node == NULL) {
 		struct vfs_node *parent = dir;
-
-		if(stat_has_access(parent->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK | X_OK) == -1) {
+		if(stat_has_access(parent->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK | X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
 		}
@@ -381,16 +374,21 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1);
 		strcpy(name, path + find_last_char(path, '/'));
 
-		vfs_node = parent->filesystem->create(parent, name, S_IFREG | (mode & ~(CURRENT_TASK->umask)));
-		vfs_node->asset->stat->st_uid = CURRENT_TASK->effective_uid;
+		struct stat *stat = alloc(sizeof(struct stat));
+		stat_init(stat);
+		stat->st_mode = S_IFREG | (mode & ~(CURRENT_TASK->umask));
+		stat->st_uid = CURRENT_TASK->effective_uid;
+
+		vfs_node = vfs_create_node_deep(parent, parent->fops, parent->filesystem, stat, path);
 
 		// Behave like Linux and Solaris. If the SGID bit of the parent directory is set,
 		// the group of the new file is going to be the GID of the parent directory.
 		// Otherwise, it's going to be the effective GID.
-		if(parent->asset->stat->st_mode & S_ISGID)
-			vfs_node->asset->stat->st_gid = parent->asset->stat->st_gid;
+		if(parent->stat->st_mode & S_ISGID)
+			vfs_node->stat->st_gid = parent->stat->st_gid;
 		else
-			vfs_node->asset->stat->st_uid = CURRENT_TASK->effective_gid;
+			vfs_node->stat->st_gid = CURRENT_TASK->effective_gid;
+
 	} else if((flags & O_CREAT) && (flags & O_EXCL)) {
 		set_errno(EEXIST);
 		return -1;
@@ -399,44 +397,46 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		return -1;
 	}
 
-	if(!(flags & O_DIRECTORY) && S_ISDIR(vfs_node->asset->stat->st_mode)) {
+	if(!(flags & O_DIRECTORY) && S_ISDIR(vfs_node->stat->st_mode)) {
 		set_errno(EISDIR);
 		return -1;
 	}
 
-	if(stat_has_access(vfs_node->asset->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, access_mode) == -1) {
+	if(stat_has_access(vfs_node->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, access_mode) == -1) {
 		set_errno(EACCES);
 		return -1;
 	}
 
-	if(flags & O_TRUNC)
-		vfs_node->asset->resize(vfs_node->asset, NULL, 0);
+	if((flags & O_TRUNC) && vfs_node->filesystem->truncate)
+		vfs_node->filesystem->truncate(vfs_node, 0);
 
-	struct asset *new_asset = vfs_node->asset;
-	if(S_ISCHR(vfs_node->asset->stat->st_mode)) {
-		if(cdev_open(new_asset->stat->st_rdev, &new_asset) == -1)
+	struct file_ops *fops = vfs_node->fops;
+	struct file_handle *new_file_handle = alloc(sizeof(struct file_handle));
+	file_init(new_file_handle);
+	new_file_handle->vfs_node = vfs_node;
+	new_file_handle->ops = fops;
+	new_file_handle->flags = flags & ~O_CLOEXEC;
+	new_file_handle->stat = vfs_node->stat;
+
+	if(S_ISCHR(vfs_node->stat->st_mode)) {
+		if(cdev_open(vfs_node, new_file_handle) == -1) {
+			file_put(new_file_handle);
 			return -1;
-		new_asset->stat = vfs_node->asset->stat;
+		}
 	} else {
-		if(new_asset->open) {
-			if(new_asset->open(new_asset) == -1)
+		if(fops->open) {
+			if(fops->open(vfs_node, new_file_handle) == -1) {
+				file_put(new_file_handle);
 				return -1;
+			}
 		}
 	}
 
 	struct fd_handle *new_fd_handle = alloc(sizeof(struct fd_handle));
-	struct file_handle *new_file_handle = alloc(sizeof(struct file_handle));
-
 	fd_init(new_fd_handle);
-	file_init(new_file_handle);
-
 	new_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
 	new_fd_handle->file_handle = new_file_handle;
 	new_fd_handle->flags = (flags & O_CLOEXEC) ? FD_CLOEXEC : 0;
-
-	new_file_handle->vfs_node = vfs_node;
-	new_file_handle->asset = new_asset;
-	new_file_handle->flags = flags & ~O_CLOEXEC;
 
 	struct sched_task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
@@ -452,8 +452,8 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 static void fd_close_unlocked(struct fd_handle *handle) {
 	struct sched_task *current_task = CURRENT_TASK;
 
-	if(handle->file_handle->asset->close)
-		handle->file_handle->asset->close(handle->file_handle->asset);
+	if(handle->file_handle->ops->close)
+		handle->file_handle->ops->close(handle->file_handle->vfs_node, handle->file_handle);
 
 	file_put(handle->file_handle);
 	hash_table_delete(&current_task->fd_list, &handle->fd_number, sizeof(handle->fd_number));
@@ -493,7 +493,7 @@ int fd_stat(int fd, void *buffer) {
 	}
 
 	struct stat *stat = buffer;
-	*stat = *fd_handle->file_handle->asset->stat;
+	*stat = *fd_handle->file_handle->stat;
 	return 0;
 }
 
@@ -530,7 +530,7 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 					return -1;
 				}
 
-				if(!S_ISDIR(fd_handle->file_handle->asset->stat->st_mode)) {
+				if(!S_ISDIR(fd_handle->file_handle->stat->st_mode)) {
 					set_errno(EBADF);
 					return -1;
 				}
@@ -547,7 +547,7 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 	}
 
 	struct stat *stat = buffer;
-	*stat = *vfs_node->asset->stat;
+	*stat = *vfs_node->stat;
 
 	return 0;
 }
@@ -615,17 +615,17 @@ int fd_dup2(int oldfd, int newfd) {
 }
 
 int fd_generate_dirent(struct fd_handle *dir_handle, struct vfs_node *node, struct dirent *entry) {
-	if(!S_ISDIR(dir_handle->file_handle->asset->stat->st_mode)) {
+	if(!S_ISDIR(dir_handle->file_handle->stat->st_mode)) {
 		set_errno(ENOTDIR);
 		return -1;
 	}
 
 	strcpy(entry->d_name, node->name);
-	entry->d_ino = node->asset->stat->st_ino;
+	entry->d_ino = node->stat->st_ino;
 	entry->d_off = 0;
 	entry->d_reclen = sizeof(struct dirent);
 
-	switch(node->asset->stat->st_mode & S_IFMT) {
+	switch(node->stat->st_mode & S_IFMT) {
 		case S_IFCHR:
 			entry->d_type = DT_CHR;
 			break;
@@ -689,9 +689,9 @@ int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
 	}
 
 	if(uid != -1)
-		node->asset->stat->st_uid = uid;
+		node->stat->st_uid = uid;
 	if(gid != -1)
-		node->asset->stat->st_gid = gid;
+		node->stat->st_gid = gid;
 
 	return 0;
 }
@@ -873,7 +873,7 @@ void syscall_readdir(struct registers *regs) {
 
 	struct vfs_node *dir = dir_handle->file_handle->vfs_node;
 
-	if(!S_ISDIR(dir->asset->stat->st_mode)) {
+	if(!S_ISDIR(dir->stat->st_mode)) {
 		set_errno(ENOTDIR);
 		regs->rax = -1;
 		return;
@@ -977,32 +977,31 @@ void syscall_pipe(struct registers *regs) {
 		.buffer = (void*)(pmm_alloc(DIV_ROUNDUP(PIPE_BUFFER_SIZE, PAGE_SIZE), 1) + HIGH_VMA)
 	};
 
-	struct asset *read_asset = alloc(sizeof(struct asset));
-	read_asset->read = pipe_read;
+	struct file_ops *read_ops = alloc(sizeof(struct file_ops));
+	read_ops->read = pipe_read;
 
-	struct asset *write_asset = alloc(sizeof(struct asset));
-	write_asset->write = pipe_write;
+	struct file_ops *write_ops = alloc(sizeof(struct file_ops));
+	write_ops->write = pipe_write;
 
 	struct stat *pipe_stat = alloc(sizeof(struct stat));
 	stat_init(pipe_stat);
-	pipe_stat->st_mode = S_IFIFO | S_IWUSR;
+	pipe_stat->st_mode = S_IFIFO | S_IWUSR | S_IRUSR;
 
 	// Do we want to support full duplex pipes? If so,
 	// make both ends readable and writable.
 	read_fd_handle->fd_number = fd_pair[0];
 	read_fd_handle->file_handle = read_file_handle;
-	read_file_handle->asset = read_asset;
+	read_file_handle->ops = read_ops;
 	read_file_handle->pipe = pipe;
 	read_file_handle->flags = O_RDONLY;
+	read_file_handle->stat = pipe_stat;
 
 	write_fd_handle->fd_number = fd_pair[1];
 	write_fd_handle->file_handle = write_file_handle;
-	write_file_handle->asset = write_asset;
+	write_file_handle->ops = write_ops;
 	write_file_handle->pipe = pipe;
 	write_file_handle->flags = O_WRONLY;
-
-	read_asset->stat = pipe_stat;
-	write_asset->stat = pipe_stat;
+	write_file_handle->stat = pipe_stat;
 
 	spinlock(&CURRENT_TASK->fd_lock);
 	hash_table_push(&CURRENT_TASK->fd_list, &read_fd_handle->fd_number, read_fd_handle, sizeof(read_fd_handle->fd_number));
@@ -1101,13 +1100,13 @@ void syscall_ioctl(struct registers *regs) {
 		return;
 	}
 
-	if(fd_handle->file_handle->asset->ioctl == NULL) {
+	if(fd_handle->file_handle->ops->ioctl == NULL) {
 		set_errno(ENOTTY);
 		regs->rax = -1;
 		return;
 	}
 
-	regs->rax = fd_handle->file_handle->asset->ioctl(fd_handle->file_handle->asset, fd, req, args);
+	regs->rax = fd_handle->file_handle->ops->ioctl(fd_handle->file_handle, req, args);
 }
 
 void syscall_umask(struct registers *regs) {
@@ -1150,7 +1149,7 @@ void syscall_fchmod(struct registers *regs) {
 		return;
 	}
 
-	regs->rax = stat_chmod(handle->file_handle->asset->stat, mode);
+	regs->rax = stat_chmod(handle->file_handle->stat, mode);
 }
 
 
@@ -1172,7 +1171,7 @@ void syscall_fchmodat(struct registers *regs) {
 		return;
 	}
 
-	regs->rax = stat_chmod(file->asset->stat, mode);
+	regs->rax = stat_chmod(file->stat, mode);
 }
 
 

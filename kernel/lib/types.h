@@ -168,25 +168,3 @@ struct dirent {
 	char d_name[1024];
 };
 
-struct event;
-struct event_trigger;
-
-struct vfs_node;
-
-struct asset {
-	int (*open)(struct asset*);
-	int (*close)(struct asset*);
-	ssize_t (*read)(struct asset*, void*, off_t, off_t, void*);
-	ssize_t (*write)(struct asset*, void*, off_t, off_t, const void*);
-	int (*ioctl)(struct asset*, int fd, uint64_t req, void *args);
-	int (*resize)(struct asset*, void*, off_t);
-	void *(*shared)(struct asset*, void*, off_t);
-
-	struct event *event;
-	struct event_trigger *trigger;
-
-	void *something;
-
-	struct stat *stat;
-	char lock;
-};

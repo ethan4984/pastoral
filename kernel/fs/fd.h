@@ -4,6 +4,7 @@
 #include <fs/vfs.h>
 #include <lib/string.h>
 #include <lib/cpu.h>
+#include <sched/sched.h>
 
 
 #define PIPE_BUFFER_SIZE 0x10000
@@ -11,19 +12,31 @@
 struct fd_handle;
 struct pipe;
 
+
 struct file_handle {
 	char lock;
 	int refcnt;
+
 	struct vfs_node *vfs_node;
-	struct asset *asset;
+	struct file_ops *ops;
 
 	int flags;
 	off_t position;
 
-	VECTOR(struct dirent *) dirent_list;
-	int current_dirent;
-
+	struct {
+		VECTOR(struct dirent *) dirent_list;
+		int current_dirent;
+	};
 	struct pipe *pipe;
+
+	struct event *event;
+	struct event_trigger *trigger;
+
+	// Pointer untouched by the kernel, use it on drivers.
+	void *private_data;
+
+	// This pointer is used for files that are not present in the VFS.
+	struct stat *stat;
 };
 
 struct fd_handle {
@@ -37,6 +50,17 @@ struct pipe {
 	struct file_handle *read;
 	struct file_handle *write;
 	void *buffer;
+};
+
+struct file_ops {
+	int (*open)(struct vfs_node *, struct file_handle *);
+	int (*close)(struct vfs_node *, struct file_handle *);
+
+	ssize_t (*read)(struct file_handle *, void *, size_t, off_t);
+	ssize_t (*write)(struct file_handle *, const void *, size_t, off_t);
+	int (*ioctl)(struct file_handle *, uint64_t, void *);
+	int (*truncate)(struct file_handle *, off_t);
+	void *(*shared)(struct file_handle *, void *, off_t);
 };
 
 static inline void fd_init(struct fd_handle *handle) {
