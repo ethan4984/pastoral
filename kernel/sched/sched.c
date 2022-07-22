@@ -897,6 +897,11 @@ void syscall_execve(struct registers *regs) {
 	task->effective_gid = is_sgid ? vfs_node->asset->stat->st_gid : current_task->effective_gid;
 	task->saved_gid = task->effective_gid;
 
+	task->pgid = current_task->pgid;
+	task->group = current_task->group;
+	task->sid = current_task->sid;
+	task->session = current_task->session;
+
 	task->umask = current_task->umask;
 
 	CORE_LOCAL->pid = -1;
@@ -942,6 +947,11 @@ void syscall_fork(struct registers *regs) {
 	task->saved_gid = current_task->saved_gid;
 
 	task->umask = current_task->umask;
+
+	task->pgid = current_task->pgid;
+	task->group = current_task->group;
+	task->sid = current_task->sid;
+	task->session = current_task->session;
 
 	task->event = alloc(sizeof(struct event));
 	task->event->task = task;
