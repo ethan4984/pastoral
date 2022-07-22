@@ -14,8 +14,15 @@
 #include <time.h>
 
 static struct hash_table task_list;
+static struct hash_table session_list;
 
-struct bitmap pid_bitmap = {
+static struct bitmap pid_bitmap = {
+	.data = NULL,
+	.size = 0,
+	.resizable = true
+};
+
+static struct bitmap sid_bitmap = {
 	.data = NULL,
 	.size = 0,
 	.resizable = true
@@ -412,7 +419,7 @@ struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, ui
 	return thread;
 }
 
-struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status, int init) {
+struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status) {
 	spinlock(&sched_lock);
 
 	struct sched_task *task = sched_default_task();
@@ -471,68 +478,6 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		entry_point = ld_aux.at_entry;
 	}
 
-	if(init) {
-		struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
-			*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
-			*stderr_fd_handle = alloc(sizeof(struct fd_handle));
-
-		struct file_handle *stdin_file_handle = alloc(sizeof(struct file_handle)),
-			*stdout_file_handle = alloc(sizeof(struct file_handle)),
-			*stderr_file_handle = alloc(sizeof(struct file_handle));
-
-		struct asset *stdin_asset = alloc(sizeof(struct asset)),
-			*stdout_asset = alloc(sizeof(struct asset)),
-			*stderr_asset = alloc(sizeof(struct asset));
-
-		struct stat *stdin_stat = alloc(sizeof(struct stat)),
-			*stdout_stat = alloc(sizeof(struct stat)),
-			*stderr_stat = alloc(sizeof(struct stat));
-
-		fd_init(stdin_fd_handle);
-		fd_init(stdout_fd_handle);
-		fd_init(stderr_fd_handle);
-
-		file_init(stdin_file_handle);
-		file_init(stdout_file_handle);
-		file_init(stderr_file_handle);
-
-		stat_init(stdin_stat);
-		stat_init(stdout_stat);
-		stat_init(stderr_stat);
-
-		stdin_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
-		stdin_fd_handle->file_handle = stdin_file_handle;
-		stdout_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
-		stdout_fd_handle->file_handle = stdout_file_handle;
-		stderr_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
-		stderr_fd_handle->file_handle = stderr_file_handle;
-
-		stdin_file_handle->flags = O_RDONLY;
-		stdin_file_handle->asset = stdin_asset;
-		stdin_asset->read = terminal_read;
-		stdin_asset->ioctl = terminal_ioctl;
-		stdin_asset->stat = stdin_stat;
-		stdin_stat->st_mode = S_IRUSR | S_IWUSR;
-
-		stdout_file_handle->flags = O_WRONLY;
-		stdout_file_handle->asset = stdout_asset;
-		stdout_asset->write = terminal_write;
-		stdout_asset->ioctl = terminal_ioctl;
-		stdout_asset->stat = stdout_stat;
-		stdout_stat->st_mode = S_IRUSR | S_IWUSR;
-
-		stderr_file_handle->flags = O_WRONLY;
-		stderr_file_handle->asset = stderr_asset;
-		stderr_asset->write = terminal_write;
-		stderr_asset->ioctl = terminal_ioctl;
-		stderr_asset->stat = stderr_stat;
-		stderr_stat->st_mode = S_IRUSR | S_IWUSR;
-
-		hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
-		hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
-		hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
-	}
-
 	struct sched_thread *thread = sched_thread_exec(task, entry_point, cs, &aux, arguments);
 
 	if(thread == NULL) {
@@ -559,7 +504,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	spinrelease(&sched_lock);
 
 	task->status = status;
-	thread->status = status;
+	thread->status = TASK_WAITING;
 
 	return task;
 }
@@ -647,6 +592,81 @@ int event_create_timer(struct event *event, struct timespec *timespec) {
 
 	VECTOR_PUSH(timer->triggers, event->timer_trigger);
 	VECTOR_PUSH(timer_list, timer);
+
+	return 0;
+}
+
+int task_create_session(struct sched_task *task) {
+	if(task->group != NULL && task->group->pid_leader == task->pid) {
+		set_errno(EPERM);
+		return -1;
+	}
+
+	struct session *session = alloc(sizeof(struct session));
+	struct process_group *group = alloc(sizeof(struct process_group));
+
+	session->pgid_bitmap = (struct bitmap) {
+		.data = NULL,
+		.size = 0,
+		.resizable = true
+	};
+
+	pid_t sid = bitmap_alloc(&sid_bitmap);
+	pid_t pgid = bitmap_alloc(&session->pgid_bitmap);
+
+	session->sid = sid;
+	session->pgid_leader = pgid;
+
+	group->pgid = pgid;
+	group->sid = sid;
+	group->pid_leader = task->pid;
+	group->leader = task;
+	VECTOR_PUSH(group->process_list, task);
+
+	hash_table_push(&session->group_list, &session->pgid_leader, group, sizeof(session->pgid_leader));
+	hash_table_push(&session_list, &session->sid, session, sizeof(session->sid));
+
+	task->sid = sid;
+	task->session = session;
+
+	task->pgid = pgid;
+	task->group = group;
+
+	return sid;
+}
+
+int task_setpgid(struct sched_task *task, pid_t pgid) {
+	if(task->pgid == pgid) {
+		return 0;
+	}
+
+	if(CURRENT_TASK->sid != task->sid) {
+		set_errno(EPERM);
+		return -1;
+	}
+
+	struct session *session = task->session;
+	struct process_group *target_group;
+
+	if(!BIT_TEST(session->pgid_bitmap.data, pgid)) {
+		target_group = alloc(sizeof(struct process_group));
+
+		target_group->pgid = pgid;
+		target_group->sid = task->sid;
+		target_group->pid_leader = task->pid;
+		target_group->leader = task;
+		VECTOR_PUSH(target_group->process_list, task);
+
+		hash_table_push(&session->group_list, &target_group->pgid, target_group, sizeof(target_group->pgid));
+
+		BIT_SET(session->pgid_bitmap.data, pgid);
+	} else {
+		target_group = hash_table_search(&session->group_list, &pgid, sizeof(pgid));
+	}
+
+	VECTOR_PUSH(target_group->process_list, task);
+
+	task->pgid = pgid;
 
 	return 0;
 }
@@ -846,7 +866,7 @@ void syscall_execve(struct registers *regs) {
 	bool is_suid = vfs_node->asset->stat->st_mode & S_ISUID ? true : false;
 	bool is_sgid = vfs_node->asset->stat->st_mode & S_ISGID ? true : false;
 
-	struct sched_task *task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING, 0);
+	struct sched_task *task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING);
 
 	bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
 	for(size_t i = 0; i < task->fd_bitmap.size; i++) {
@@ -1100,4 +1120,60 @@ void syscall_setegid(struct registers *regs) {
 
 	set_errno(EPERM);
 	regs->rax = -1;
+}
+
+void syscall_setpgid(struct registers *regs) {
+	pid_t pid = regs->rdi;
+	pid_t pgid = regs->rsi;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] setpgid: pid {%x}, pgid {%x}\n", CORE_LOCAL->pid, pid, pgid);
+#endif
+
+	struct sched_task *task = sched_translate_pid(pid);
+	if(task == NULL) {
+		set_errno(ESRCH);
+		regs->rax = -1;
+		return;
+	}
+
+	regs->rax = task_setpgid(task, pgid);
+}
+
+void syscall_getpgid(struct registers *regs) {
+	pid_t pid = regs->rdi;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] getpgid: pid {%x}\n", CORE_LOCAL->pid, pid);
+#endif
+
+	struct sched_task *task = sched_translate_pid(pid);
+	if(task == NULL) {
+		set_errno(ESRCH);
+		regs->rax = -1;
+		return;
+	}
+
+	regs->rax = task->pgid;
+}
+
+void syscall_setsid(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] setsid\n", CORE_LOCAL->pid);
+#endif
+
+	struct sched_task *current_task = CURRENT_TASK;
+	if(current_task == NULL) {
+		panic("");
+	}
+
+	regs->rax = task_create_session(current_task);
+}
+
+void syscall_getsid(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] getsid\n", CORE_LOCAL->pid);
+#endif
+
+	regs->rax = CURRENT_TASK->sid;
 }

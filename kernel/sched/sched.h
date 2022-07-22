@@ -60,6 +60,9 @@ struct sched_thread {
 	struct registers regs;
 };
 
+struct process_group;
+struct session;
+
 struct sched_task {
 	char fd_lock;
 	struct hash_table fd_list;
@@ -79,6 +82,12 @@ struct sched_task {
 
 	pid_t pid;
 	pid_t ppid;
+
+	pid_t pgid;
+	struct process_group *group;
+
+	pid_t sid;
+	struct session *session;
 
 	size_t idle_cnt;
 	size_t status;
@@ -102,6 +111,25 @@ struct sched_task {
 	struct page_table *page_table;
 };
 
+struct process_group {
+	pid_t pgid;
+	pid_t sid;
+
+	pid_t pid_leader;
+	struct sched_task *leader;
+
+	VECTOR(struct sched_task*) process_list;
+};
+
+struct session {
+	pid_t sid;
+	pid_t pgid_leader;
+
+	struct bitmap pgid_bitmap;
+
+	struct hash_table group_list;
+};
+
 struct sched_arguments {
 	int envp_cnt;
 	int argv_cnt;
@@ -114,7 +142,7 @@ struct sched_task *sched_translate_pid(pid_t pid);
 struct sched_thread *sched_translate_tid(pid_t pid, tid_t tid);
 struct sched_task *sched_default_task();
 struct sched_thread *sched_default_thread(struct sched_task *task);
-struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status, int init);
+struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status);
 struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, uint16_t cs, struct aux *aux, struct sched_arguments *arguments);
 
 void reschedule(struct registers *regs, void *ptr);
@@ -128,6 +156,8 @@ int event_append_trigger(struct event *event, struct event_trigger *trigger);
 int event_wait(struct event *event, int event_type);
 int event_create_timer(struct event *event, struct timespec *timespec);
 int event_fire(struct event_trigger *trigger);
+
+int task_create_session(struct sched_task *task);
 
 extern char sched_lock;
 

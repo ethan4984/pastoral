@@ -44,6 +44,104 @@ static volatile struct limine_framebuffer_request limine_framebuffer_request = {
 	.revision = 0
 };
 
+void init_process() {
+	char *argv[] = { "/usr/bin/bash", NULL };
+	char *envp[] = {
+        "HOME=/",
+        "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TERM=linux",
+		NULL
+	};
+
+	struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
+
+	*arguments = (struct sched_arguments) {
+		.argv = argv,
+		.envp = envp,
+		.envp_cnt = 3,
+		.argv_cnt = 1
+	};
+
+	struct sched_task *task = sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_YIELD);
+	if(task == NULL) {
+		panic("unable to start init process");
+	}
+
+	struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
+		*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
+		*stderr_fd_handle = alloc(sizeof(struct fd_handle));
+
+	struct file_handle *stdin_file_handle = alloc(sizeof(struct file_handle)),
+		*stdout_file_handle = alloc(sizeof(struct file_handle)),
+		*stderr_file_handle = alloc(sizeof(struct file_handle));
+
+	struct asset *stdin_asset = alloc(sizeof(struct asset)),
+		*stdout_asset = alloc(sizeof(struct asset)),
+		*stderr_asset = alloc(sizeof(struct asset));
+
+	struct stat *stdin_stat = alloc(sizeof(struct stat)),
+		*stdout_stat = alloc(sizeof(struct stat)),
+		*stderr_stat = alloc(sizeof(struct stat));
+
+	fd_init(stdin_fd_handle);
+	fd_init(stdout_fd_handle);
+	fd_init(stderr_fd_handle);
+
+	file_init(stdin_file_handle);
+	file_init(stdout_file_handle);
+	file_init(stderr_file_handle);
+
+	stat_init(stdin_stat);
+	stat_init(stdout_stat);
+	stat_init(stderr_stat);
+
+	stdin_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
+	stdin_fd_handle->file_handle = stdin_file_handle;
+	stdout_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
+	stdout_fd_handle->file_handle = stdout_file_handle;
+	stderr_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
+	stderr_fd_handle->file_handle = stderr_file_handle;
+
+	stdin_file_handle->flags = O_RDONLY;
+	stdin_file_handle->asset = stdin_asset;
+	stdin_asset->read = terminal_read;
+	stdin_asset->ioctl = terminal_ioctl;
+	stdin_asset->stat = stdin_stat;
+	stdin_stat->st_mode = S_IRUSR | S_IWUSR;
+
+	stdout_file_handle->flags = O_WRONLY;
+	stdout_file_handle->asset = stdout_asset;
+	stdout_asset->write = terminal_write;
+	stdout_asset->ioctl = terminal_ioctl;
+	stdout_asset->stat = stdout_stat;
+	stdout_stat->st_mode = S_IRUSR | S_IWUSR;
+
+	stderr_file_handle->flags = O_WRONLY;
+	stderr_file_handle->asset = stderr_asset;
+	stderr_asset->write = terminal_write;
+	stderr_asset->ioctl = terminal_ioctl;
+	stderr_asset->stat = stderr_stat;
+	stderr_stat->st_mode = S_IRUSR | S_IWUSR;
+
+	hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
+	hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
+	hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
+
+	struct sched_task *parent = sched_translate_pid(task->ppid);
+	if(parent == NULL) {
+		panic("");
+	}
+
+	task->sid = parent->sid;
+	task->session = parent->session;
+	task->pgid = parent->pgid;
+	task->group = parent->group;
+	
+	VECTOR_PUSH(task->group->process_list, task);
+
+	task->status = TASK_WAITING;
+}
+
 void pastoral_thread() {
 	print("Greetings from pastorals kernel thread\n");
 
@@ -72,49 +170,7 @@ void pastoral_thread() {
 		vfs_create_node_deep(NULL, asset, NULL, device_path);
 	}
 
-	char *argv[] = { "/usr/bin/bash", NULL };
-	char *envp[] = {
-        "HOME=/",
-        "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        "TERM=linux",
-		NULL
-	};
-
-	struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
-
-	*arguments = (struct sched_arguments) {
-		.argv = argv,
-		.envp = envp,
-		.envp_cnt = 3,
-		.argv_cnt = 1
-	};
-
-	struct sched_task *task = sched_task_exec("/usr/bin/bash", 0x43, arguments, TASK_WAITING, 1);
-	if(task == NULL) {
-		panic("unable to start init process");
-	}
-
-	/*char *argv[] = { "/init", NULL };
-	char *envp[] = {
-        "HOME=/",
-        "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        "TERM=linux",
-		NULL
-	};
-
-	struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
-
-	*arguments = (struct sched_arguments) {
-		.argv = argv,
-		.envp = envp,
-		.envp_cnt = 3,
-		.argv_cnt = 1
-	};
-
-	struct sched_task *task = sched_task_exec("/init", 0x43, arguments, TASK_WAITING, 1);
-	if(task == NULL) {
-		panic("unable to start init process");
-	}*/
+	init_process();
 
 	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
 
@@ -178,6 +234,8 @@ void pastoral_entry(void) {
 
 	kernel_task->page_table = alloc(sizeof(struct page_table));
 	vmm_default_table(kernel_task->page_table);
+
+	task_create_session(kernel_task);
 
 	kernel_task->status = TASK_WAITING;
 	kernel_thread->status = TASK_WAITING;

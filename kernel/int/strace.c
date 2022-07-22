@@ -50,6 +50,10 @@ extern void syscall_sigaction(struct registers*);
 extern void syscall_sigpending(struct registers*);
 extern void syscall_sigprocmask(struct registers*);
 extern void syscall_kill(struct registers*);
+extern void syscall_setpgid(struct registers*);
+extern void syscall_getpgid(struct registers*);
+extern void syscall_setsid(struct registers*);
+extern void syscall_getsid(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -147,7 +151,11 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_sigaction, .name = "sigaction" }, // 43
 	{ .handler = syscall_sigpending, .name = "sigpending" }, // 44
 	{ .handler = syscall_sigprocmask, .name = "sigprocmask" }, // 45
-	{ .handler = syscall_kill, .name = "kill" } // 46
+	{ .handler = syscall_kill, .name = "kill" }, // 46
+	{ .handler = syscall_setpgid, .name = "setpgid" }, // 47
+	{ .handler = syscall_getpgid, .name = "getpgid" }, // 48
+	{ .handler = syscall_setsid, .name = "setsid" }, // 49
+	{ .handler = syscall_getsid, .name = "getsid" } // 50
 };
 
 extern void syscall_handler(struct registers *regs) {
