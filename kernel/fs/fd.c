@@ -137,7 +137,14 @@ int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode) {
 		}
 		return -1;
 	}
+}
 
+int stat_update_time(struct stat *stat, int flags) {
+	if(flags & STAT_ACCESS) stat->st_atim = clock_realtime;
+	if(flags & STAT_MOD) stat->st_mtim = clock_realtime;
+	if(flags & STAT_STATUS) stat->st_ctim = clock_realtime;
+
+	return 0;
 }
 
 static struct fd_handle *fd_translate_unlocked(int index) {
@@ -228,6 +235,8 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		fd_handle->file_handle->position += ret;
 	}
 
+	stat_update_time(stat, STAT_MOD);
+
 	file_unlock(fd_handle->file_handle);
 	return ret;
 }
@@ -267,6 +276,8 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 		fd_handle->file_handle->position += ret;
 	}
 
+	stat_update_time(stat, STAT_ACCESS);
+
 	file_unlock(fd_handle->file_handle);
 	return ret;
 }
@@ -279,9 +290,7 @@ ssize_t pipe_read(struct file_handle *file, void *buf, size_t cnt, off_t offset)
 		event_wait(file->event, EVENT_FD_WRITE);
 	}
 
-	stat->st_atim = clock_realtime;
-	stat->st_mtim = clock_realtime;
-	stat->st_ctim = clock_realtime;
+	stat_update_time(stat, STAT_ACCESS);
 
 	if(offset + cnt > stat->st_size) {
 		cnt = stat->st_size - offset;
@@ -313,9 +322,7 @@ ssize_t pipe_write(struct file_handle *file, const void *buf, size_t cnt, off_t 
 		event_fire(file->trigger);
 	}
 
-	stat->st_atim = clock_realtime;
-	stat->st_mtim = clock_realtime;
-	stat->st_ctim = clock_realtime;
+	stat_update_time(stat, STAT_MOD);
 
 	if(offset + cnt > stat->st_size) {
 		stat->st_size += offset + cnt - stat->st_size;
@@ -403,8 +410,10 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		return -1;
 	}
 
-	if((flags & O_TRUNC) && vfs_node->filesystem->truncate)
+	if((flags & O_TRUNC) && vfs_node->filesystem->truncate) {
 		vfs_node->filesystem->truncate(vfs_node, 0);
+		stat_update_time(vfs_node->stat, STAT_MOD);
+	}
 
 	struct file_ops *fops = vfs_node->fops;
 	struct file_handle *new_file_handle = alloc(sizeof(struct file_handle));
@@ -428,6 +437,8 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		}
 	}
 
+	stat_update_time(vfs_node->stat, STAT_ACCESS);
+
 	struct fd_handle *new_fd_handle = alloc(sizeof(struct fd_handle));
 	fd_init(new_fd_handle);
 	new_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
@@ -441,6 +452,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	}
 
 	hash_table_push(&current_task->fd_list, &new_fd_handle->fd_number, new_fd_handle, sizeof(new_fd_handle->fd_number));
+
 	return new_fd_handle->fd_number;
 }
 
@@ -688,6 +700,8 @@ int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
 		node->stat->st_uid = uid;
 	if(gid != -1)
 		node->stat->st_gid = gid;
+
+	stat_update_time(node->stat, STAT_STATUS);
 
 	return 0;
 }
@@ -1123,12 +1137,12 @@ static int stat_chmod(struct stat *stat, mode_t mode) {
 		return -1;
 	}
 
-	stat->st_mode |= (mode & (
-		S_IRWXU | S_IRWXG | S_IRWXO | S_ISUID | S_ISGID | S_ISVTX
-	));
+	stat->st_mode |= (mode & ( S_IRWXU | S_IRWXG | S_IRWXO | S_ISUID | S_ISGID | S_ISVTX));
+
+	stat_update_time(stat, STAT_STATUS);
+
 	return 0;
 }
-
 
 void syscall_fchmod(struct registers *regs) {
 	int fd = regs->rdi;
@@ -1147,7 +1161,6 @@ void syscall_fchmod(struct registers *regs) {
 
 	regs->rax = stat_chmod(handle->file_handle->stat, mode);
 }
-
 
 void syscall_fchmodat(struct registers *regs) {
 	int fd = regs->rdi;
@@ -1169,7 +1182,6 @@ void syscall_fchmodat(struct registers *regs) {
 
 	regs->rax = stat_chmod(file->stat, mode);
 }
-
 
 void syscall_fchownat(struct registers *regs) {
 	int fd = regs->rdi;

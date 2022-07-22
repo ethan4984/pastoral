@@ -66,10 +66,6 @@ ssize_t ramfs_read(struct file_handle *file, void *buf, size_t cnt, off_t offset
 		return 0;
 	}
 
-	stat->st_atim = clock_realtime;
-	stat->st_mtim = clock_realtime;
-	stat->st_ctim = clock_realtime;
-
 	if(offset + cnt > stat->st_size) {
 		cnt = stat->st_size - offset;
 	}
@@ -92,10 +88,6 @@ ssize_t ramfs_write(struct file_handle *file, const void *buf, size_t cnt, off_t
 		node_unlock(file->vfs_node);
 		return 0;
 	}
-
-	stat->st_atim = clock_realtime;
-	stat->st_mtim = clock_realtime;
-	stat->st_ctim = clock_realtime;
 
 	if(offset + cnt > stat->st_size) {
 		//stat->st_size += offset + cnt - stat->st_size;
@@ -121,10 +113,6 @@ int ramfs_truncate(struct vfs_node *node, off_t cnt) {
 		node_unlock(node);
 		return -1;
 	}
-
-	stat->st_atim = clock_realtime;
-	stat->st_mtim = clock_realtime;
-	stat->st_ctim = clock_realtime;
 
 	stat->st_size = cnt;
 	ramfs_handle->buffer = realloc(ramfs_handle->buffer, stat->st_size);

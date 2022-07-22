@@ -159,7 +159,6 @@ static inline void stat_init(struct stat *st) {
 	st->st_mtim = clock_realtime;
 }
 
-
 struct dirent {
 	ino_t d_ino;
 	off_t d_off;
