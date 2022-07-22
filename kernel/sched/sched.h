@@ -85,9 +85,10 @@ struct sched_task {
 
 	pid_t pgid;
 	struct process_group *group;
-
 	pid_t sid;
 	struct session *session;
+
+	int has_execved;
 
 	size_t idle_cnt;
 	size_t status;

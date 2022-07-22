@@ -640,7 +640,7 @@ int task_setpgid(struct sched_task *task, pid_t pgid) {
 		return 0;
 	}
 
-	if(CURRENT_TASK->sid != task->sid) {
+	if((CURRENT_TASK->sid != task->sid) || (task->group->pid_leader == task->pid) || task->has_execved) {
 		set_errno(EPERM);
 		return -1;
 	}
@@ -903,6 +903,8 @@ void syscall_execve(struct registers *regs) {
 	task->session = current_task->session;
 
 	task->umask = current_task->umask;
+
+	task->has_execved = 1;
 
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
