@@ -56,6 +56,8 @@ struct sched_thread *find_next_thread(struct sched_task *task) {
 		struct sched_thread *next_thread = task->thread_list.data[i];
 		next_thread->idle_cnt++;
 
+		signal_dispatch(next_thread);
+
 		if(next_thread->status == TASK_WAITING && cnt < next_thread->idle_cnt) {
 			cnt = next_thread->idle_cnt;
 			ret = next_thread;
@@ -100,24 +102,6 @@ void reschedule(struct registers *regs, void*) {
 	if(__atomic_test_and_set(&sched_lock, __ATOMIC_ACQUIRE)) {
 		return;
 	}
-
-	/*struct sched_task *next_task = find_next_task();
-	if(next_task == NULL) {
-		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-			next_task = CURRENT_TASK;
-		} else {
-			sched_idle();
-		}
-	}
-
-	struct sched_thread *next_thread = find_next_thread(next_task);
-	if(next_thread == NULL) {
-		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-			next_thread = CURRENT_THREAD; 
-		} else {
-			sched_idle();
-		}
-	}*/
 
 	struct sched_task *next_task = find_next_task();
 	if(next_task == NULL) {
@@ -182,37 +166,6 @@ void reschedule(struct registers *regs, void*) {
 	set_user_gs(next_thread->user_gs_base);
 
 	next_task->event_waiting = 0;
-
-	/*for(size_t i = 0; i < SIGNAL_MAX; i++) {
-		if(next_thread->signal_queue.sigpending & (1 << i)) {
-			struct signal *signal = &next_thread->signal_queue.queue[i];
-			struct sigaction *action = signal->sigaction;
-
-			next_thread->regs.rsp -= 128;
-			next_thread->regs.rsp &= -16ll;
-
-			if(action->sa_flags & SA_SIGINFO) {
-				next_thread->regs.rsp -= sizeof(struct siginfo);
-				struct siginfo *siginfo = (void*)next_thread->regs.rsp;
-
-				// TODO use a proper ucontext
-				next_thread->regs.rsp -= sizeof(struct registers);
-				struct registers *ucontext = (void*)next_thread->regs.rsp;
-
-				next_thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
-				next_thread->regs.rdi = signal->signum;
-				next_thread->regs.rsi = (uint64_t)siginfo;
-				next_thread->regs.rdx = (uint64_t)ucontext;
-			} else {
-				next_thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
-				next_thread->regs.rdi = signal->signum;
-			}
-
-			next_thread->signal_queue.sigpending &= ~(1 << i);
-
-			break;
-		}
-	}*/
 
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();

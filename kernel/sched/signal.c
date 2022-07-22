@@ -138,6 +138,45 @@ int signal_send(struct sched_thread *sender, struct sched_thread *target, int si
 	return 0;
 }
 
+int signal_dispatch(struct sched_thread *thread) {
+	struct signal_queue *queue = &thread->signal_queue;
+
+	if(queue->sigpending == 0) {
+		return -1;
+	}
+
+	for(size_t i = 0; i < SIGNAL_MAX; i++) {
+		if(thread->signal_queue.sigpending & (1 << i)) {
+			struct signal *signal = &thread->signal_queue.queue[i];
+			struct sigaction *action = signal->sigaction;
+
+			thread->regs.rsp -= 128;
+			thread->regs.rsp &= -16ll;
+
+			if(action->sa_flags & SA_SIGINFO) {
+				thread->regs.rsp -= sizeof(struct siginfo);
+				struct siginfo *siginfo = (void*)thread->regs.rsp;
+
+				thread->regs.rsp -= sizeof(struct registers);
+				struct registers *ucontext = (void*)thread->regs.rsp;
+
+				thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
+				thread->regs.rdi = signal->signum;
+				thread->regs.rsi = (uint64_t)siginfo;
+				thread->regs.rdx = (uint64_t)ucontext;
+			} else {
+				thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
+				thread->regs.rdi = signal->signum;
+			}
+
+			thread->signal_queue.sigpending &= ~(1 << i);
+			break;
+		}
+	}
+
+	return 0;
+}
+
 int kill(pid_t pid, int sig) {
 	if(signal_is_valid(sig) == -1) {
 		set_errno(EINVAL);
