@@ -167,8 +167,6 @@ void reschedule(struct registers *regs, void*) {
 
 	for(size_t i = 0; i < SIGNAL_MAX; i++) {
 		if(next_thread->signal_queue.sigpending & (1 << i)) {
-			print("here somehow\n");
-
 			struct signal *signal = &next_thread->signal_queue.queue[i];
 			struct sigaction *action = signal->sigaction;
 
@@ -867,6 +865,7 @@ void syscall_execve(struct registers *regs) {
 	bool is_sgid = vfs_node->asset->stat->st_mode & S_ISGID ? true : false;
 
 	struct sched_task *task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING);
+	struct sched_thread *thread = sched_translate_tid(task->pid, 0);
 
 	bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
 	for(size_t i = 0; i < task->fd_bitmap.size; i++) {
@@ -888,6 +887,8 @@ void syscall_execve(struct registers *regs) {
 	task->pid = current_task->pid;
 	task->ppid = current_task->ppid;
 	task->exit_trigger = current_task->exit_trigger;
+
+	thread->pid = task->pid;
 
 	task->real_uid = current_task->real_uid;
 	task->effective_uid = is_suid ? vfs_node->asset->stat->st_uid : current_task->effective_uid;
