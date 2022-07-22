@@ -49,6 +49,7 @@ extern void syscall_fchownat(struct registers*);
 extern void syscall_sigaction(struct registers*);
 extern void syscall_sigpending(struct registers*);
 extern void syscall_sigprocmask(struct registers*);
+extern void syscall_kill(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -145,7 +146,8 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_fchownat, .name = "fchownat" }, // 42
 	{ .handler = syscall_sigaction, .name = "sigaction" }, // 43
 	{ .handler = syscall_sigpending, .name = "sigpending" }, // 44
-	{ .handler = syscall_sigprocmask, .name = "sigprocmask" } // 45
+	{ .handler = syscall_sigprocmask, .name = "sigprocmask" }, // 45
+	{ .handler = syscall_kill, .name = "kill" } // 46
 };
 
 extern void syscall_handler(struct registers *regs) {

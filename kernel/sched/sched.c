@@ -160,6 +160,8 @@ void reschedule(struct registers *regs, void*) {
 
 	for(size_t i = 0; i < SIGNAL_MAX; i++) {
 		if(next_thread->signal_queue.sigpending & (1 << i)) {
+			print("here somehow\n");
+
 			struct signal *signal = &next_thread->signal_queue.queue[i];
 			struct sigaction *action = signal->sigaction;
 

@@ -98,6 +98,7 @@ struct signal {
 };
 
 struct sched_thread;
+struct sched_task;
 
 struct signal_queue {
 	struct signal queue[SIGNAL_MAX];
@@ -107,3 +108,12 @@ struct signal_queue {
 };
 
 int sigaction(int sig, const struct sigaction *act, struct sigaction *old);
+int sigpending(sigset_t *set);
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+int signal_send(struct sched_thread *sender, struct sched_thread *target, int sig);
+int signal_check_permissions(struct sched_task *sender, struct sched_task *target);
+int signal_is_valid(int sig);
+
+
+
+

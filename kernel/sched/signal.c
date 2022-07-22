@@ -9,7 +9,7 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 		panic("");
 	}
 
-	if((sig < 1 && sig > 34) || (sig == SIGKILL || sig == SIGSTOP)) {
+	if(signal_is_valid(sig) == -1 || (sig == SIGKILL || sig == SIGSTOP)) {
 		set_errno(EINVAL);
 		return -1;
 	}
@@ -97,7 +97,7 @@ int signal_check_permissions(struct sched_task *sender, struct sched_task *targe
 }
 
 int signal_is_valid(int sig) {
-	if(sig < 1 || sig > 34) {
+	if(sig < 1 || sig > SIGNAL_MAX) {
 		return -1;
 	}
 
@@ -139,17 +139,24 @@ int signal_send(struct sched_thread *sender, struct sched_thread *target, int si
 }
 
 int kill(pid_t pid, int sig) {
-	if(sig < 1 && sig > 34) {
+	if(signal_is_valid(sig) == -1) {
 		set_errno(EINVAL);
 		return -1;
 	}
 
+	struct sched_thread *sender = CURRENT_THREAD;
+	if(sender == NULL) {
+		panic("");
+	}
+
 	if(pid > 0) {
-		struct sched_task *target = sched_translate_pid(CORE_LOCAL->pid);
+		struct sched_thread *target = sched_translate_tid(pid, 0);
 		if(target == NULL) {
 			set_errno(ESRCH);
-			return 0;
+			return -1;
 		}
+
+		signal_send(sender, target, sig);
 	} else if(pid == 0) {
 		// TODO implement process groups
 	} else if(pid == -1) {
