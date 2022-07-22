@@ -4,7 +4,7 @@ A modern x86_64 operating system, striving to be to an *actual* UNIX clone
 
 ![alt tet](misc/images/screenshot.png)
 
-It's also very stable, so running it on [real hardware](misc/images/on_real_hardware.jpg) is no problem!
+It's also very stable, so running it on [real hardware](misc/on_real_hardware.md) is no problem!
 
 # Features
 
