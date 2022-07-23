@@ -15,7 +15,7 @@
 #include <drivers/pci.h>
 #include <drivers/pit.h>
 #include <drivers/iommu/intel/vtd.h>
-#include <drivers/terminal.h>
+#include <drivers/tty/limine_term.h>
 #include <drivers/fbdev.h>
 #include <fs/vfs.h>
 #include <fs/initramfs.h>
@@ -67,6 +67,7 @@ void init_process() {
 		panic("unable to start init process");
 	}
 
+/*
 	struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
 		*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
 		*stderr_fd_handle = alloc(sizeof(struct fd_handle));
@@ -126,7 +127,7 @@ void init_process() {
 	hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
 	hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
 	hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
-
+*/
 	struct sched_task *parent = sched_translate_pid(task->ppid);
 	if(parent == NULL) {
 		panic("");
@@ -149,7 +150,7 @@ void pastoral_thread() {
 		panic("initramfs: unable to initialise");
 	}
 
-	limine_terminal_init();
+	limine_terminals_init();
 
 	struct limine_framebuffer **framebuffers = limine_framebuffer_request.response->framebuffers;
 	uint64_t framebuffer_count = limine_framebuffer_request.response->framebuffer_count;

@@ -10,7 +10,6 @@
 #include <types.h>
 #include <errno.h>
 #include <fs/fd.h>
-#include <drivers/terminal.h>
 #include <time.h>
 
 static struct hash_table task_list;
@@ -835,7 +834,7 @@ void syscall_fork(struct registers *regs) {
 	task->session = current_task->session;
 
 	task->waitq = alloc(sizeof(struct waitq));
-	waitq_calibrate(task->waitq, task, thread); 
+	waitq_calibrate(task->waitq, task, thread);
 
 	task->exit_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_EXIT);
 	waitq_trigger_calibrate(task->exit_trigger, task, thread, EVENT_EXIT);

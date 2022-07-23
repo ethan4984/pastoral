@@ -1,7 +1,16 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <assert.h>
+
 
 int main(void) {
+	int stdin = open("/dev/tty0", O_RDONLY);
+	int stdout = open("/dev/tty0", O_WRONLY);
+	int stderr = open("/dev/tty0", O_WRONLY);
+
+	assert(stdin == 0 && stdout == 1 && stderr == 2);
+
 	int pid = fork();
 
 	if(pid == 0) {
@@ -13,7 +22,7 @@ int main(void) {
 			NULL
 		};
 
-		execve("/usr/bin/bash", argv, envp);		
+		execve("/usr/bin/bash", argv, envp);
 	}
 
 	for(;;) {

@@ -30,6 +30,7 @@ int cdev_open(struct vfs_node *node, struct file_handle *file) {
 int cdev_register(dev_t dev, struct cdev *cdev) {
 	spinlock(&cdev_lock);
 	struct cdev *aux = hash_table_search(&cdev_list, &dev, sizeof(dev_t));
+
 	if(aux) {
 		spinrelease(&cdev_lock);
 		return -1;
