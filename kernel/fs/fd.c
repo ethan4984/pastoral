@@ -235,7 +235,7 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		fd_handle->file_handle->position += ret;
 	}
 
-	stat_update_time(stat, STAT_MOD);
+	stat_update_time(stat, STAT_MOD | STAT_STATUS);
 
 	file_unlock(fd_handle->file_handle);
 	return ret;
@@ -380,13 +380,15 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		stat->st_mode = S_IFREG | (mode & ~(CURRENT_TASK->umask));
 		stat->st_uid = CURRENT_TASK->effective_uid;
 
+		stat_update_time(stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
+
 		vfs_node = parent->filesystem->create(parent, name, stat);
 
-		if(parent->stat->st_mode & S_ISGID)
+		if(parent->stat->st_mode & S_ISGID) {
 			vfs_node->stat->st_gid = parent->stat->st_gid;
-		else
+		} else {
 			vfs_node->stat->st_gid = CURRENT_TASK->effective_gid;
-
+		}
 	} else if((flags & O_CREAT) && (flags & O_EXCL)) {
 		set_errno(EEXIST);
 		return -1;
@@ -407,7 +409,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 	if((flags & O_TRUNC) && vfs_node->filesystem->truncate) {
 		vfs_node->filesystem->truncate(vfs_node, 0);
-		stat_update_time(vfs_node->stat, STAT_MOD);
+		stat_update_time(vfs_node->stat, STAT_MOD | STAT_STATUS);
 	}
 
 	struct file_ops *fops = vfs_node->fops;
@@ -1008,6 +1010,8 @@ void syscall_pipe(struct registers *regs) {
 	write_file_handle->flags = O_WRONLY;
 	write_file_handle->stat = pipe_stat;
 
+	stat_update_time(pipe_stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
+
 	spinlock(&CURRENT_TASK->fd_lock);
 	hash_table_push(&CURRENT_TASK->fd_list, &read_fd_handle->fd_number, read_fd_handle, sizeof(read_fd_handle->fd_number));
 	hash_table_push(&CURRENT_TASK->fd_list, &write_fd_handle->fd_number, write_fd_handle, sizeof(write_fd_handle->fd_number));
@@ -1080,6 +1084,8 @@ void syscall_symlinkat(struct registers *regs) {
 		regs->rax = -1;
 		return;
 	}
+
+	stat_update_time(link_node->stat, STAT_STATUS);
 
 	char *path = alloc(strlen(target));
 	strcpy(path, target);
