@@ -38,9 +38,11 @@ int sigpending(sigset_t *set) {
 		panic(""); 
 	}
 
-	spinlock(&thread->sig_lock);
-	*set = thread->signal_queue.sigpending;
-	spinrelease(&thread->sig_lock);
+	struct signal_queue *queue = &thread->signal_queue;
+
+	spinlock(&queue->siglock);
+	*set = queue->sigpending;
+	spinrelease(&queue->siglock);
 
 	return 0;
 }
@@ -51,31 +53,33 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 		panic(""); 
 	}
 
-	spinlock(&thread->sig_lock);
+	struct signal_queue *queue = &thread->signal_queue;
+
+	spinlock(&queue->siglock);
 
 	if(oldset) {
-		*oldset = thread->sigmask;
+		*oldset = queue->sigmask;
 	}
 
 	if(set) {
 		switch(how) {
 			case SIG_BLOCK:
-				thread->sigmask |= *set;
+				queue->sigmask |= *set;
 				break;
 			case SIG_UNBLOCK:
-				thread->sigmask &= ~(*set);
+				queue->sigmask &= ~(*set);
 				break; 
 			case SIG_SETMASK:
-				thread->sigmask = *set;
+				queue->sigmask = *set;
 				break;
 			default:
 				set_errno(EINVAL); 
-				spinrelease(&thread->sig_lock);
+				spinrelease(&queue->siglock);
 				return -1;
 		}
 	}
 
-	spinrelease(&thread->sig_lock);
+	spinrelease(&queue->siglock);
 
 	return 0;
 }
@@ -113,11 +117,13 @@ int signal_send(struct sched_thread *sender, struct sched_thread *target, int si
 	struct sched_task *sender_task = sched_translate_pid(sender->pid);
 	struct sched_task *target_task = sched_translate_pid(target->pid);
 
-	spinlock(&target->sig_lock);
+	struct signal_queue *queue = &target->signal_queue;
+
+	spinlock(&queue->siglock);
 
 	if(signal_check_permissions(sender_task, target_task) == -1) {
 		set_errno(EPERM);
-		spinrelease(&target->sig_lock);
+		spinrelease(&queue->siglock);
 		return -1;
 	}
 
@@ -127,13 +133,12 @@ int signal_send(struct sched_thread *sender, struct sched_thread *target, int si
 	signal->refcnt = 1;
 	signal->siginfo = alloc(sizeof(struct siginfo));
 	signal->sigaction = &target_task->sigactions[sig - 1];
-	signal->trigger = alloc(sizeof(struct event_trigger));
-	*signal->trigger = (struct event_trigger) { .event = &target->sigwait, .event_type = EVENT_SIGNAL };
+	signal->trigger = waitq_alloc(&queue->waitq, EVENT_SIGNAL);
 	signal->queue = signal_queue; 
 
 	signal_queue->sigpending |= SIGMASK(sig);
 
-	spinrelease(&target->sig_lock);
+	spinrelease(&queue->siglock);
 
 	return 0;
 }

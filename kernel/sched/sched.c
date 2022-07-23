@@ -58,7 +58,7 @@ struct sched_thread *find_next_thread(struct sched_task *task) {
 
 		signal_dispatch(next_thread);
 
-		if(next_thread->status == TASK_WAITING && cnt < next_thread->idle_cnt) {
+		if(next_thread->sched_status == TASK_WAITING && cnt < next_thread->idle_cnt) {
 			cnt = next_thread->idle_cnt;
 			ret = next_thread;
 		}
@@ -78,7 +78,7 @@ struct sched_task *find_next_task() {
 		struct sched_task *next_task = task_list.data[i];
 		next_task->idle_cnt++;
 
-		if(next_task->status == TASK_WAITING && cnt < next_task->idle_cnt) {
+		if(next_task->sched_status == TASK_WAITING && cnt < next_task->idle_cnt) {
 			cnt = next_task->idle_cnt;
 			ret = next_task;
 		}
@@ -132,12 +132,12 @@ void reschedule(struct registers *regs, void*) {
 			sched_idle();
 		}
 
-		if(last_thread->status != TASK_YIELD) {
-			last_thread->status = TASK_WAITING;
+		if(last_thread->sched_status != TASK_YIELD) {
+			last_thread->sched_status = TASK_WAITING;
 		}
 
-		if(last_task->status != TASK_YIELD) {
-			last_task->status = TASK_WAITING;
+		if(last_task->sched_status != TASK_YIELD) {
+			last_task->sched_status = TASK_WAITING;
 		}
 
 		last_thread->errno = CORE_LOCAL->errno;
@@ -159,13 +159,13 @@ void reschedule(struct registers *regs, void*) {
 
 	next_thread->idle_cnt = 0;
 	next_task->idle_cnt = 0;
-	next_task->status = TASK_RUNNING;
-	next_thread->status = TASK_RUNNING;
+	next_task->sched_status = TASK_RUNNING;
+	next_thread->sched_status = TASK_RUNNING;
 
 	set_user_fs(next_thread->user_fs_base);
 	set_user_gs(next_thread->user_gs_base);
 
-	next_task->event_waiting = 0;
+	next_task->waiting = 0;
 
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
@@ -200,8 +200,8 @@ void reschedule(struct registers *regs, void*) {
 void sched_dequeue(struct sched_task *task, struct sched_thread *thread) {
 	spinlock(&sched_lock);
 
-	task->status = TASK_YIELD;
-	thread->status = TASK_YIELD;
+	task->sched_status = TASK_YIELD;
+	thread->sched_status = TASK_YIELD;
 
 	spinrelease(&sched_lock);
 }
@@ -225,10 +225,10 @@ void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *threa
 void sched_requeue(struct sched_task *task, struct sched_thread *thread) {
 	spinlock(&sched_lock);
 
-	task->status = TASK_WAITING;
+	task->sched_status = TASK_WAITING;
 	task->idle_cnt = TASK_MAX_PRIORITY;
 
-	thread->status = TASK_WAITING;
+	thread->sched_status = TASK_WAITING;
 	thread->idle_cnt = TASK_MAX_PRIORITY;
 
 	spinrelease(&sched_lock);
@@ -262,11 +262,11 @@ struct sched_task *sched_default_task() {
 	struct sched_task *task = alloc(sizeof(struct sched_task));
 
 	task->pid = bitmap_alloc(&pid_bitmap);
-	task->status = TASK_YIELD;
+	task->sched_status = TASK_YIELD;
 	task->fd_bitmap.resizable = true;
 
-	task->event = alloc(sizeof(struct event));
-	task->exit_trigger = alloc(sizeof(struct event_trigger));
+	task->waitq = alloc(sizeof(struct waitq));
+	task->exit_trigger = waitq_alloc(task->waitq, EVENT_EXIT);
 
 	task->real_uid = 0;
 	task->effective_uid = 0;
@@ -300,7 +300,7 @@ struct sched_thread *sched_default_thread(struct sched_task *task) {
 
 	thread->pid = task->pid;
 	thread->tid = bitmap_alloc(&task->tid_bitmap);
-	thread->status = TASK_YIELD;
+	thread->sched_status = TASK_YIELD;
 
 	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
 
@@ -399,7 +399,6 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	vmm_init_page_table(task->page_table);
 
 	struct sched_task *current_task = CURRENT_TASK;
-	struct sched_thread *current_thread = CURRENT_THREAD;
 
 	CORE_LOCAL->pid = task->pid;
 
@@ -459,110 +458,16 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	vmm_init_page_table(current_task->page_table);
 
-	task->event->task = task;
-	task->event->thread = thread;
-
-	task->exit_trigger->agent_task = task;
-	task->exit_trigger->agent_thread = thread;
-	task->exit_trigger->event_type = EVENT_PROC_EXIT;
-
-	task->exit_trigger->event = alloc(sizeof(struct event));
-	task->exit_trigger->event->task = current_task;
-	task->exit_trigger->event->thread = current_thread;
+	waitq_calibrate(task->waitq, task, thread);
+	waitq_trigger_calibrate(task->exit_trigger, task, thread, EVENT_EXIT);
+	waitq_add(current_task->waitq, task->exit_trigger);
 
 	spinrelease(&sched_lock);
 
-	task->status = status;
-	thread->status = TASK_WAITING;
+	task->sched_status = status;
+	thread->sched_status = TASK_WAITING;
 
 	return task;
-}
-
-int event_append_trigger(struct event *event, struct event_trigger *trigger) {
-	if(event == NULL || trigger == NULL) {
-		return -1;
-	}
-
-	spinlock(&event->lock);
-
-	VECTOR_PUSH(event->triggers, trigger);
-
-	spinrelease(&event->lock);
-
-	return 0;
-}
-
-int event_wait(struct event *event, int event_type) {
-	if(event == NULL) {
-		return -1;
-	}
-
-	struct sched_task *task = CURRENT_TASK;
-
-	asm volatile ("cli");
-
-	if(event->pending) {
-		event->pending--;
-		return 0;
-	}
-
-	for(;;) {
-		sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
-
-		task->event_waiting = 1;
-
-		asm volatile ("sti");
-
-		while(task->event_waiting);
-		task->event_waiting = 0;
-
-		struct event_trigger *trigger = task->last_trigger;
-
-		if(trigger->event_type == event_type) {
-			return 0;
-		}
-	}
-
-	return 0;
-}
-
-int event_fire(struct event_trigger *trigger) {
-	if(trigger == NULL || trigger->event == NULL) {
-		return -1;
-	}
-
-	struct event *event = trigger->event;
-	struct sched_task *task = event->task;
-
-	asm volatile ("cli");
-
-	spinlock(&event->lock);
-
-	event->pending++;
-	task->last_trigger = trigger;
-	sched_requeue(event->task, event->thread);
-
-	spinrelease(&event->lock);
-
-	asm volatile ("sti");
-
-	return 0;
-}
-
-int event_create_timer(struct event *event, struct timespec *timespec) {
-	event->timespec = timespec;
-	event->timer_trigger = alloc(sizeof(struct event_trigger));
-
-	event->timer_trigger->event = event;
-	event->timer_trigger->event_type = EVENT_TIMER_TRIGGER;
-
-	struct timer *timer = alloc(sizeof(struct timer));
-	timer->timespec = *timespec;
-
-	VECTOR_PUSH(timer->triggers, event->timer_trigger);
-	VECTOR_PUSH(timer_list, timer);
-
-	return 0;
 }
 
 int task_create_session(struct sched_task *task) {
@@ -668,21 +573,16 @@ void syscall_waitpid(struct registers *regs) {
 	}
 
 	for(size_t i = 0; i < process_list.length; i++) {
-		struct sched_task *task = process_list.data[i];
-		struct event_trigger *trigger = task->exit_trigger;
-
-		trigger->event = current_task->event;
-
-		event_append_trigger(current_task->event, task->exit_trigger);
+		waitq_add(current_task->waitq, process_list.data[i]->exit_trigger);
 	}
 
-	event_wait(current_task->event, EVENT_PROC_EXIT);
+	waitq_wait(current_task->waitq, EVENT_EXIT);
 
-	struct event_trigger *trigger = current_task->last_trigger;
+	struct waitq_trigger *trigger = current_task->last_trigger;
 	struct sched_task *agent = trigger->agent_task;
 
 	if(status != NULL) {
-		*status = agent->process_status;
+		*status = agent->exit_status;
 	}
 
 	regs->rax = agent->pid;
@@ -710,7 +610,7 @@ void syscall_exit(struct registers *regs) {
 		struct sched_thread *thread = task->thread_list.data[i];
 
 		if(thread) {
-			thread->status = TASK_YIELD;
+			thread->sched_status = TASK_YIELD;
 			hash_table_delete(&task->thread_list, &thread->tid, sizeof(thread->tid));
 		}
 	}
@@ -739,8 +639,8 @@ void syscall_exit(struct registers *regs) {
 
 	for(size_t i = 0; i < task->children.length; i++) {
 		struct sched_task *child = task->children.data[i];
-		
-		child->exit_trigger->event = parent->event;
+
+		child->exit_trigger->waitq = parent->waitq;
 		child->ppid = 1;
 
 		VECTOR_PUSH(parent->children, child);
@@ -748,10 +648,10 @@ void syscall_exit(struct registers *regs) {
 
 	VECTOR_REMOVE_BY_VALUE(sched_translate_pid(task->ppid)->children, task);
 
-	task->process_status = status | 0x200;
-	event_fire(task->exit_trigger);
+	task->exit_status = status | 0x200;
+	waitq_wake(task->exit_trigger);
 
-	task->status = TASK_YIELD;
+	task->sched_status = TASK_YIELD;
 
 	hash_table_delete(&task_list, &task->pid, sizeof(task->pid));
 
@@ -915,7 +815,7 @@ void syscall_fork(struct registers *regs) {
 
 	task->pid = bitmap_alloc(&pid_bitmap);
 	task->ppid = current_task->pid;
-	task->status = TASK_WAITING;
+	task->sched_status = TASK_WAITING;
 	task->page_table = vmm_fork_page_table(current_task->page_table);
 	task->cwd = current_task->cwd;
 
@@ -934,18 +834,11 @@ void syscall_fork(struct registers *regs) {
 	task->sid = current_task->sid;
 	task->session = current_task->session;
 
-	task->event = alloc(sizeof(struct event));
-	task->event->task = task;
-	task->event->thread = thread;
+	task->waitq = alloc(sizeof(struct waitq));
+	waitq_calibrate(task->waitq, task, thread); 
 
-	task->exit_trigger = alloc(sizeof(struct event_trigger));
-	task->exit_trigger->agent_task = task;
-	task->exit_trigger->agent_thread = thread;
-	task->exit_trigger->event_type = EVENT_PROC_EXIT;
-
-	task->exit_trigger->event = alloc(sizeof(struct event));
-	task->exit_trigger->event->task = CURRENT_TASK;
-	task->exit_trigger->event->thread = CURRENT_THREAD;
+	task->exit_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_EXIT);
+	waitq_trigger_calibrate(task->exit_trigger, task, thread, EVENT_EXIT);
 
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,
@@ -970,7 +863,7 @@ void syscall_fork(struct registers *regs) {
 	thread->user_fs_base = current_thread->user_fs_base;
 	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
 	thread->user_stack = current_thread->user_stack;
-	thread->status = TASK_WAITING;
+	thread->sched_status = TASK_WAITING;
 	thread->tid = bitmap_alloc(&task->tid_bitmap);
 	thread->pid = task->pid;
 

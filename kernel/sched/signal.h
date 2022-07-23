@@ -2,6 +2,7 @@
 
 #include <types.h>
 #include <vector.h>
+#include <sched/queue.h>
 
 #define SIGHUP 1
 #define SIGINT 2
@@ -92,7 +93,7 @@ struct signal {
 	struct siginfo *siginfo;
 	struct sigaction *sigaction;
 
-	struct event_trigger *trigger;
+	struct waitq_trigger *trigger;
 
 	struct signal_queue *queue;
 };
@@ -101,8 +102,13 @@ struct sched_thread;
 struct sched_task;
 
 struct signal_queue {
+	char siglock;
+	sigset_t sigmask;
+
 	struct signal queue[SIGNAL_MAX];
 	sigset_t sigpending;
+
+	struct waitq waitq;
 
 	struct sched_thread *thread;	
 };

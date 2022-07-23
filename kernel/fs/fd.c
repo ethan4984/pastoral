@@ -287,7 +287,7 @@ ssize_t pipe_read(struct file_handle *file, void *buf, size_t cnt, off_t offset)
 	const void *out = file->pipe->buffer;
 
 	if(offset > stat->st_size) {
-		event_wait(file->event, EVENT_FD_WRITE);
+		waitq_wait(file->waitq, EVENT_WRITE);
 	}
 
 	stat_update_time(stat, STAT_ACCESS);
@@ -316,10 +316,8 @@ ssize_t pipe_write(struct file_handle *file, const void *buf, size_t cnt, off_t 
 	}
 
 	if(offset > stat->st_size) {
-		file->trigger->event_type = EVENT_FD_WRITE;
-		file->trigger->agent_task = CURRENT_TASK;
-		file->trigger->agent_thread = CURRENT_THREAD;
-		event_fire(file->trigger);
+		waitq_trigger_calibrate(file->trigger, CURRENT_TASK, CURRENT_THREAD, EVENT_WRITE);
+		waitq_wake(file->trigger);
 	}
 
 	stat_update_time(stat, STAT_MOD);

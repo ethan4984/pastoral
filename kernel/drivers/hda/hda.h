@@ -4,6 +4,7 @@
 #include <drivers/pci.h>
 #include <types.h>
 #include <sched/sched.h>
+#include <sched/queue.h>
 
 struct hda_registers { 
 	uint16_t gcap;
@@ -74,8 +75,8 @@ struct hda_device {
 
 	struct codec codec[15];
 
-	struct event_trigger command_event_trigger;
-	struct event command_event;
+	struct waitq_trigger command_event_trigger;
+	struct waitq command_event;
 
 	volatile struct hda_registers *regs;
 };

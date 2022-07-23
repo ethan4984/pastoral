@@ -79,7 +79,7 @@ void ps2_handler(struct registers*, void*) {
 	}
 }
 
-ssize_t terminal_read(struct file_handle*, void *buffer, size_t cnt, off_t) {
+ssize_t terminal_read(struct file_handle*, void *buffer, size_t, off_t) {
 	volatile struct terminal *terminal = (volatile struct terminal*)current_terminal;
 
 	while(!terminal->stream_index);

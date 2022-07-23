@@ -15,7 +15,7 @@ static VECTOR(struct hda_device*) hda_device_list;
 		REG = VALUE; \
 	}
 
-static int initialise_corb(struct hda_device *device) {
+int initialise_corb(struct hda_device *device) {
 	uint64_t corb_base = pmm_alloc(DIV_ROUNDUP(device->corbsize, PAGE_SIZE), 1);
 
 	device->corbbase = (void*)(corb_base + HIGH_VMA);
@@ -46,7 +46,7 @@ static int initialise_corb(struct hda_device *device) {
 	return 0;
 }
 
-static int initialise_rirb(struct hda_device *device) {
+int initialise_rirb(struct hda_device *device) {
 	uint64_t rirb_base = pmm_alloc(DIV_ROUNDUP(device->rirbsize, PAGE_SIZE), 1);
 
 	device->rirbbase = (void*)(rirb_base + HIGH_VMA);
@@ -75,7 +75,7 @@ static int initialise_rirb(struct hda_device *device) {
 	return 0;
 }
 
-static int get_codec_ctrl_buffer_size(size_t szcap, int *size, int *id) {
+int get_codec_ctrl_buffer_size(size_t szcap, int *size, int *id) {
 	if(szcap & (1 << 2)) {
 		*size = 256; *id = 0b00; 
 		return 0;	
@@ -90,7 +90,7 @@ static int get_codec_ctrl_buffer_size(size_t szcap, int *size, int *id) {
 	return -1;
 }
 
-static int send_command(struct hda_device *device, int codec, int nid, int cmd) {
+int send_command(struct hda_device *device, int codec, int nid, int cmd) {
 	uint32_t verb = ((codec & 0xf) << 28) | ((nid & 0xff) << 20) | (cmd & 0xfffff);
 
 	int index = (device->regs->corbwp + 1) % device->corbsize;
@@ -101,16 +101,16 @@ static int send_command(struct hda_device *device, int codec, int nid, int cmd) 
 	device->corbbase[index] = verb;
 	device->regs->corbwp = index;
 
-	int ret = event_wait(&device->command_event, EVENT_HDA_CMD);
+	/*int ret = event_wait(&device->command_event, EVENT_HDA_CMD);
 	if(ret == -1) {
 		return -1;
-	}
+	}*/
 
 	return device->codec[codec].codec_response;
 }
 
-static int parse_codec(struct hda_device *device, int index) {
-
+static int parse_codec(struct hda_device*, int) {
+	return 0;
 }
 
 static void enumerate_codec(struct hda_device *device) {
@@ -134,9 +134,9 @@ static void hda_irq_handler(struct registers*, void *_device) {
 
 	}
 
-	if(device->regs->rirbsts & (1 << 0)) {
+/*	if(device->regs->rirbsts & (1 << 0)) {
 		event_fire(&device->command_event_trigger);	
-	}
+	}*/
 }
 
 void hda_device_init(struct pci_device *pci_device) {

@@ -139,7 +139,7 @@ void init_process() {
 
 	VECTOR_PUSH(task->group->process_list, task);
 
-	task->status = TASK_WAITING;
+	task->sched_status = TASK_WAITING;
 }
 
 void pastoral_thread() {
@@ -234,8 +234,8 @@ void pastoral_entry(void) {
 
 	task_create_session(kernel_task);
 
-	kernel_task->status = TASK_WAITING;
-	kernel_thread->status = TASK_WAITING;
+	kernel_task->sched_status = TASK_WAITING;
+	kernel_thread->sched_status = TASK_WAITING;
 
 	asm ("sti");
 

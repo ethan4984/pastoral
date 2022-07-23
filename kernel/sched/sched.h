@@ -17,32 +17,11 @@
 #define EVENT_SIGNAL 4
 #define EVENT_HDA_CMD 5
 
-struct event_trigger {
-	struct sched_task *agent_task;
-	struct sched_thread *agent_thread;
-
-	struct event *event;
-	int event_type;
-};
-
-struct event {
-	struct sched_task *task;
-	struct sched_thread *thread;
-
-	VECTOR(struct event_trigger*) triggers;
-
-	struct timespec *timespec;
-	struct event_trigger *timer_trigger;
-
-	int pending;
-	char lock;
-};
-
 struct sched_thread {
 	tid_t tid;
 	pid_t pid;
 
-	size_t status;
+	size_t sched_status;
 	size_t idle_cnt;
 	size_t user_stack;
 	size_t kernel_stack;
@@ -52,9 +31,6 @@ struct sched_thread {
 	size_t user_stack_size;
 	size_t errno;
 
-	char sig_lock;
-	sigset_t sigmask;
-	struct event sigwait;
 	struct signal_queue signal_queue;
 
 	struct registers regs;
@@ -72,11 +48,11 @@ struct sched_task {
 	struct hash_table thread_list;
 	struct bitmap tid_bitmap;
 
-	struct event *event;
-	volatile int event_waiting;
+	struct waitq *waitq;
+	volatile int waiting;
 
-	struct event_trigger *exit_trigger;
-	struct event_trigger *last_trigger;
+	struct waitq_trigger *exit_trigger;
+	struct waitq_trigger *last_trigger;
 
 	struct vfs_node *cwd;
 
@@ -91,8 +67,8 @@ struct sched_task {
 	int has_execved;
 
 	size_t idle_cnt;
-	size_t status;
-	int process_status;
+	int sched_status;
+	int exit_status;
 
 	uid_t real_uid;
 	uid_t effective_uid;
@@ -152,11 +128,6 @@ void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *threa
 void sched_requeue(struct sched_task *task, struct sched_thread *thread);
 void sched_requeue_and_yield(struct sched_task *task, struct sched_thread *thread);
 void sched_yield();
-
-int event_append_trigger(struct event *event, struct event_trigger *trigger);
-int event_wait(struct event *event, int event_type);
-int event_create_timer(struct event *event, struct timespec *timespec);
-int event_fire(struct event_trigger *trigger);
 
 int task_create_session(struct sched_task *task);
 

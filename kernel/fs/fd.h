@@ -31,8 +31,8 @@ struct file_handle {
 	};
 	struct pipe *pipe;
 
-	struct event *event;
-	struct event_trigger *trigger;
+	struct waitq *waitq;
+	struct waitq_trigger *trigger;
 
 	// Pointer untouched by the kernel, use it on drivers.
 	void *private_data;
