@@ -326,3 +326,45 @@ void syscall_kill(struct registers *regs) {
 
 	regs->rax = kill(pid, sig);
 }
+
+void syscall_pause(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] pause\n", CORE_LOCAL->pid);
+#endif
+
+	struct sched_thread *thread = CURRENT_THREAD;
+	if(thread == NULL) {
+		panic("");
+	}
+
+	struct signal_queue *queue = &thread->signal_queue;
+
+	signal_wait(queue, ~0ull, NULL);
+
+	set_errno(EINTR);
+	regs->rax = -1;
+}
+
+void syscall_sigsuspend(struct registers *regs) {
+	sigset_t *mask = (void*)regs->rdi;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] pause\n", CORE_LOCAL->pid);
+#endif
+
+	struct sched_thread *thread = CURRENT_THREAD;
+	if(thread == NULL) {
+		panic("");
+	}
+
+	struct signal_queue *queue = &thread->signal_queue;
+
+	sigset_t save;
+
+	sigprocmask(SIG_SETMASK, mask, &save);
+	signal_wait(queue, ~0ull, NULL);
+	sigprocmask(SIG_SETMASK, &save, mask);
+
+	set_errno(EINTR);
+	regs->rax = -1;
+}

@@ -54,6 +54,8 @@ extern void syscall_setpgid(struct registers*);
 extern void syscall_getpgid(struct registers*);
 extern void syscall_setsid(struct registers*);
 extern void syscall_getsid(struct registers*);
+extern void syscall_pause(struct registers*);
+extern void syscall_sigsuspend(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -155,7 +157,9 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_setpgid, .name = "setpgid" }, // 47
 	{ .handler = syscall_getpgid, .name = "getpgid" }, // 48
 	{ .handler = syscall_setsid, .name = "setsid" }, // 49
-	{ .handler = syscall_getsid, .name = "getsid" } // 50
+	{ .handler = syscall_getsid, .name = "getsid" }, // 50
+	{ .handler = syscall_pause, .name = "pause" }, // 51
+	{ .handler = syscall_sigsuspend, .name = "sigsuspend" } // 52
 };
 
 extern void syscall_handler(struct registers *regs) {
