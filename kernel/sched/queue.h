@@ -47,4 +47,4 @@ int waitq_calibrate(struct waitq *waitq, struct sched_task *task, struct sched_t
 int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct sched_task *task, struct sched_thread *thread, int type);
 int waitq_wake(struct waitq_trigger *trigger);
 
-struct waitq_trigger *waitq_alloc();
+struct waitq_trigger *waitq_alloc(struct waitq *waitq, int type);

@@ -182,6 +182,28 @@ int signal_dispatch(struct sched_thread *thread) {
 	return 0;
 }
 
+int signal_wait(struct signal_queue *signal_queue, sigset_t mask, struct timespec *timespec) { 
+	if(timespec) {
+		waitq_set_timer(&signal_queue->waitq, *timespec);
+	}
+
+	for(size_t i = 0; i < SIGNAL_MAX; i++) {
+		if(mask & (1 << i)) {
+			struct signal *signal = &signal_queue->queue[i];
+
+			if(signal->trigger == NULL) {
+				signal->trigger = waitq_alloc(&signal_queue->waitq, EVENT_SIGNAL);
+			}
+
+			waitq_add(&signal_queue->waitq, signal->trigger);
+		}
+	}
+
+	waitq_wait(&signal_queue->waitq, EVENT_SIGNAL);
+
+	return 0;
+}
+
 int kill(pid_t pid, int sig) {
 	if(signal_is_valid(sig) == -1) {
 		set_errno(EINVAL);
