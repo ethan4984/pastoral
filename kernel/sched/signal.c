@@ -362,7 +362,7 @@ void syscall_sigsuspend(struct registers *regs) {
 	sigset_t save;
 
 	sigprocmask(SIG_SETMASK, mask, &save);
-	signal_wait(queue, ~0ull, NULL);
+	signal_wait(queue, ~(*mask), NULL);
 	sigprocmask(SIG_SETMASK, &save, mask);
 
 	set_errno(EINTR);
