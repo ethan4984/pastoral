@@ -1,15 +1,22 @@
 #include <stdio.h>
-#include <signal.h>
 #include <unistd.h>
 
-static void hand(int s) {
-	printf("here\n");
-	for (;;) {}
-}
+int main(void) {
+	int pid = fork();
 
-int main() {
-	printf("hello world program\n");
-	signal(SIGINT, hand);
-	kill(getpid(), SIGINT);
-	for(;;);
+	if(pid == 0) {
+		char *argv[] = { "/usr/bin/bash", NULL };
+		char *envp[] = {
+			"HOME=/",
+			"PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+			"TERM=linux",
+			NULL
+		};
+
+		execve("/usr/bin/bash", argv, envp);		
+	}
+
+	for(;;) {
+		asm ("pause");
+	}
 }
