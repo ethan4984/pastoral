@@ -1,10 +1,10 @@
 # pastoral
 
-A modern x86_64 operating system, striving to be to an *actual* UNIX clone
+An x86_64 operating system, striving to be to an *actual* UNIX clone
 
 ![alt tet](misc/images/screenshot.png)
 
-It's also very stable, so running it on [real hardware](misc/on_real_hardware.md) is no problem!
+Running on real hardware is also generally no issue either [real hardware](misc/on_real_hardware.md)
 
 # Features
 
@@ -30,18 +30,10 @@ Userland:
 
 # Dependencies
 
-You will need the following packages installed (depending on your linux distribution the package names might differ):
-- `git`
-- `make`
-- `qemu`
-- `xbstrap`
+The only dependices that you may or may not have are xbstrap and qemu, so make sure those are there
 
 # Installation
 
-- Install all the dependencies
-- Get the repository
-  - `git clone https://github.com/ethan4984/pastoral --recursive`
-  - `cd pastoral`
 - Build toolchain
   - `cd user`
   - `make build_toolchain`
