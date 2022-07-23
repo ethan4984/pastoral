@@ -1,8 +1,5 @@
 # pastoral running on real hardware
 
-This test was conducted on the following machine
-- <TODO: insert specs>
-
-As we can see, it worked flawlessly: 
+This test was conducted on an x201 thinkpad:
 
 ![alt text](/misc/images/on_real_hardware.jpg)
