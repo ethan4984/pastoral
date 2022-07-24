@@ -1,17 +1,15 @@
 #include <stdio.h>
-#include <signal.h>
 #include <stdlib.h>
+#include <signal.h>
 
-static void s(int sss) {
-	(void) sss;
-	printf("here\n");
-	exit(0);
+static void sighand(int sig) {
+	printf("sigint %d\n", sig);
+	exit(EXIT_SUCCESS);
 }
 
-
 int main() {
-	setbuf(stdin, NULL);
-	signal(SIGINT, s);
+	printf("Hello\n");
+	signal(SIGINT, sighand);
 	raise(SIGINT);
-	for (;;) {}
+	for(;;);
 }

@@ -83,7 +83,8 @@ void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 	struct cdev *fb_cdev = alloc(sizeof(struct cdev));
 	fb_cdev->fops = &fbdev_ops;
 	fb_cdev->private_data = device;
-	cdev_register(makedev(FBDEV_MAJOR, fb_minor++), fb_cdev);
+	fb_cdev->rdev = makedev(FBDEV_MAJOR, fb_minor++);
+	cdev_register(fb_cdev);
 	print("fbdev: registered dev with major %x minor %x\n", FBDEV_MAJOR, fb_minor - 1);
 
 	VECTOR_PUSH(fbdev_list, device);

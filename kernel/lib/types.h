@@ -22,12 +22,20 @@ typedef int64_t blkcnt_t;
 typedef int64_t time_t;
 typedef int64_t clockid_t;
 
-typedef uint64_t sigset_t;
-
 struct timespec {
 	time_t tv_sec;
 	long tv_nsec;
 };
+
+typedef uint64_t sigset_t;
+
+struct pollfd {
+	int fd;
+	short events;
+	short revents;
+};
+
+typedef size_t nfds_t;
 
 #define O_ACCMODE 0x0007
 #define O_EXEC	  1
@@ -126,6 +134,15 @@ struct timespec {
 #define major(dev) ((dev_t) (((dev_t) (dev) & 0xff00) >> 8))
 #define minor(dev) ((dev_t) (((dev_t) (dev) & 0xff)))
 #define makedev(M, m) ((dev_t) ((((uint16_t) (M) & 0xff) << 8) | ((uint16_t) (m) & 0xff)))
+
+#define POLLIN 0x01
+#define POLLOUT 0x02
+#define POLLPRI 0x04
+#define POLLHUP 0x08
+#define POLLERR 0x10
+#define POLLRDHUP 0x20
+#define POLLNVAL 0x40
+#define POLLWRNORM 0x80
 
 #include <lib/time.h>
 

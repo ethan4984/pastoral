@@ -50,6 +50,7 @@ void init_process() {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "TERM=linux",
+		"FBDEV=/dev/fb0",
 		NULL
 	};
 

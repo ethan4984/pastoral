@@ -5,6 +5,7 @@
 #include <lib/string.h>
 #include <lib/cpu.h>
 #include <sched/sched.h>
+#include <sched/queue.h>
 
 #define PIPE_BUFFER_SIZE 0x10000
 

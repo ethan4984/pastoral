@@ -51,6 +51,15 @@ struct timespec timespec_sub(struct timespec a, struct timespec b) {
 	return ret;
 }
 
+struct timespec timespec_convert_ms(int ms) {
+	struct timespec ret = {
+		.tv_nsec = (ms % 1000) * 100000,
+		.tv_sec = ms / 1000
+	};
+
+	return ret;
+}
+
 void pit_handler(struct registers*, void*) {
 	struct timespec interval = { .tv_sec = 0, .tv_nsec = TIMER_HZ / PIT_FREQ };
 

@@ -10,13 +10,6 @@
 #include <elf.h>
 #include <sched/signal.h>
 
-#define EVENT_PROC_EXIT 0
-#define EVENT_FD_READ 1
-#define EVENT_FD_WRITE 2
-#define EVENT_TIMER_TRIGGER 3
-#define EVENT_SIGNAL 4
-#define EVENT_HDA_CMD 5
-
 struct sched_thread {
 	tid_t tid;
 	pid_t pid;

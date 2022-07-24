@@ -27,7 +27,8 @@ int tty_register(dev_t dev, struct tty *tty) {
 	struct cdev *cdev = alloc(sizeof(struct cdev));
 	cdev->fops = &tty_cdev_ops;
 	cdev->private_data = tty;
-	if(cdev_register(dev, cdev) == -1) {
+	cdev->rdev = dev;
+	if(cdev_register(cdev) == -1) {
 		free(cdev);
 		return -1;
 	}

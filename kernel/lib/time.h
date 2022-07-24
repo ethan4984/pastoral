@@ -19,3 +19,4 @@ extern struct timespec clock_monotonic;
 
 struct timespec timespec_add(struct timespec a, struct timespec b);
 struct timespec timespec_sub(struct timespec a, struct timespec b);
+struct timespec timespec_convert_ms(int ms);

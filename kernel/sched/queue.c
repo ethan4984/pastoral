@@ -39,7 +39,9 @@ int waitq_wait(struct waitq *waitq, int type) {
 			continue;
 		}
 
-		if(trigger->type == type) {
+		if(type == EVENT_ANY) {
+			return trigger->type;
+		} else if((trigger->type & type) == type) {
 			return trigger->type;
 		}
 	}
@@ -48,8 +50,6 @@ int waitq_wait(struct waitq *waitq, int type) {
 }
 
 int waitq_set_timer(struct waitq *waitq, struct timespec timespec) {
-	spinlock(&waitq->lock);
-
 	struct waitq_trigger *timer_trigger = waitq_alloc(waitq, EVENT_TIMER);
 
 	waitq->timespec = timespec;
@@ -62,8 +62,6 @@ int waitq_set_timer(struct waitq *waitq, struct timespec timespec) {
 
 	VECTOR_PUSH(timer->triggers, (void*)timer_trigger);
 	VECTOR_PUSH(timer_list, timer);
-
-	spinrelease(&waitq->lock);
 
 	return 0;
 }
@@ -104,6 +102,8 @@ int waitq_wake(struct waitq_trigger *trigger) {
 	struct waitq *waitq = trigger->waitq;
 
 	spinlock(&waitq->lock);
+
+	trigger->fired = 1;
 
 	waitq->pending++;
 	waitq->task->last_trigger = (void*)trigger;

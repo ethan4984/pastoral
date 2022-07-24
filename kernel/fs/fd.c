@@ -703,6 +703,62 @@ int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
 	return 0;
 }
 
+int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
+	struct waitq waitq = { 0 };
+
+	waitq_init(&waitq);
+
+	if(timespec) {
+		waitq_set_timer(&waitq, *timespec);
+	}
+
+	VECTOR(struct file_handle*) handle_list = { 0 };
+
+	for(size_t i = 0; i < nfds; i++) {
+		struct pollfd *pollfd = &fds[i];
+
+		struct fd_handle *fd_handle = fd_translate(pollfd->fd);
+		if(fd_handle == NULL) {
+			set_errno(EBADF);
+			return -1;
+		}
+
+		struct file_handle *file_handle = fd_handle->file_handle;
+
+		int type = 0;
+
+		if(pollfd->events & POLLIN) type |= EVENT_POLLIN;
+		if(pollfd->events & POLLOUT) type |= EVENT_POLLOUT;
+
+		if(type) {
+			print("adding poll on handle %x %x\n", file_handle, fd_handle->fd_number);
+			file_handle->trigger = waitq_alloc(&waitq, type);
+			waitq_add(&waitq, file_handle->trigger);
+			VECTOR_PUSH(handle_list, file_handle);
+		} else {
+			print("poll: unrecognised event type {%x}\n", type);
+		}
+	}
+
+	waitq_wait(&waitq, EVENT_ANY);
+
+	int ret = 0;
+
+	for(size_t i = 0; i < handle_list.length; i++) {
+		struct file_handle *handle = handle_list.data[i];
+		struct waitq_trigger *trigger = handle->trigger;
+
+		if(trigger->fired) {
+			fds[i].revents = fds[i].events;
+			ret++;
+		}
+
+		handle->trigger = NULL;
+		waitq_remove(&waitq, trigger);
+	}
+
+	return ret;
+}
 
 void syscall_dup2(struct registers *regs) {
 	int oldfd = regs->rdi;
@@ -1196,4 +1252,42 @@ void syscall_fchownat(struct registers *regs) {
 #endif
 
 	regs->rax = fd_fchownat(fd, path, uid, gid, flag);
+}
+
+void syscall_poll(struct registers *regs) { 
+	struct pollfd *fds = (void*)regs->rdi;
+	nfds_t nfds = regs->rsi;
+	int timeout = regs->rdx;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] poll: fds {%x}, nfds {%x}, timeout {%x}\n", CORE_LOCAL->pid, fds, nfds, timeout);
+#endif
+
+	if(timeout == 0) {
+		regs->rax = 0;
+		return;
+	}
+
+	struct timespec timespec = timespec_convert_ms(timeout);
+
+	regs->rax = fd_poll(fds, nfds, &timespec);
+}
+
+void syscall_ppoll(struct registers *regs) { 
+	struct pollfd *fds = (void*)regs->rdi;
+	nfds_t nfds = regs->rsi;
+	struct timespec *timespec = (void*)regs->rdx;
+	sigset_t *sigmask = (void*)regs->r10;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] poll: fds {%x}, nfds {%x}, timespec {%x}, sigmask {%x}\n", CORE_LOCAL->pid, fds, nfds, timespec, sigmask);
+#endif
+
+	sigset_t original_mask;
+
+	sigprocmask(SIG_SETMASK, sigmask, &original_mask);
+	uint64_t ret = fd_poll(fds, nfds, timespec);
+	sigprocmask(SIG_SETMASK, &original_mask, NULL);
+
+	regs->rax = ret;
 }
