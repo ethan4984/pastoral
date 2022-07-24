@@ -22,6 +22,7 @@
 #include <sched/sched.h>
 #include <time.h>
 #include <hash.h>
+#include <drivers/tty/self_tty.h>
 
 static volatile struct limine_stack_size_request limine_stack_size_request = {
 	.id = LIMINE_STACK_SIZE_REQUEST,
@@ -134,9 +135,7 @@ void init_process() {
 		panic("");
 	}
 
-	task->sid = parent->sid;
 	task->session = parent->session;
-	task->pgid = parent->pgid;
 	task->group = parent->group;
 
 	VECTOR_PUSH(task->group->process_list, task);
@@ -152,6 +151,7 @@ void pastoral_thread() {
 	}
 
 	limine_terminals_init();
+	self_tty_init();
 
 	struct limine_framebuffer **framebuffers = limine_framebuffer_request.response->framebuffers;
 	uint64_t framebuffer_count = limine_framebuffer_request.response->framebuffer_count;
@@ -234,7 +234,7 @@ void pastoral_entry(void) {
 	kernel_task->page_table = alloc(sizeof(struct page_table));
 	vmm_default_table(kernel_task->page_table);
 
-	task_create_session(kernel_task);
+	task_create_session(kernel_task, true);
 
 	kernel_task->sched_status = TASK_WAITING;
 	kernel_thread->sched_status = TASK_WAITING;

@@ -17,6 +17,7 @@ struct tty_ops {
 	int (*disconnect)(struct tty *);
 };
 
+extern struct file_ops tty_cdev_ops;
 
 struct tty_driver {
 	struct tty_ops *ops;
@@ -33,6 +34,17 @@ struct tty {
 
 	struct session *session;
 	struct process_group *foreground_group;
+
+	char input_lock;
+	void *input_buffer;
+	size_t input_buffer_size;
+	size_t input_buffer_head;
+	size_t input_buffer_tail;
+
+	void *output_buffer;
+	size_t output_buffer_size;
+	size_t output_buffer_head;
+	size_t output_buffer_tail;
 };
 
 

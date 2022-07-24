@@ -5,6 +5,7 @@
 #include <fs/fd.h>
 #include <sched/sched.h>
 #include <sched/signal.h>
+#include <lib/debug.h>
 
 
 static int tty_open(struct vfs_node *, struct file_handle *file);
@@ -44,7 +45,14 @@ static int tty_open(struct vfs_node *, struct file_handle *file) {
 	struct tty *tty = file->private_data;
 	if(__atomic_fetch_add(&tty->refcnt, 1, __ATOMIC_RELAXED) == 0)
 		if(tty->driver->ops->connect)
-			return tty->driver->ops->connect(tty);
+			if(tty->driver->ops->connect(tty) == -1)
+				return -1;
+
+	if(!tty->session) {
+		tty->session = CURRENT_TASK->session;
+		tty->foreground_group = CURRENT_TASK->group;
+		CURRENT_TASK->session->tty = tty;
+	}
 
 	return 0;
 }
@@ -79,7 +87,10 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 	tty_lock(tty);
 	switch(req) {
 		case TIOCGPGRP: {
-			if(!CURRENT_TASK->session || (CURRENT_TASK->session != tty->session)) {
+#ifndef SYSCALL_DEBUG
+			print("syscall: [pid %x] tty_ioctl (TIOCGPGRP)\n", CORE_LOCAL->pid);
+#endif
+			if(CURRENT_TASK->session != tty->session) {
 				tty_unlock(tty);
 				set_errno(ENOTTY);
 				return -1;
@@ -92,15 +103,20 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 		}
 
 		case TIOCSPGRP: {
-			if(!CURRENT_TASK->session || (CURRENT_TASK->session != tty->session)) {
+#ifndef SYSCALL_DEBUG
+			print("syscall: [pid %x] tty_ioctl (TIOCSPGRP)\n", CORE_LOCAL->pid);
+#endif
+			if(CURRENT_TASK->session != tty->session) {
 				tty_unlock(tty);
 				set_errno(ENOTTY);
 				return -1;
 			}
 
+
 			pid_t pgrp = *(pid_t *) arg;
 			struct process_group *group;
-			if(!(group = hash_table_search(&tty->session->group_list, &pgrp, sizeof(pgrp)))) {
+
+			if(!(group = hash_table_search(&tty->session->group_list, &pgrp, sizeof(pid_t)))) {
 				tty_unlock(tty);
 				set_errno(EPERM);
 				return -1;

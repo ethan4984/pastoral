@@ -1,7 +1,11 @@
 #include <limine.h>
 #include <drivers/tty/tty.h>
 #include <drivers/tty/limine_term.h>
+#include <mm/pmm.h>
 #include <mm/vmm.h>
+#include <int/apic.h>
+#include <int/idt.h>
+
 
 #define LIMINE_TTY_MAJOR 4
 static int limine_tty_minor;
@@ -11,8 +15,13 @@ struct limine_tty {
 
 	struct limine_terminal *terminal;
 	limine_terminal_write write;
+
+	bool shift;
+	bool caps;
 };
 
+volatile static struct tty *active_tty;
+static volatile int data_available;
 
 static ssize_t limine_tty_read(struct tty *tty, void *buf, size_t count);
 static ssize_t limine_tty_write(struct tty *tty, const void *buf, size_t count);
@@ -50,8 +59,140 @@ static void limine_print(struct limine_tty *ltty, const char *str, size_t length
 }
 
 
+static char keymap_nocaps[] = {
+	'\0', '\0', '1', '2', '3', 	'4', '5', '6',	'7', '8', '9', '0',
+	'-', '=', '\b', '\t', 'q',	'w', 'e', 'r',	't', 'y', 'u', 'i',
+	'o', 'p', '[', ']', '\n',  '\0', 'a', 's',	'd', 'f', 'g', 'h',
+	'j', 'k', 'l', ';', '\'', '`', '\0', '\\', 'z', 'x', 'c', 'v',
+	'b', 'n', 'm', ',', '.',  '/', '\0', '\0', '\0', ' '
+};
+
+static char keymap_caps[] = {
+	'\0', '\0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
+	'-','=', '\b', '\t', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I',
+	'O', 'P', '[', ']', '\n', '\0', 'A', 'S', 'D', 'F', 'G', 'H',
+	'J', 'K', 'L', ';', '\'', '`', '\0', '\\', 'Z', 'X', 'C', 'V',
+	'B', 'N', 'M', ',', '.', '/', '\0', '\0', '\0', ' '
+};
+
+static char keymap_shift_nocaps[] = {
+	'\0', '\0', '!', '@', '#',	'$', '%', '^',	'&', '*', '(', ')',
+	'_', '+', '\b', '\t', 'Q',	'W', 'E', 'R',	'T', 'Y', 'U', 'I',
+	'O', 'P', '{', '}', '\n',  '\0', 'A', 'S',	'D', 'F', 'G', 'H',
+	'J', 'K', 'L', ':', '\"', '~', '\0', '|', 'Z', 'X', 'C', 'V',
+	'B', 'N', 'M', '<', '>',  '?', '\0', '\0', '\0', ' '
+};
+
+static char keymap_shift_caps[] = {
+	'\0', '\0', '!', '@', '#',	'$', '%', '^',	'&', '*', '(', ')',
+	'_', '+', '\b', '\t', 'q',	'w', 'e', 'r',	't', 'y', 'u', 'i',
+	'o', 'p', '{', '}', '\n',  '\0', 'a', 's',	'd', 'f', 'g', 'h',
+	'j', 'k', 'l', ':', '\"', '~', '\0', '|', 'z', 'x', 'c', 'v',
+	'b', 'n', 'm', '<', '>',  '?', '\0', '\0', '\0', ' '
+};
+
+
+static bool input_queue_push(struct tty *tty, char data) {
+	char *buf = tty->input_buffer;
+	if((tty->input_buffer_head == 0 && tty->input_buffer_tail ==
+		(tty->input_buffer_size - 1)) || (tty->input_buffer_head ==
+			(tty->input_buffer_tail + 1)))
+		return false;
+
+	if(tty->input_buffer_head == -1) {
+		tty->input_buffer_head = 0;
+		tty->input_buffer_tail = 0;
+	} else {
+		if(tty->input_buffer_tail == (tty->input_buffer_size - 1))
+			tty->input_buffer_tail = 0;
+		else
+			tty->input_buffer_tail++;
+	}
+
+	buf[tty->input_buffer_tail] = data;
+	return true;
+}
+
+static bool input_queue_pop(struct tty *tty, char *data) {
+	char *buf = tty->input_buffer;
+	if(tty->input_buffer_head == -1)
+		return false;
+
+	*data = buf[tty->input_buffer_head];
+	if(tty->input_buffer_head == tty->input_buffer_tail) {
+		tty->input_buffer_head = -1;
+		tty->input_buffer_tail = -1;
+	} else {
+		if(tty->input_buffer_head == (tty->input_buffer_size - 1))
+			tty->input_buffer_head = 0;
+		else
+			tty->input_buffer_head++;
+	}
+
+	return true;
+}
+
+static void ps2_handler(struct registers *, void *) {
+	if(!active_tty) {
+		// Flush
+		while(inb(0x64) & 1)
+			inb(0x60);
+		return;
+	}
+
+	struct limine_tty *ltty = active_tty->private_data;
+	spinlock(&active_tty->input_lock);
+	while(inb(0x64) & 1) {
+		unsigned char data = inb(0x60);
+		if(data == 0x2a)
+			ltty->shift = true;
+		else if(data == 0x2a)
+			ltty->shift = false;
+		else if(data == 0x36)
+			ltty->shift = true;
+		else if(data == 0xb6)
+			ltty->shift = false;
+		else if(data == 0x3a)
+			ltty->caps = !ltty->caps;
+		else {
+			if(data & 0x80)
+				continue;
+			char ch;
+			if(!ltty->shift && !ltty->caps)
+				ch = keymap_nocaps[data];
+			else if(!ltty->shift && ltty->caps)
+				ch = keymap_caps[data];
+			else if(ltty->shift && !ltty->caps)
+				ch = keymap_shift_nocaps[data];
+			else
+				ch = keymap_shift_caps[data];
+			if(input_queue_push(active_tty, ch))
+				data_available = 1;
+		}
+	}
+	spinrelease(&active_tty->input_lock);
+}
+
 static ssize_t limine_tty_read(struct tty *tty, void *buf, size_t count) {
-	return -1;
+	// TODO: think of a better way to do than this. (Create a lockless queue maybe?)
+	// The rationale for this is to avoid race
+	// conditions in the keyboard handler.
+	while(!data_available);
+	spinlock(&tty->input_lock);
+	size_t i;
+	char *b = buf;
+	for(i = 0; i < count; i++) {
+		char data;
+		if(!input_queue_pop(tty, &data))
+			break;
+		limine_print(active_tty->private_data, &data, 1);
+		*b++ = data;
+	}
+	if(i == count)
+		data_available = 0;
+	spinrelease(&tty->input_lock);
+
+	return i;
 }
 
 static ssize_t limine_tty_write(struct tty *tty, const void *buf, size_t count) {
@@ -60,6 +201,8 @@ static ssize_t limine_tty_write(struct tty *tty, const void *buf, size_t count) 
 }
 
 static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {
+	// TODO: TIOCWINSZ
+	set_errno(ENOTTY);
 	return -1;
 }
 
@@ -90,6 +233,15 @@ void limine_terminals_init() {
 		ltty->write = limine_terminal_request.response->write;
 		tty->driver = &limine_terminal_driver;
 		tty->private_data = ltty;
+		tty->input_buffer = (void *) (pmm_alloc(PAGE_SIZE / PAGE_SIZE, 1) + HIGH_VMA);
+		tty->input_buffer_size = PAGE_SIZE;
+		tty->input_buffer_head = -1;
+		tty->input_buffer_tail = -1;
+
+		tty->output_buffer = (void *) (pmm_alloc(PAGE_SIZE / PAGE_SIZE, 1) + HIGH_VMA);
+		tty->output_buffer_size = PAGE_SIZE;
+		tty->output_buffer_head = -1;
+		tty->output_buffer_tail = -1;
 
 		tty_register(makedev(LIMINE_TTY_MAJOR, limine_tty_minor), tty);
 
@@ -103,5 +255,13 @@ void limine_terminals_init() {
 
 		vfs_create_node_deep(NULL, NULL, NULL, stat, device_path);
 		limine_tty_minor++;
+
+		// TODO: make current terminal switching.
+		if(!active_tty)
+			active_tty = tty;
 	}
+
+	// TODO: make a PS/2 driver and remove this outta here.
+	int ps2_vector = idt_alloc_vector(ps2_handler, NULL);
+	ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), ps2_vector, 1, false);
 }

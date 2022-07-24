@@ -5,6 +5,9 @@
 
 
 int main(void) {
+
+	int ret = setsid();
+	assert(ret > 0);
 	int stdin = open("/dev/tty0", O_RDONLY);
 	int stdout = open("/dev/tty0", O_WRONLY);
 	int stderr = open("/dev/tty0", O_WRONLY);

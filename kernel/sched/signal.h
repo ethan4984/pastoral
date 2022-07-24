@@ -4,6 +4,11 @@
 #include <vector.h>
 #include <sched/queue.h>
 
+
+#define SIG_IGN (void *) (-2)
+#define SIG_DFL (void *) (-3)
+
+
 #define SIGHUP 1
 #define SIGINT 2
 #define SIGQUIT 3
@@ -110,7 +115,7 @@ struct signal_queue {
 
 	struct waitq waitq;
 
-	struct sched_thread *thread;	
+	struct sched_thread *thread;
 };
 
 int sigaction(int sig, const struct sigaction *act, struct sigaction *old);

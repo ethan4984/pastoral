@@ -13,15 +13,8 @@
 #include <time.h>
 
 static struct hash_table task_list;
-static struct hash_table session_list;
 
 static struct bitmap pid_bitmap = {
-	.data = NULL,
-	.size = 0,
-	.resizable = true
-};
-
-static struct bitmap sid_bitmap = {
 	.data = NULL,
 	.size = 0,
 	.resizable = true
@@ -277,6 +270,11 @@ struct sched_task *sched_default_task() {
 
 	task->umask = 022;
 
+	for(int i = 0; i < SIGNAL_MAX; i++) {
+		struct sigaction *sa = &task->sigactions[i];
+		sa->handler.sa_sigaction = SIG_DFL;
+	}
+
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,
 		.size = 0,
@@ -469,8 +467,8 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	return task;
 }
 
-int task_create_session(struct sched_task *task) {
-	if(task->group != NULL && task->group->pid_leader == task->pid) {
+int task_create_session(struct sched_task *task, bool force) {
+	if(!force && task->group->pid_leader == task->pid) {
 		set_errno(EPERM);
 		return -1;
 	}
@@ -478,68 +476,54 @@ int task_create_session(struct sched_task *task) {
 	struct session *session = alloc(sizeof(struct session));
 	struct process_group *group = alloc(sizeof(struct process_group));
 
-	session->pgid_bitmap = (struct bitmap) {
-		.data = NULL,
-		.size = 0,
-		.resizable = true
-	};
-
-	pid_t sid = bitmap_alloc(&sid_bitmap);
-	pid_t pgid = bitmap_alloc(&session->pgid_bitmap);
+	pid_t sid = task->pid;
+	pid_t pgid = task->pid;
 
 	session->sid = sid;
 	session->pgid_leader = pgid;
 
 	group->pgid = pgid;
-	group->sid = sid;
 	group->pid_leader = task->pid;
 	group->leader = task;
+	group->session = session;
 	VECTOR_PUSH(group->process_list, task);
+	hash_table_push(&session->group_list, &group->pgid, group, sizeof(session->pgid_leader));
 
-	hash_table_push(&session->group_list, &session->pgid_leader, group, sizeof(session->pgid_leader));
-	hash_table_push(&session_list, &session->sid, session, sizeof(session->sid));
-
-	task->sid = sid;
 	task->session = session;
-
-	task->pgid = pgid;
 	task->group = group;
 
-	return sid;
+	return 0;
 }
 
 int task_setpgid(struct sched_task *task, pid_t pgid) {
-	if(task->pgid == pgid) {
+	if(task->group->pgid == pgid) {
 		return 0;
 	}
 
-	if((CURRENT_TASK->sid != task->sid) || (task->group->pid_leader == task->pid) || task->has_execved) {
+	if((CURRENT_TASK->session != task->session) || (task->session->pgid_leader == task->pid)) {
 		set_errno(EPERM);
 		return -1;
+	}
+
+	if(task->pid != CURRENT_TASK->pid) {
+		if(task->has_execved || task->ppid != CURRENT_TASK->pid) {
+			set_errno(EPERM);
+			return -1;
+		}
 	}
 
 	struct session *session = task->session;
 	struct process_group *target_group;
 
-	if(!BIT_TEST(session->pgid_bitmap.data, pgid)) {
-		target_group = alloc(sizeof(struct process_group));
-
-		target_group->pgid = pgid;
-		target_group->sid = task->sid;
-		target_group->pid_leader = task->pid;
-		target_group->leader = task;
-		VECTOR_PUSH(target_group->process_list, task);
-
-		hash_table_push(&session->group_list, &target_group->pgid, target_group, sizeof(target_group->pgid));
-
-		BIT_SET(session->pgid_bitmap.data, pgid);
-	} else {
-		target_group = hash_table_search(&session->group_list, &pgid, sizeof(pgid));
-	}
+	target_group = alloc(sizeof(struct process_group));
+	target_group->pgid = pgid;
+	target_group->session = session;
+	target_group->pid_leader = task->pid;
+	target_group->leader = task;
+	hash_table_push(&session->group_list, &target_group->pgid, target_group, sizeof(target_group->pgid));
 
 	VECTOR_PUSH(target_group->process_list, task);
-
-	task->pgid = pgid;
+	task->group = target_group;
 
 	return 0;
 }
@@ -560,13 +544,13 @@ void syscall_waitpid(struct registers *regs) {
 	VECTOR(struct sched_task*) process_list = { 0 };
 
 	if(pid < -1) {
-		// TODO implement process groups
+		panic("waiting for groups\n");
 	} else if(pid == -1) {
 		for(size_t i = 0; i < current_task->children.length; i++) {
 			VECTOR_PUSH(process_list, current_task->children.data[i]);
 		}
 	} else if(pid == 0) {
-		// TODO implement process groups
+		panic("waiting for groups\n");
 	} else if(pid > 0) {
 		VECTOR_PUSH(process_list, sched_translate_pid(pid));
 	}
@@ -587,17 +571,8 @@ void syscall_waitpid(struct registers *regs) {
 	regs->rax = agent->pid;
 }
 
-void syscall_exit(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] exit\n", CURRENT_TASK->pid);
-#endif
-
+void task_terminate(struct sched_task *task, int status) {
 	asm volatile ("cli");
-
-	struct sched_task *task = CURRENT_TASK;
-	if(task == NULL) {
-		panic("");
-	}
 
 	for(size_t i = 0; i < task->fd_bitmap.size; i++) {
 		if(BIT_TEST(task->fd_bitmap.data, i)) {
@@ -632,8 +607,6 @@ void syscall_exit(struct registers *regs) {
 		}
 	}
 
-	int status = regs->rdi;
-
 	struct sched_task *parent = sched_translate_pid(1);
 
 	for(size_t i = 0; i < task->children.length; i++) {
@@ -647,7 +620,7 @@ void syscall_exit(struct registers *regs) {
 
 	VECTOR_REMOVE_BY_VALUE(sched_translate_pid(task->ppid)->children, task);
 
-	task->exit_status = status | 0x200;
+	task->exit_status = status;
 	waitq_wake(task->exit_trigger);
 
 	task->sched_status = TASK_YIELD;
@@ -660,6 +633,18 @@ void syscall_exit(struct registers *regs) {
 	asm volatile ("sti");
 
 	sched_yield();
+}
+
+void syscall_exit(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] exit\n", CURRENT_TASK->pid);
+#endif
+	struct sched_task *task = CURRENT_TASK;
+	if(task == NULL) {
+		panic("");
+	}
+
+	task_terminate(task, WEXITED_CONSTRUCT(regs->rdi));
 }
 
 void syscall_execve(struct registers *regs) {
@@ -774,9 +759,7 @@ void syscall_execve(struct registers *regs) {
 	task->effective_gid = is_sgid ? vfs_node->stat->st_gid : current_task->effective_gid;
 	task->saved_gid = task->effective_gid;
 
-	task->pgid = current_task->pgid;
 	task->group = current_task->group;
-	task->sid = current_task->sid;
 	task->session = current_task->session;
 
 	task->umask = current_task->umask;
@@ -828,10 +811,10 @@ void syscall_fork(struct registers *regs) {
 
 	task->umask = current_task->umask;
 
-	task->pgid = current_task->pgid;
 	task->group = current_task->group;
-	task->sid = current_task->sid;
 	task->session = current_task->session;
+
+	memcpy(&task->sigactions, &current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
 
 	task->waitq = alloc(sizeof(struct waitq));
 	waitq_calibrate(task->waitq, task, thread);
@@ -878,14 +861,23 @@ void syscall_fork(struct registers *regs) {
 }
 
 void syscall_getpid(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] getpid\n", CORE_LOCAL->pid);
+#endif
 	regs->rax = CORE_LOCAL->pid;
 }
 
 void syscall_getppid(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] getppid\n", CORE_LOCAL->pid);
+#endif
 	regs->rax = CURRENT_TASK->ppid;
 }
 
 void syscall_gettid(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] gettid\n", CORE_LOCAL->pid);
+#endif
 	regs->rax = CORE_LOCAL->tid;
 }
 
@@ -1006,8 +998,8 @@ void syscall_setegid(struct registers *regs) {
 }
 
 void syscall_setpgid(struct registers *regs) {
-	pid_t pid = regs->rdi;
-	pid_t pgid = regs->rsi;
+	pid_t pid = regs->rdi == 0 ? CORE_LOCAL->pid : regs->rdi;
+	pid_t pgid = regs->rsi == 0 ? CORE_LOCAL->pid : regs->rsi;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] setpgid: pid {%x}, pgid {%x}\n", CORE_LOCAL->pid, pid, pgid);
@@ -1037,7 +1029,7 @@ void syscall_getpgid(struct registers *regs) {
 		return;
 	}
 
-	regs->rax = task->pgid;
+	regs->rax = task->group->pgid;
 }
 
 void syscall_setsid(struct registers *regs) {
@@ -1050,7 +1042,7 @@ void syscall_setsid(struct registers *regs) {
 		panic("");
 	}
 
-	regs->rax = task_create_session(current_task);
+	regs->rax = task_create_session(current_task, false);
 }
 
 void syscall_getsid(struct registers *regs) {
@@ -1058,5 +1050,5 @@ void syscall_getsid(struct registers *regs) {
 	print("syscall: [pid %x] getsid\n", CORE_LOCAL->pid);
 #endif
 
-	regs->rax = CURRENT_TASK->sid;
+	regs->rax = CURRENT_TASK->session->sid;
 }
