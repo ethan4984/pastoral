@@ -7,13 +7,11 @@
 #include <sched/signal.h>
 #include <lib/debug.h>
 
-
 static int tty_open(struct vfs_node *, struct file_handle *file);
 static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t);
 static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count, off_t);
 static int tty_close(struct vfs_node *, struct file_handle *file);
 static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg);
-
 
 struct file_ops tty_cdev_ops = {
 	.open = tty_open,
@@ -22,7 +20,6 @@ struct file_ops tty_cdev_ops = {
 	.close = tty_close,
 	.ioctl = tty_ioctl
 };
-
 
 int tty_register(dev_t dev, struct tty *tty) {
 	struct cdev *cdev = alloc(sizeof(struct cdev));

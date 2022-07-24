@@ -38,6 +38,8 @@ int waitq_wait(struct waitq *waitq, int type) {
 		if(trigger == NULL) {
 			continue;
 		}
+		
+		waitq->pending--;
 
 		if(type == EVENT_ANY) {
 			return trigger->type;

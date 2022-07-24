@@ -4,17 +4,15 @@
 #include <fs/vfs.h>
 #include <lib/cpu.h>
 #include <lib/types.h>
-
+#include <errno.h>
 
 #define SELF_TTY_MAJOR 5
-
 
 static int self_tty_open(struct vfs_node *node, struct file_handle *file);
 
 static struct file_ops self_tty_ops = {
 	.open = self_tty_open
 };
-
 
 int self_tty_init() {
 	struct cdev *cdev = alloc(sizeof(struct cdev));

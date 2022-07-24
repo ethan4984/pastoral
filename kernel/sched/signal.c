@@ -14,6 +14,8 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 		return -1;
 	}
 
+	struct signal_queue *queue = &CURRENT_THREAD->signal_queue;
+
 	spinlock(&task->sig_lock);
 
 	struct sigaction *current_action = &task->sigactions[sig - 1];
@@ -25,13 +27,15 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 	if(act) {
 		*current_action = *act;
 		current_action->sa_mask &= ~(SIGMASK(SIGKILL) | SIGMASK(SIGSTOP));
-	}
 
-	struct signal_queue *queue = &CURRENT_THREAD->signal_queue;
-	spinlock(&queue->siglock);
-	if(act->handler.sa_sigaction == SIG_IGN && queue->sigpending & (1 << sig))
-		queue->sigpending &= ~(1 << sig);
-	spinrelease(&queue->siglock);
+		spinlock(&queue->siglock);
+
+		if(act->handler.sa_sigaction == SIG_IGN && queue->sigpending & (1 << sig)) {
+			queue->sigpending &= ~(1 << sig);
+		}
+
+		spinrelease(&queue->siglock);
+	}
 
 	spinrelease(&task->sig_lock);
 	return 0;
@@ -181,14 +185,12 @@ static void signal_default_action(int signo) {
 		case SIGPROF:
 		case SIGSYS:
 			return task_terminate(CURRENT_TASK, status);
-
 		case SIGCONT:
 		case SIGSTOP:
 		case SIGTTIN:
 		case SIGTTOU:
 		case SIGTSTP:
 			return;
-
 		case SIGCHLD:
 		case SIGWINCH:
 			return;
