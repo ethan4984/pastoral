@@ -25,12 +25,20 @@ typedef int64_t blkcnt_t;
 typedef int64_t time_t;
 typedef int64_t clockid_t;
 
-typedef uint64_t sigset_t;
-
 struct timespec {
 	time_t tv_sec;
 	long tv_nsec;
 };
+
+typedef uint64_t sigset_t;
+
+struct pollfd {
+	int fd;
+	short events;
+	short revents;
+};
+
+typedef size_t nfds_t;
 
 #define O_ACCMODE 0x0007
 #define O_EXEC	  1
@@ -125,6 +133,15 @@ struct timespec {
 #define R_OK 2
 #define W_OK 4
 #define X_OK 8
+
+#define POLLIN 0x01
+#define POLLOUT 0x02
+#define POLLPRI 0x04
+#define POLLHUP 0x08
+#define POLLERR 0x10
+#define POLLRDHUP 0x20
+#define POLLNVAL 0x40
+#define POLLWRNORM 0x80
 
 // TODO: create mlibc major/minor/makedev macros.
 //#define major(dev) ((dev)) & 0xffffffff)

@@ -3,12 +3,15 @@
 #include <types.h>
 #include <vector.h>
 
-#define EVENT_EXIT 0
-#define EVENT_READ 1
-#define EVENT_WRITE 2
-#define EVENT_TIMER 3
-#define EVENT_SIGNAL 4
-#define EVENT_COMMAND 5
+#define EVENT_ANY (0 << 0)
+#define EVENT_EXIT (1 << 0)
+#define EVENT_READ (1 << 1)
+#define EVENT_WRITE (1 << 2)
+#define EVENT_TIMER (1 << 3)
+#define EVENT_SIGNAL (1 << 4)
+#define EVENT_COMMAND (1 << 5)
+#define EVENT_POLLIN (1 << 6)
+#define EVENT_POLLOUT (1 << 7)
 
 struct sched_task;
 struct sched_thread;

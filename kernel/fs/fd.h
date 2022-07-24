@@ -5,6 +5,7 @@
 #include <lib/string.h>
 #include <lib/cpu.h>
 #include <sched/sched.h>
+#include <sched/queue.h>
 
 #define PIPE_BUFFER_SIZE 0x10000
 
@@ -44,6 +45,7 @@ struct file_handle {
 struct fd_handle {
 	char lock;
 	struct file_handle *file_handle;
+	struct waitq_trigger *trigger;
 	int fd_number;
 	int flags;
 };
