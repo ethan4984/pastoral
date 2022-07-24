@@ -45,7 +45,6 @@ struct file_handle {
 struct fd_handle {
 	char lock;
 	struct file_handle *file_handle;
-	struct waitq_trigger *trigger;
 	int fd_number;
 	int flags;
 };

@@ -23,6 +23,7 @@ struct waitq_trigger {
 
 	struct waitq *waitq;
 	int type;
+	int fired;
 
 	int refcnt;
 	char lock;

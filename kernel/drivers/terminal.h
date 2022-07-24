@@ -18,6 +18,7 @@ struct terminal {
 	bool caplock;
 	bool shift;
 	bool ctrl;
+	bool alt;
 
 	char *stream;
 	volatile size_t stream_index;

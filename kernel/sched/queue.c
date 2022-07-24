@@ -103,6 +103,8 @@ int waitq_wake(struct waitq_trigger *trigger) {
 
 	spinlock(&waitq->lock);
 
+	trigger->fired = 1;
+
 	waitq->pending++;
 	waitq->task->last_trigger = (void*)trigger;
 	sched_requeue(waitq->task, waitq->thread);

@@ -19,12 +19,19 @@ static volatile struct limine_terminal_request limine_terminal_request = {
 static struct page_table terminal_page_table;
 
 void terminal_stream_push(struct terminal *terminal, char c) {
+	struct fd_handle *fd_handle = fd_translate(0);
+
 	if(terminal->stream_capacity <= terminal->stream_index) {
 		terminal->stream_capacity += 0x1000;
 		terminal->stream = realloc(terminal->stream, terminal->stream_capacity);
 	}
 
 	terminal->stream[terminal->stream_index++] = c;
+
+	if(fd_handle && fd_handle->file_handle->trigger) {
+		//print("triggering\n");
+		waitq_wake(fd_handle->file_handle->trigger);
+	}
 }
 
 void ps2_handler(struct registers*, void*) {
@@ -66,6 +73,9 @@ void ps2_handler(struct registers*, void*) {
 		case 0x1d:
 			current_terminal->ctrl = true;
 			return;
+		case 0x38:
+				terminal_stream_push(current_terminal, 27);
+			return;
 		default:
 			if(keycode <= 128) {
 				int caps = current_terminal->caplock ^ current_terminal->shift;
@@ -75,7 +85,7 @@ void ps2_handler(struct registers*, void*) {
 					character = keymap[keycode];
 				}
 				terminal_stream_push(current_terminal, character);
-			}
+			} 
 	}
 }
 
@@ -97,7 +107,21 @@ ssize_t terminal_read(struct file_handle*, void *buffer, size_t, off_t) {
 }
 
 ssize_t terminal_write(struct file_handle*, const void *buffer, size_t cnt, off_t) {
-	limine_terminal_print((void*)buffer, cnt);
+	struct fd_handle *fd_handle = fd_translate(1);
+
+	// HACKSSKSKSKSK
+	if(fd_handle && fd_handle->file_handle->trigger) {
+		print("triggering fd %d\n", 1);
+		waitq_wake(fd_handle->file_handle->trigger);
+	}
+
+	fd_handle = fd_translate(2);
+
+	if(fd_handle && fd_handle->file_handle->trigger) {
+		print("triggering fd %d\n", 2);
+		waitq_wake(fd_handle->file_handle->trigger);
+	}
+	//limine_terminal_print((void*)buffer, cnt);
 	return cnt;
 }
 
@@ -167,7 +191,7 @@ void limine_terminal_init() {
 }
 
 void limine_terminal_print(char *str, size_t length) {
-	asm volatile ("cli");
+	/*asm volatile ("cli");
 	spinlock(&current_terminal->lock);
 
 	char *data = alloc(length);
@@ -183,5 +207,5 @@ void limine_terminal_print(char *str, size_t length) {
 	asm volatile ("mov %0, %%cr3" :: "r"(cr3) : "memory");
 
 	spinrelease(&current_terminal->lock);
-	asm volatile ("sti");
+	asm volatile ("sti");*/
 }

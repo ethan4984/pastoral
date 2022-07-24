@@ -712,16 +712,18 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 		waitq_set_timer(&waitq, *timespec);
 	}
 
-	VECTOR(struct fd_handle*) handle_list = { 0 };
+	VECTOR(struct file_handle*) handle_list = { 0 };
 
 	for(size_t i = 0; i < nfds; i++) {
 		struct pollfd *pollfd = &fds[i];
 
-		struct fd_handle *handle = fd_translate(pollfd->fd);
-		if(handle == NULL) {
+		struct fd_handle *fd_handle = fd_translate(pollfd->fd);
+		if(fd_handle == NULL) {
 			set_errno(EBADF);
 			return -1;
 		}
+
+		struct file_handle *file_handle = fd_handle->file_handle;
 
 		int type = 0;
 
@@ -729,10 +731,10 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 		if(pollfd->events & POLLOUT) type |= EVENT_POLLOUT;
 
 		if(type) {
-			print("adding poll on handle %x\n", handle);
-			handle->trigger = waitq_alloc(&waitq, type);
-			waitq_add(&waitq, handle->trigger);
-			VECTOR_PUSH(handle_list, handle);
+			print("adding poll on handle %x %x\n", file_handle, fd_handle->fd_number);
+			file_handle->trigger = waitq_alloc(&waitq, type);
+			waitq_add(&waitq, file_handle->trigger);
+			VECTOR_PUSH(handle_list, file_handle);
 		} else {
 			print("poll: unrecognised event type {%x}\n", type);
 		}
@@ -740,13 +742,22 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 
 	waitq_wait(&waitq, EVENT_ANY);
 
+	int ret = 0;
+
 	for(size_t i = 0; i < handle_list.length; i++) {
-		struct fd_handle *handle = handle_list.data[i];
-		waitq_remove(&waitq, handle->trigger);
+		struct file_handle *handle = handle_list.data[i];
+		struct waitq_trigger *trigger = handle->trigger;
+
+		if(trigger->fired) {
+			fds[i].revents = fds[i].events;
+			ret++;
+		}
+
 		handle->trigger = NULL;
+		waitq_remove(&waitq, trigger);
 	}
 
-	return nfds;
+	return ret;
 }
 
 void syscall_dup2(struct registers *regs) {
