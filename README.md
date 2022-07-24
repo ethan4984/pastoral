@@ -12,7 +12,7 @@ Bootloader:
 - Limine, using the Limine boot protocol
 
 Kernel:
-- x86 system tables and architecture subsystems (GDT/IDT/TSS/EHCI/XAPIC/X2APIC/LA57)
+- x86 system tables and architecture subsystems (GDT/IDT/TSS/EHFI/XAPIC/X2APIC/LA57)
 - Module bitmap PMM
 - VMM equipped with CoW and demand paging
 - Slab allocator
