@@ -2,6 +2,7 @@
 #include <string.h>
 #include <debug.h>
 #include <sched/sched.h>
+#include <lib/errno.h>
 
 struct syscall_handle {
 	void (*handler)(struct registers*);
@@ -171,6 +172,8 @@ extern void syscall_handler(struct registers *regs) {
 
 	if(syscall_number >= LENGTHOF(syscall_list)) {
 		print("SYSCALL: unknown syscall number %d\n", syscall_number);
+		regs->rax = -1;
+		set_errno(ENOSYS);
 		return;
 	}
 

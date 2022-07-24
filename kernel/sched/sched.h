@@ -9,6 +9,7 @@
 #include <hash.h>
 #include <elf.h>
 #include <sched/signal.h>
+#include <drivers/tty/tty.h>
 
 struct sched_thread {
 	tid_t tid;
@@ -49,12 +50,10 @@ struct sched_task {
 
 	struct vfs_node *cwd;
 
+	char lock;
 	pid_t pid;
 	pid_t ppid;
-
-	pid_t pgid;
 	struct process_group *group;
-	pid_t sid;
 	struct session *session;
 
 	int has_execved;
@@ -82,22 +81,26 @@ struct sched_task {
 };
 
 struct process_group {
-	pid_t pgid;
-	pid_t sid;
+	char lock;
 
+	pid_t pgid;
 	pid_t pid_leader;
+
 	struct sched_task *leader;
+	struct session *session;
 
 	VECTOR(struct sched_task*) process_list;
 };
 
 struct session {
+	char lock;
+
 	pid_t sid;
 	pid_t pgid_leader;
 
-	struct bitmap pgid_bitmap;
-
 	struct hash_table group_list;
+
+	struct tty *tty;
 };
 
 struct sched_arguments {
@@ -121,8 +124,8 @@ void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *threa
 void sched_requeue(struct sched_task *task, struct sched_thread *thread);
 void sched_requeue_and_yield(struct sched_task *task, struct sched_thread *thread);
 void sched_yield();
-
-int task_create_session(struct sched_task *task);
+void task_terminate(struct sched_task *task, int status);
+int task_create_session(struct sched_task *task, bool force);
 
 extern char sched_lock;
 
@@ -143,3 +146,39 @@ extern char sched_lock;
 
 #define TASK_MAX_PRIORITY ~(0ull)
 #define TASK_MIN_PRIORITY ~(0)
+
+static inline void session_lock(struct session *session) {
+	spinlock(&session->lock);
+}
+
+static inline void session_unlock(struct session *session) {
+	spinrelease(&session->lock);
+}
+
+static inline void process_group_lock(struct process_group *group) {
+	spinlock(&group->lock);
+}
+
+static inline void process_group_unlock(struct process_group *group) {
+	spinrelease(&group->lock);
+}
+
+static inline void task_lock(struct sched_task *task) {
+	spinlock(&task->lock);
+}
+
+static inline void task_unlock(struct sched_task *task) {
+	spinrelease(&task->lock);
+}
+
+
+#define WEXITSTATUS(x) ((x) & 0xff)
+#define WIFCONTINUED(x) ((x) & 0x100)
+#define WIFEXITED(x) ((x) & 0x200)
+#define WIFSIGNALED(x) ((x) & 0x400)
+#define WIFSTOPPED(x) ((x) & 0x800)
+#define WSTOPSIG(x) (((x) & 0xff0000) >> 16)
+#define WTERMSIG(x) (((x) & 0xff000000) >> 24)
+
+#define WEXITED_CONSTRUCT(status) ((status & 0xff) | 0x200)
+#define WSIGNALED_CONSTRUCT(status) ((((status & 0xff) << 16) | 0x400))

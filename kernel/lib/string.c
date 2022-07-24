@@ -136,7 +136,7 @@ int sprint(char *str, const char *format, ...) {
 	return write_cnt - 1;
 }
 
-void memcpy(void *dest, void *src, size_t n) {
+void memcpy(void *dest, const void *src, size_t n) {
 	memcpy8(dest, src, n);
 }
 

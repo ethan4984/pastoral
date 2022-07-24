@@ -94,7 +94,7 @@ static void pmm_module_free(struct pmm_module *module, uint64_t base, uint64_t c
 }
 
 void pmm_init() {
-	struct limine_memmap_entry **mmap = limine_memmap_request.response->entries;	
+	struct limine_memmap_entry **mmap = limine_memmap_request.response->entries;
 	uint64_t entry_count = limine_memmap_request.response->entry_count;
 
 	size_t buffer_size = 0;
@@ -139,7 +139,7 @@ void pmm_init() {
 				memset8((void*)root_module, 0, sizeof(struct pmm_module));
 				meta_buffer += sizeof(struct pmm_module) * 2;
 				pmm_init_module(root_module, mmap[i]);
-				continue; 
+				continue;
 			}
 
 			struct pmm_module *node = root_module;

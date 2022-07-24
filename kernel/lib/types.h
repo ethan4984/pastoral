@@ -7,13 +7,10 @@
 typedef int64_t off_t;
 typedef int64_t ssize_t;
 
-typedef ssize_t pid_t;
-typedef ssize_t tid_t;
+typedef int pid_t;
+typedef int tid_t;
 
-// TODO: Create mlibc major/minor/makedev macros.
-//typedef uint64_t dev_t;
-typedef uint16_t dev_t;
-
+typedef uint64_t dev_t;
 typedef uint64_t ino_t;
 typedef int32_t mode_t;
 typedef int32_t nlink_t;
@@ -134,6 +131,10 @@ typedef size_t nfds_t;
 #define W_OK 4
 #define X_OK 8
 
+#define major(dev) ((dev_t) (((dev_t) (dev) & 0xff00) >> 8))
+#define minor(dev) ((dev_t) (((dev_t) (dev) & 0xff)))
+#define makedev(M, m) ((dev_t) ((((uint16_t) (M) & 0xff) << 8) | ((uint16_t) (m) & 0xff)))
+
 #define POLLIN 0x01
 #define POLLOUT 0x02
 #define POLLPRI 0x04
@@ -142,14 +143,6 @@ typedef size_t nfds_t;
 #define POLLRDHUP 0x20
 #define POLLNVAL 0x40
 #define POLLWRNORM 0x80
-
-// TODO: create mlibc major/minor/makedev macros.
-//#define major(dev) ((dev)) & 0xffffffff)
-//#define minor(dev) ((dev >> 32) & 0xffffffff)
-//#define makedev(major, minor) ((((dev_t) (minor & 0xffffffff)) << 32) | (((dev_t) (major & 0xffffffff))))
-#define major(dev) (((dev) >> 8) & 0xff)
-#define minor(dev) ((dev) & 0xff)
-#define makedev(M, m) ((((dev_t) (M & 0xff)) << 8) | (((dev_t) (m & 0xff))))
 
 #include <lib/time.h>
 

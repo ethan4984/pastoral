@@ -27,15 +27,20 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 		current_action->sa_mask &= ~(SIGMASK(SIGKILL) | SIGMASK(SIGSTOP));
 	}
 
-	spinrelease(&task->sig_lock);
+	struct signal_queue *queue = &CURRENT_THREAD->signal_queue;
+	spinlock(&queue->siglock);
+	if(act->handler.sa_sigaction == SIG_IGN && queue->sigpending & (1 << sig))
+		queue->sigpending &= ~(1 << sig);
+	spinrelease(&queue->siglock);
 
+	spinrelease(&task->sig_lock);
 	return 0;
 }
 
 int sigpending(sigset_t *set) {
 	struct sched_thread *thread = CURRENT_THREAD;
 	if(thread == NULL) {
-		panic(""); 
+		panic("");
 	}
 
 	struct signal_queue *queue = &thread->signal_queue;
@@ -50,7 +55,7 @@ int sigpending(sigset_t *set) {
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 	struct sched_thread *thread = CURRENT_THREAD;
 	if(thread == NULL) {
-		panic(""); 
+		panic("");
 	}
 
 	struct signal_queue *queue = &thread->signal_queue;
@@ -68,12 +73,12 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 				break;
 			case SIG_UNBLOCK:
 				queue->sigmask &= ~(*set);
-				break; 
+				break;
 			case SIG_SETMASK:
 				queue->sigmask = *set;
 				break;
 			default:
-				set_errno(EINVAL); 
+				set_errno(EINVAL);
 				spinrelease(&queue->siglock);
 				return -1;
 		}
@@ -119,12 +124,22 @@ int signal_send(struct sched_thread *sender, struct sched_thread *target, int si
 
 	struct signal_queue *queue = &target->signal_queue;
 
+	spinlock(&target_task->sig_lock);
 	spinlock(&queue->siglock);
 
 	if(signal_check_permissions(sender_task, target_task) == -1) {
 		set_errno(EPERM);
 		spinrelease(&queue->siglock);
+		spinrelease(&target_task->sig_lock);
 		return -1;
+	}
+
+	if(sig != SIGSTOP && sig != SIGKILL) {
+		if(target_task->sigactions[sig - 1].handler.sa_sigaction == SIG_IGN) {
+			spinrelease(&queue->siglock);
+			spinrelease(&target_task->sig_lock);
+			return 0;
+		}
 	}
 
 	struct signal_queue *signal_queue = &target->signal_queue;
@@ -134,29 +149,86 @@ int signal_send(struct sched_thread *sender, struct sched_thread *target, int si
 	signal->siginfo = alloc(sizeof(struct siginfo));
 	signal->sigaction = &target_task->sigactions[sig - 1];
 	signal->trigger = waitq_alloc(&queue->waitq, EVENT_SIGNAL);
-	signal->queue = signal_queue; 
-
+	signal->queue = signal_queue;
 	signal_queue->sigpending |= SIGMASK(sig);
 
 	spinrelease(&queue->siglock);
+	spinrelease(&target_task->sig_lock);
 
 	return 0;
+}
+
+static void signal_default_action(int signo) {
+	int status = WSIGNALED_CONSTRUCT(signo);
+	switch(signo) {
+		case SIGHUP:
+		case SIGINT:
+		case SIGQUIT:
+		case SIGILL:
+		case SIGTRAP:
+		case SIGBUS:
+		case SIGFPE:
+		case SIGKILL:
+		case SIGUSR1:
+		case SIGSEGV:
+		case SIGUSR2:
+		case SIGPIPE:
+		case SIGALRM:
+		case SIGSTKFLT:
+		case SIGXCPU:
+		case SIGXFSZ:
+		case SIGVTALRM:
+		case SIGPROF:
+		case SIGSYS:
+			return task_terminate(CURRENT_TASK, status);
+
+		case SIGCONT:
+		case SIGSTOP:
+		case SIGTTIN:
+		case SIGTTOU:
+		case SIGTSTP:
+			return;
+
+		case SIGCHLD:
+		case SIGWINCH:
+			return;
+	}
 }
 
 int signal_dispatch(struct sched_thread *thread) {
 	struct signal_queue *queue = &thread->signal_queue;
 
+	spinlock(&queue->siglock);
 	if(queue->sigpending == 0) {
+		spinrelease(&queue->siglock);
 		return -1;
 	}
 
-	for(size_t i = 0; i < SIGNAL_MAX; i++) {
-		if(thread->signal_queue.sigpending & (1 << i)) {
-			struct signal *signal = &thread->signal_queue.queue[i];
+	if(((thread->signal_queue.sigpending & SIGMASK(SIGKILL)))) {
+		signal_default_action(SIGKILL);
+		panic("");
+	}
+
+	if((thread->signal_queue.sigpending & SIGMASK(SIGSTOP))) {
+		signal_default_action(SIGSTOP);
+		panic("");
+	}
+
+	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
+		if(((thread->signal_queue.sigpending & SIGMASK(i)) && !(thread->signal_queue.sigmask & SIGMASK(i)))) {
+			struct signal *signal = &thread->signal_queue.queue[i - 1];
 			struct sigaction *action = signal->sigaction;
 
 			thread->regs.rsp -= 128;
 			thread->regs.rsp &= -16ll;
+
+			spinlock(&CURRENT_TASK->sig_lock);
+			if(action->handler.sa_sigaction == SIG_DFL) {
+				thread->signal_queue.sigpending &= ~SIGMASK(i);
+				signal_default_action(i);
+				spinrelease(&CURRENT_TASK->sig_lock);
+				break;
+			}
 
 			if(action->sa_flags & SA_SIGINFO) {
 				thread->regs.rsp -= sizeof(struct siginfo);
@@ -174,22 +246,25 @@ int signal_dispatch(struct sched_thread *thread) {
 				thread->regs.rdi = signal->signum;
 			}
 
-			thread->signal_queue.sigpending &= ~(1 << i);
+			thread->signal_queue.sigpending &= ~SIGMASK(i);
+			spinrelease(&CURRENT_TASK->sig_lock);
 			break;
 		}
 	}
 
+	spinrelease(&queue->siglock);
 	return 0;
 }
 
-int signal_wait(struct signal_queue *signal_queue, sigset_t mask, struct timespec *timespec) { 
+int signal_wait(struct signal_queue *signal_queue, sigset_t mask, struct timespec *timespec) {
 	if(timespec) {
 		waitq_set_timer(&signal_queue->waitq, *timespec);
 	}
 
-	for(size_t i = 0; i < SIGNAL_MAX; i++) {
-		if(mask & (1 << i)) {
-			struct signal *signal = &signal_queue->queue[i];
+	spinlock(&signal_queue->siglock);
+	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
+		if(mask & SIGMASK(i)) {
+			struct signal *signal = &signal_queue->queue[i - 1];
 
 			if(signal->trigger == NULL) {
 				signal->trigger = waitq_alloc(&signal_queue->waitq, EVENT_SIGNAL);
@@ -200,6 +275,7 @@ int signal_wait(struct signal_queue *signal_queue, sigset_t mask, struct timespe
 	}
 
 	waitq_wait(&signal_queue->waitq, EVENT_SIGNAL);
+	spinlock(&signal_queue->siglock);
 
 	return 0;
 }
@@ -215,7 +291,7 @@ int kill(pid_t pid, int sig) {
 		panic("");
 	}
 
-	struct sched_task *current_task = CURRENT_TASK; 
+	struct sched_task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
 		panic("");
 	}

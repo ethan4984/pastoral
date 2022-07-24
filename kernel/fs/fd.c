@@ -1254,7 +1254,7 @@ void syscall_fchownat(struct registers *regs) {
 	regs->rax = fd_fchownat(fd, path, uid, gid, flag);
 }
 
-void syscall_poll(struct registers *regs) { 
+void syscall_poll(struct registers *regs) {
 	struct pollfd *fds = (void*)regs->rdi;
 	nfds_t nfds = regs->rsi;
 	int timeout = regs->rdx;
@@ -1273,7 +1273,7 @@ void syscall_poll(struct registers *regs) {
 	regs->rax = fd_poll(fds, nfds, &timespec);
 }
 
-void syscall_ppoll(struct registers *regs) { 
+void syscall_ppoll(struct registers *regs) {
 	struct pollfd *fds = (void*)regs->rdi;
 	nfds_t nfds = regs->rsi;
 	struct timespec *timespec = (void*)regs->rdx;

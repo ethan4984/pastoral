@@ -2,7 +2,6 @@
 #include <cpu.h>
 #include <string.h>
 #include <stdarg.h>
-#include <drivers/terminal.h>
 
 static void serial_write(uint8_t data) {
 	while((inb(COM1 + 5) & (1 << 5)) == 0);
@@ -84,7 +83,7 @@ void panic(const char *str, ...) {
 	va_end(arg);
 
 	print(" > HALTING\n");
-	
+
 	for(;;)
 		asm volatile ("cli\nhlt");
 }

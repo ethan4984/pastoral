@@ -15,13 +15,14 @@
 #include <drivers/pci.h>
 #include <drivers/pit.h>
 #include <drivers/iommu/intel/vtd.h>
-#include <drivers/terminal.h>
+#include <drivers/tty/limine_term.h>
 #include <drivers/fbdev.h>
 #include <fs/vfs.h>
 #include <fs/initramfs.h>
 #include <sched/sched.h>
 #include <time.h>
 #include <hash.h>
+#include <drivers/tty/self_tty.h>
 
 static volatile struct limine_stack_size_request limine_stack_size_request = {
 	.id = LIMINE_STACK_SIZE_REQUEST,
@@ -68,6 +69,7 @@ void init_process() {
 		panic("unable to start init process");
 	}
 
+/*
 	struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
 		*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
 		*stderr_fd_handle = alloc(sizeof(struct fd_handle));
@@ -127,15 +129,13 @@ void init_process() {
 	hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
 	hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
 	hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
-
+*/
 	struct sched_task *parent = sched_translate_pid(task->ppid);
 	if(parent == NULL) {
 		panic("");
 	}
 
-	task->sid = parent->sid;
 	task->session = parent->session;
-	task->pgid = parent->pgid;
 	task->group = parent->group;
 
 	VECTOR_PUSH(task->group->process_list, task);
@@ -150,7 +150,8 @@ void pastoral_thread() {
 		panic("initramfs: unable to initialise");
 	}
 
-	limine_terminal_init();
+	limine_terminals_init();
+	self_tty_init();
 
 	struct limine_framebuffer **framebuffers = limine_framebuffer_request.response->framebuffers;
 	uint64_t framebuffer_count = limine_framebuffer_request.response->framebuffer_count;
@@ -233,7 +234,7 @@ void pastoral_entry(void) {
 	kernel_task->page_table = alloc(sizeof(struct page_table));
 	vmm_default_table(kernel_task->page_table);
 
-	task_create_session(kernel_task);
+	task_create_session(kernel_task, true);
 
 	kernel_task->sched_status = TASK_WAITING;
 	kernel_thread->sched_status = TASK_WAITING;
