@@ -27,15 +27,15 @@ int cdev_open(struct vfs_node *node, struct file_handle *file) {
 	return 0;
 }
 
-int cdev_register(dev_t dev, struct cdev *cdev) {
+int cdev_register(struct cdev *cdev) {
 	spinlock(&cdev_lock);
-	struct cdev *aux = hash_table_search(&cdev_list, &dev, sizeof(dev_t));
+	struct cdev *aux = hash_table_search(&cdev_list, &cdev->rdev, sizeof(dev_t));
 	if(aux) {
 		spinrelease(&cdev_lock);
 		return -1;
 	}
 
-	hash_table_push(&cdev_list, &dev, cdev, sizeof(dev_t));
+	hash_table_push(&cdev_list, &cdev->rdev, cdev, sizeof(cdev->rdev));
 	spinrelease(&cdev_lock);
 	return 0;
 }
