@@ -195,7 +195,6 @@ static void ps2_handler(struct registers *, void *) {
 static ssize_t limine_tty_read(struct tty *tty, void *buf, size_t count) {
 	struct limine_tty *ltty = tty->private_data;
 
-	waitq_init(&ltty->waitq);
 	waitq_wait(&ltty->waitq, EVENT_COMMAND);
 
 	spinlock(&tty->input_lock);

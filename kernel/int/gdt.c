@@ -92,9 +92,9 @@ void gdt_init() {
 
 	struct tss *tss = alloc(sizeof(struct tss));
 
-	tss->rsp0 = pmm_alloc(4, 1) + HIGH_VMA;
-	tss->rsp1 = pmm_alloc(4, 1) + HIGH_VMA;
-	tss->rsp2 = pmm_alloc(4, 1) + HIGH_VMA;
+	tss->rsp0 = pmm_alloc(4, 1) + HIGH_VMA + 0x4000;
+	tss->rsp1 = pmm_alloc(4, 1) + HIGH_VMA + 0x4000;
+	tss->rsp2 = pmm_alloc(4, 1) + HIGH_VMA + 0x4000;
 
 	gdt->tss_descriptor.length = 104;
 	gdt->tss_descriptor.base_low = (uintptr_t)tss & 0xffff;

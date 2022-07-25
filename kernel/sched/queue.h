@@ -33,6 +33,7 @@ struct waitq {
 	struct sched_task *task;
 	struct sched_thread *thread;
 
+	VECTOR(struct sched_thread *) threads;
 	VECTOR(struct waitq_trigger*) triggers;
 
 	struct timespec timespec;
@@ -42,12 +43,10 @@ struct waitq {
 	char lock;
 };
 
-int waitq_init(struct waitq *wait);
 int waitq_wait(struct waitq *waitq, int type);
 int waitq_set_timer(struct waitq *waitq, struct timespec timespec);
 int waitq_add(struct waitq *waitq, struct waitq_trigger *trigger);
 int waitq_remove(struct waitq *waitq, struct waitq_trigger *trigger);
-int waitq_calibrate(struct waitq *waitq, struct sched_task *task, struct sched_thread *thread);
 int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct sched_task *task, struct sched_thread *thread, int type);
 int waitq_wake(struct waitq_trigger *trigger);
 

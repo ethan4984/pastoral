@@ -64,7 +64,7 @@ void boot_aps() {
 		struct cpu_local *cpu_local = alloc(sizeof(struct cpu_local));
 
 		*cpu_local = (struct cpu_local) {
-			.kernel_stack = pmm_alloc(2, 1) + HIGH_VMA,
+			.kernel_stack = pmm_alloc(2, 1) + HIGH_VMA + 0x2000,
 			.apic_id = madt0->apic_id,
 			.pid = -1,
 			.tid = -1,

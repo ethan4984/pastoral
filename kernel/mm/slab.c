@@ -2,8 +2,9 @@
 #include <mm/slab.h>
 #include <cpu.h>
 #include <string.h>
+#include <debug.h>
 
-#define OBJECTS_PER_SLAB 256
+#define OBJECTS_PER_SLAB 512
 
 struct slab;
 
@@ -41,7 +42,7 @@ static struct slab *cache_alloc_slab(struct cache *cache) {
 	struct slab *new_slab = (struct slab*)(pmm_alloc(cache->pages_per_slab, 1) + HIGH_VMA);
 
 	new_slab->bitmap = (uint8_t*)((uintptr_t)new_slab + sizeof(struct slab));
-	new_slab->buffer = (void*)(ALIGN_UP((uintptr_t)new_slab->bitmap + OBJECTS_PER_SLAB / 8 - HIGH_VMA, 16) + HIGH_VMA);
+	new_slab->buffer = (void*)(ALIGN_UP((uintptr_t)new_slab->bitmap + OBJECTS_PER_SLAB - HIGH_VMA, 16) + HIGH_VMA);
 	new_slab->available_objects = OBJECTS_PER_SLAB;
 	new_slab->total_objects = OBJECTS_PER_SLAB;
 	new_slab->cache = cache;
@@ -94,6 +95,8 @@ static void *slab_alloc(struct slab *slab) {
 			return slab->buffer + (i * slab->cache->object_size);
 		}
 	}
+
+	panic("slab: returning a null pointer for some reason");
 
 	return NULL;
 }
@@ -173,10 +176,12 @@ static int slab_free_object(struct slab *slab, void *obj) {
 	while(slab) {
 		if(slab->buffer <= obj && (slab->buffer + slab->cache->object_size * slab->total_objects) > obj) {
 			size_t index = ((uintptr_t)obj - (uintptr_t)slab->buffer) / slab->cache->object_size;
-			BIT_CLEAR(slab->bitmap, index);
-			slab->available_objects++;
-			spinrelease(&root->cache->lock);
-			return 1;
+			if(BIT_TEST(slab->bitmap, index)) {
+				BIT_CLEAR(slab->bitmap, index);
+				slab->available_objects++;
+				spinrelease(&root->cache->lock);
+				return 1;
+			}
 		}
 
 		slab = slab->next;
@@ -199,7 +204,7 @@ static int cache_free_object(struct cache *cache, void *obj) {
 void slab_cache_create(const char *name, size_t object_size) {
 	struct cache cache = { 0 };
 
-	cache.pages_per_slab = DIV_ROUNDUP(object_size * OBJECTS_PER_SLAB + sizeof(struct slab) + OBJECTS_PER_SLAB / 8, PAGE_SIZE);
+	cache.pages_per_slab = DIV_ROUNDUP(object_size * OBJECTS_PER_SLAB + sizeof(struct slab) + OBJECTS_PER_SLAB, PAGE_SIZE);
 	cache.object_size = object_size;
 	cache.name = name;
 
@@ -220,8 +225,9 @@ void slab_cache_create(const char *name, size_t object_size) {
 }
 
 void *alloc(size_t size) {
-	if(!size)
+	if(!size) {
 		return NULL;
+	}
 
 	size_t round_size = pow2_roundup(size + 1);
 	if(round_size <= 16) {

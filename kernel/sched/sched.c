@@ -455,7 +455,6 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	vmm_init_page_table(current_task->page_table);
 
-	waitq_calibrate(task->waitq, task, thread);
 	waitq_trigger_calibrate(task->exit_trigger, task, thread, EVENT_EXIT);
 	waitq_add(current_task->waitq, task->exit_trigger);
 
@@ -817,7 +816,6 @@ void syscall_fork(struct registers *regs) {
 	memcpy(&task->sigactions, &current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
 
 	task->waitq = alloc(sizeof(struct waitq));
-	waitq_calibrate(task->waitq, task, thread);
 
 	task->exit_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_EXIT);
 	waitq_trigger_calibrate(task->exit_trigger, task, thread, EVENT_EXIT);

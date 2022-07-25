@@ -76,7 +76,7 @@ struct msix_entry {
 } __attribute__((packed));
 
 void pci_device_write(struct pci_device *device, int size, uint8_t off, uint32_t data) {
-	outd(0xcf8, (1 << 31) |
+	outd(0xcf8, (1ull << 31) |
 				((uint32_t)device->bus << 16) |
 				(((uint32_t)device->dev & 31) << 11) |
 				(((uint32_t)device->func & 7) << 8) |
@@ -95,7 +95,7 @@ void pci_device_write(struct pci_device *device, int size, uint8_t off, uint32_t
 }
 
 uint32_t pci_device_read(struct pci_device *device, int size, uint8_t off) {
-	outd(0xcf8, (1 << 31) |
+	outd(0xcf8, (1ull << 31) |
 				((uint32_t)device->bus << 16) |
 				(((uint32_t)device->dev & 31) << 11) |
 				(((uint32_t)device->func & 7) << 8) |
@@ -114,7 +114,7 @@ uint32_t pci_device_read(struct pci_device *device, int size, uint8_t off) {
 }
 
 uint32_t pci_raw_read(int size, uint8_t bus, uint8_t device_code, uint8_t func, uint8_t off) {
-	outd(0xcf8, (1 << 31) | // enable
+	outd(0xcf8, (1ull << 31) | // enable
 				((uint32_t)bus << 16) | // bus number
 				(((uint32_t)device_code & 31) << 11) | // device number
 				(((uint32_t)func & 7) << 8) | // function number
@@ -133,7 +133,7 @@ uint32_t pci_raw_read(int size, uint8_t bus, uint8_t device_code, uint8_t func, 
 }
 
 void pci_raw_write(int size, uint32_t data, uint8_t bus, uint8_t device_code, uint8_t func, uint8_t off) {
-	outd(0xcf8, (1 << 31) | // enable
+	outd(0xcf8, (1ull << 31) | // enable
 				((uint32_t)bus << 16) | // bus number
 				(((uint32_t)device_code & 31) << 11) | // device number
 				(((uint32_t)func & 7) << 8) | // function number

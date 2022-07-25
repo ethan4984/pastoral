@@ -2,6 +2,7 @@
 #include <cpu.h>
 #include <int/apic.h>
 #include <int/idt.h>
+#include <mm/vmm.h>
 #include <sched/sched.h>
 
 struct idt_descriptor {
@@ -84,7 +85,7 @@ const char *exception_messages[] = {
 	"FPU error"
 };
 
-extern void vmm_pf_handler(struct registers*, void*);
+int vmm_pf_handler(struct registers*);
 
 extern void isr_handler_main(struct registers *regs) {
 	if(regs->cs & 0x3) {
@@ -92,11 +93,9 @@ extern void isr_handler_main(struct registers *regs) {
 	}
 
 	if(regs->isr_number == 0xe) {
-		int status = 0;
+		int status = vmm_pf_handler(regs);
 
-		vmm_pf_handler(regs, &status);
-
-		if(status) {
+		if(status == 0) {
 			xapic_write(XAPIC_EOI_OFF, 0);
 			if(regs->cs & 0x3) {
 				swapgs();

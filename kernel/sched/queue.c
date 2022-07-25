@@ -22,6 +22,8 @@ int waitq_wait(struct waitq *waitq, int type) {
 		return trigger->type; 
 	}
 
+	VECTOR_PUSH(waitq->threads, thread);
+
 	spinrelease(&waitq->lock);
 
 	for(;;) {
@@ -108,19 +110,17 @@ int waitq_wake(struct waitq_trigger *trigger) {
 	trigger->fired = 1;
 
 	waitq->pending++;
-	waitq->task->last_trigger = (void*)trigger;
-	sched_requeue(waitq->task, waitq->thread);
 
-	spinrelease(&waitq->lock);
+	for(size_t i = 0; i < waitq->threads.length; i++) {
+		struct sched_thread *thread = waitq->threads.data[i];
+		struct sched_task *task = sched_translate_pid(thread->pid);
 
-	return 0;
-}
+		task->last_trigger = trigger;
 
-int waitq_calibrate(struct waitq *waitq, struct sched_task *task, struct sched_thread *thread) {
-	spinlock(&waitq->lock);
+		sched_requeue(task, thread);
+	}
 
-	waitq->task = task;
-	waitq->thread = thread;
+	VECTOR_CLEAR(waitq->threads);
 
 	spinrelease(&waitq->lock);
 
@@ -135,17 +135,6 @@ int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct sched_task *ta
 	trigger->type = type;
 
 	spinrelease(&trigger->lock);
-
-	return 0;
-}
-
-int waitq_init(struct waitq *waitq) {
-	spinlock(&waitq->lock);
-
-	waitq->task = CURRENT_TASK;
-	waitq->thread = CURRENT_THREAD;
-
-	spinrelease(&waitq->lock);
 
 	return 0;
 }

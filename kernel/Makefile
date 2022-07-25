@@ -3,7 +3,7 @@ KERNEL := pastoral.elf
 CC ?= cc
 LD ?= ld
 
-CFLAGS  ?= -Wall -Wextra -O2 -pipe
+CFLAGS  ?= -Wall -Wextra -O2 -pipe -fsanitize=undefined
 LDFLAGS ?=
 
 INTERNALLDFLAGS :=		 \

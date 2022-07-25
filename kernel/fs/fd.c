@@ -706,8 +706,6 @@ int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
 int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 	struct waitq waitq = { 0 };
 
-	waitq_init(&waitq);
-
 	if(timespec) {
 		waitq_set_timer(&waitq, *timespec);
 	}

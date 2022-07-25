@@ -78,12 +78,6 @@ int initramfs() {
 				break;
 		}
 
-		//print("%s\n", ustar_header->name);
-
-		if(strcmp(ustar_header->name, "./usr/sbin/init") == 0) {
-			print("found\n");
-		}
-
 		struct vfs_node *node = vfs_create_node_deep(NULL, &ramfs_fops, &ramfs_filesystem, stat, ustar_header->name);
 
 		if(S_ISLNK(node->stat->st_mode)) {
