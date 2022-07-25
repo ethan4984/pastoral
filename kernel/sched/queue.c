@@ -128,6 +128,10 @@ int waitq_wake(struct waitq_trigger *trigger) {
 }
 
 int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct sched_task *task, struct sched_thread *thread, int type) {
+	if(trigger == NULL) {
+		return -1;
+	}
+
 	spinlock(&trigger->lock);
 
 	trigger->agent_task = task;

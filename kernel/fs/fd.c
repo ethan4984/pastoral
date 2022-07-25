@@ -232,10 +232,13 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 
 	ret = fd_handle->file_handle->ops->write(fd_handle->file_handle, buf, count, off);
 	if(ret != -1) {
+		stat_update_time(stat, STAT_MOD | STAT_STATUS);
+
+		waitq_trigger_calibrate(fd_handle->file_handle->trigger, CURRENT_TASK, CURRENT_THREAD, EVENT_POLLIN);
+		waitq_wake(fd_handle->file_handle->trigger);
+
 		fd_handle->file_handle->position += ret;
 	}
-
-	stat_update_time(stat, STAT_MOD | STAT_STATUS);
 
 	file_unlock(fd_handle->file_handle);
 	return ret;

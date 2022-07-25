@@ -64,11 +64,11 @@ static void limine_print(struct limine_tty *ltty, const char *str, size_t length
 
 
 static char keymap_nocaps[] = {
-	'\0', '\0', '1', '2', '3', 	'4', '5', '6',	'7', '8', '9', '0',
+	'\0', '\0', '1', '2', '3',	'4', '5', '6',	'7', '8', '9', '0',
 	'-', '=', '\b', '\t', 'q',	'w', 'e', 'r',	't', 'y', 'u', 'i',
 	'o', 'p', '[', ']', '\n',  '\0', 'a', 's',	'd', 'f', 'g', 'h',
 	'j', 'k', 'l', ';', '\'', '`', '\0', '\\', 'z', 'x', 'c', 'v',
-	'b', 'n', 'm', ',', '.',  '/', '\0', '\0', '\0', ' '
+	'b', 'n', 'm', ',', '.',  '/', '\0', '\0', 27, ' '
 };
 
 static char keymap_caps[] = {
@@ -76,7 +76,7 @@ static char keymap_caps[] = {
 	'-','=', '\b', '\t', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I',
 	'O', 'P', '[', ']', '\n', '\0', 'A', 'S', 'D', 'F', 'G', 'H',
 	'J', 'K', 'L', ';', '\'', '`', '\0', '\\', 'Z', 'X', 'C', 'V',
-	'B', 'N', 'M', ',', '.', '/', '\0', '\0', '\0', ' '
+	'B', 'N', 'M', ',', '.', '/', '\0', '\0', 27, ' '
 };
 
 static char keymap_shift_nocaps[] = {
@@ -84,7 +84,7 @@ static char keymap_shift_nocaps[] = {
 	'_', '+', '\b', '\t', 'Q',	'W', 'E', 'R',	'T', 'Y', 'U', 'I',
 	'O', 'P', '{', '}', '\n',  '\0', 'A', 'S',	'D', 'F', 'G', 'H',
 	'J', 'K', 'L', ':', '\"', '~', '\0', '|', 'Z', 'X', 'C', 'V',
-	'B', 'N', 'M', '<', '>',  '?', '\0', '\0', '\0', ' '
+	'B', 'N', 'M', '<', '>',  '?', '\0', '\0', 27, ' '
 };
 
 static char keymap_shift_caps[] = {
@@ -92,7 +92,7 @@ static char keymap_shift_caps[] = {
 	'_', '+', '\b', '\t', 'q',	'w', 'e', 'r',	't', 'y', 'u', 'i',
 	'o', 'p', '{', '}', '\n',  '\0', 'a', 's',	'd', 'f', 'g', 'h',
 	'j', 'k', 'l', ':', '\"', '~', '\0', '|', 'z', 'x', 'c', 'v',
-	'b', 'n', 'm', '<', '>',  '?', '\0', '\0', '\0', ' '
+	'b', 'n', 'm', '<', '>',  '?', '\0', '\0', 27, ' '
 };
 
 
@@ -144,7 +144,9 @@ static void ps2_handler(struct registers *, void *) {
 	}
 
 	struct limine_tty *ltty = active_tty->private_data;
+
 	spinlock(&active_tty->input_lock);
+
 	while(inb(0x64) & 1) {
 		uint8_t keycode = inb(0x60);
 
@@ -179,10 +181,7 @@ static void ps2_handler(struct registers *, void *) {
 					}
 
 					if(input_queue_push(active_tty, character)) {
-						ltty->trigger->agent_task = CURRENT_TASK;
-						ltty->trigger->agent_thread = CURRENT_THREAD;
-						ltty->trigger->type  = EVENT_COMMAND;
-
+						waitq_trigger_calibrate(ltty->trigger, CURRENT_TASK, CURRENT_THREAD, EVENT_COMMAND);
 						waitq_wake(ltty->trigger);
 					}
 				}

@@ -57,7 +57,9 @@ static int tty_open(struct vfs_node *, struct file_handle *file) {
 static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t) {
 	struct tty *tty = file->private_data;
 	tty_lock(tty);
+
 	ssize_t ret = tty->driver->ops->read(tty, buf, count);
+
 	tty_unlock(tty);
 	return ret;
 }
@@ -65,8 +67,10 @@ static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t
 static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count, off_t) {
 	struct tty *tty = file->private_data;
 	tty_lock(tty);
+
 	ssize_t ret = tty->driver->ops->write(tty, buf, count);
 	tty_unlock(tty);
+
 	return ret;
 }
 

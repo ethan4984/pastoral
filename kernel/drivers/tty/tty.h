@@ -6,7 +6,6 @@
 #include <lib/termios.h>
 #include <lib/ioctl.h>
 
-
 struct tty;
 
 struct tty_ops {
@@ -22,7 +21,6 @@ extern struct file_ops tty_cdev_ops;
 struct tty_driver {
 	struct tty_ops *ops;
 };
-
 
 struct tty {
 	char lock;
@@ -45,8 +43,9 @@ struct tty {
 	size_t output_buffer_size;
 	size_t output_buffer_head;
 	size_t output_buffer_tail;
-};
 
+	struct file_handle *file_handle; 
+};
 
 int tty_register(dev_t dev, struct tty *);
 int tty_unregister(dev_t dev);
