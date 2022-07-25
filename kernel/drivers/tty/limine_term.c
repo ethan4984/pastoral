@@ -224,9 +224,26 @@ static ssize_t limine_tty_write(struct tty *tty, const void *buf, size_t count) 
 }
 
 static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {
-	// TODO: TIOCWINSZ
-	set_errno(ENOTTY);
-	return -1;
+	struct limine_tty *ltty = tty->private_data;
+
+	switch(req) {
+		case TIOCGWINSZ:
+			struct winsize *winsize = arg;
+
+			*winsize = (struct winsize) {
+				.ws_row = ltty->terminal->columns,
+				.ws_col = ltty->terminal->rows,
+				.ws_xpixel = ltty->terminal->framebuffer->width,
+				.ws_ypixel = ltty->terminal->framebuffer->height
+			};
+
+			break;
+		default:
+			set_errno(EINVAL);
+			return -1;
+	}
+
+	return 0;
 }
 
 void limine_terminals_init() {
