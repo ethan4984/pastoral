@@ -63,6 +63,17 @@ sources:
         environ:
           NOCONFIGURE: 'yes'
 
+  - name: ncurses
+    subdir: 'ports'
+    git: 'https://github.com/ThomasDickey/ncurses-snapshots.git'
+    tag: 'v6_3_20220507'
+    version: '6.3.20220507'
+    tools_required:
+      - host-autoconf-v2.69
+      - host-automake-v1.16
+    regenerate:
+      - args: ['cp', '@BUILD_ROOT@/tools/host-automake-v1.16/share/automake-1.16/config.sub', '@THIS_SOURCE_DIR@/']
+
 tools:
   - name: host-autoconf-v2.69
     source:
@@ -126,6 +137,17 @@ tools:
       - args: ['make', '-j@PARALLELISM@']
     install:
       - args: ['make', 'install']
+
+  - name: host-tic
+    from_source: ncurses
+    configure:
+      - args: ['@THIS_SOURCE_DIR@/configure']
+    compile:
+      - args: ['make', '-C', 'include']
+      - args: ['make', '-C', 'progs', 'tic']
+    install:
+      - args: ['mkdir', '-p', '@PREFIX@/bin']
+      - args: ['cp', 'progs/tic', '@PREFIX@/bin/']
 
   - name: host-gcc
     from_source: gcc
@@ -509,3 +531,44 @@ packages:
       - args: ['make', 'install']
         environ:
           DESTDIR: '@THIS_COLLECT_DIR@'
+  - name: ncurses
+    from_source: ncurses
+    tools_required:
+      - host-gcc
+      - host-tic
+      - host-automake-v1.16
+      - host-autoconf-v2.69
+      - host-pkg-config
+    pkgs_required:
+      - mlibc
+    configure:
+      - args:
+        - '@THIS_SOURCE_DIR@/configure'
+        - '--host=x86_64-pastoral'
+        - '--prefix=/usr'
+        - '--without-ada'
+        - '--enable-pc-files'
+        - '--with-shared'
+        - '--without-normal'
+        - '--with-manpage-format=normal'
+        - '--with-termlib'
+        - '--enable-widec'
+        environ:
+          cf_cv_func_nanosleep: 'yes'
+          PKG_CONFIG_SYSROOT_DIR: '@BUILD_ROOT@/system-root'
+          PKG_CONFIG_LIBDIR: '@BUILD_ROOT@/system-root/usr/lib/pkgconfig:@BUILD_ROOT@/system-root/usr/share/pkgconfig'
+    build:
+      - args: ['make', '-j@PARALLELISM@']
+      - args: ['make', 'DESTDIR=@THIS_COLLECT_DIR@', 'install', 'PKG_CONFIG_LIBDIR=/usr/share/pkgconfig']
+      # As we build ncurses with wide character support, make some compatibility links
+      - args: |
+          set -e
+          mkdir -p "@THIS_COLLECT_DIR@/usr/lib/pkgconfig"
+          for lib in ncurses form panel menu tinfo ; do
+              rm -vf                    @THIS_COLLECT_DIR@/usr/lib/lib${lib}.so
+              echo "INPUT(-l${lib}w)" > @THIS_COLLECT_DIR@/usr/lib/lib${lib}.so
+              ln -sfv ${lib}w.pc        @THIS_COLLECT_DIR@/usr/lib/pkgconfig/${lib}.pc
+          done
+          rm -vf                     @THIS_COLLECT_DIR@/usr/lib/libcursesw.so
+          echo "INPUT(-lncursesw)" > @THIS_COLLECT_DIR@/usr/lib/libcursesw.so
+          ln -sfv libncurses.so      @THIS_COLLECT_DIR@/usr/lib/libcurses.so

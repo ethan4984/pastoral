@@ -1,0 +1,27 @@
+From a799db2640f9154b6f7bd460cd912ba57af05d93 Mon Sep 17 00:00:00 2001
+From: ethan <ethanm4984@gmail.com>
+Date: Mon, 9 May 2022 13:46:03 +0200
+Subject: [PATCH] Pastoral specific changes
+
+---
+ configure | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/configure b/configure
+index 18928eb..2c026d4 100755
+--- a/configure
++++ b/configure
+@@ -6460,6 +6460,10 @@ CF_EOF
+ 		LINK_PROGS="$SHELL ${rel_builddir}/mk_prog.sh"
+ 		LINK_TESTS="$SHELL ${rel_builddir}/mk_prog.sh"
+ 		;;
++	(pastoral*)
++		CC_SHARED_OPTS='-fPIC'
++		MK_SHARED_LIB='${CC} -shared -o $@'
++		;;
+ 	(mingw*)
+ 		cf_cv_shlib_version=mingw
+ 		cf_cv_shlib_version_infix=mingw
+-- 
+2.35.1
+
