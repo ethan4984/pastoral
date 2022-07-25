@@ -4,6 +4,11 @@
 
 // terminal ioctls
 
+#define TCGETS 0x5401
+#define TCSETS 0x5402
+#define TCSETSW 0x5303
+#define TCSETSF 0x5304
+
 #define TIOCGPGRP 0x540f
 #define TIOCSPGRP 0x5410
 #define TIOCGWINSZ 0x5413

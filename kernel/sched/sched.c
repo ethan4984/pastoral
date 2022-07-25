@@ -192,8 +192,13 @@ void reschedule(struct registers *regs, void*) {
 void sched_dequeue(struct sched_task *task, struct sched_thread *thread) {
 	spinlock(&sched_lock);
 
-	task->sched_status = TASK_YIELD;
-	thread->sched_status = TASK_YIELD;
+	if(task) {
+		task->sched_status = TASK_YIELD;
+	}
+
+	if(thread) {
+		thread->sched_status = TASK_YIELD;
+	}
 
 	spinrelease(&sched_lock);
 }

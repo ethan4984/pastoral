@@ -19,7 +19,7 @@ int waitq_wait(struct waitq *waitq, int type) {
 		waitq->pending--;
 		spinrelease(&waitq->lock);
 
-		return trigger->type; 
+		return trigger->type;
 	}
 
 	VECTOR_PUSH(waitq->threads, thread);
@@ -30,7 +30,7 @@ int waitq_wait(struct waitq *waitq, int type) {
 		sched_dequeue(task, thread);
 
 		task->waiting = 1;
-	
+
 		asm volatile ("sti");
 
 		while(task->waiting);
@@ -40,7 +40,7 @@ int waitq_wait(struct waitq *waitq, int type) {
 		if(trigger == NULL) {
 			continue;
 		}
-		
+
 		waitq->pending--;
 
 		if(type == EVENT_ANY) {
@@ -100,7 +100,7 @@ int waitq_remove(struct waitq *waitq, struct waitq_trigger *trigger) {
 
 int waitq_wake(struct waitq_trigger *trigger) {
 	if(trigger == NULL || trigger->waitq == NULL) {
-		return -1; 
+		return -1;
 	}
 
 	struct waitq *waitq = trigger->waitq;

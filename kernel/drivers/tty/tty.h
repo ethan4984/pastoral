@@ -5,15 +5,20 @@
 #include <lib/types.h>
 #include <lib/termios.h>
 #include <lib/ioctl.h>
+#include <lib/circular_queue.h>
+#include <sched/queue.h>
+
+#define INPUT_BUFFER_SIZE 256
+#define OUTPUT_BUFFER_SIZE 256
 
 struct tty;
 
 struct tty_ops {
 	int (*connect)(struct tty *);
-	ssize_t (*read)(struct tty *, void *, size_t);
-	ssize_t (*write)(struct tty *, const void *, size_t);
 	int (*ioctl)(struct tty *tty, uint64_t, void *);
 	int (*disconnect)(struct tty *);
+
+	void (*flush_output)(struct tty *);
 };
 
 extern struct file_ops tty_cdev_ops;
@@ -34,21 +39,19 @@ struct tty {
 	struct process_group *foreground_group;
 
 	char input_lock;
-	void *input_buffer;
-	size_t input_buffer_size;
-	size_t input_buffer_head;
-	size_t input_buffer_tail;
+	struct circular_queue input_queue;
 
-	void *output_buffer;
-	size_t output_buffer_size;
-	size_t output_buffer_head;
-	size_t output_buffer_tail;
+	char output_lock;
+	struct circular_queue output_queue;
 
-	struct file_handle *file_handle; 
+	struct waitq poll_waitq;
+	struct waitq_trigger *poll_trigger;
 };
 
 int tty_register(dev_t dev, struct tty *);
 int tty_unregister(dev_t dev);
+void tty_handle_cc(struct tty *, int cc);
+void tty_default_termios(struct termios *);
 
 static inline void tty_lock(struct tty *tty) {
 	spinlock(&tty->lock);
