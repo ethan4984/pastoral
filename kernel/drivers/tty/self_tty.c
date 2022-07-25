@@ -22,6 +22,7 @@ int self_tty_init() {
 		return -1;
 
 	struct stat *stat = alloc(sizeof(struct stat));
+	stat_init(stat);
 	stat->st_mode = S_IFCHR | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
 	stat->st_rdev = makedev(SELF_TTY_MAJOR, 0);
 	vfs_create_node_deep(NULL, NULL, NULL, stat, "/dev/tty");

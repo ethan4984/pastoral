@@ -4,7 +4,6 @@
 #include <vector.h>
 #include <sched/queue.h>
 
-
 #define SIG_IGN (void *) (-2)
 #define SIG_DFL (void *) (-3)
 
@@ -118,10 +117,13 @@ struct signal_queue {
 	struct sched_thread *thread;
 };
 
+struct process_group;
+
 int sigaction(int sig, const struct sigaction *act, struct sigaction *old);
 int sigpending(sigset_t *set);
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
-int signal_send(struct sched_thread *sender, struct sched_thread *target, int sig);
+int signal_send_thread(struct sched_thread *sender, struct sched_thread *target, int sig);
+int signal_send_group(struct sched_thread *sender, struct process_group *target, int sig);
 int signal_check_permissions(struct sched_task *sender, struct sched_task *target);
 int signal_is_valid(int sig);
 int signal_dispatch(struct sched_thread *thread);

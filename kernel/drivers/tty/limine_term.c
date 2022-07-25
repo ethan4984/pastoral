@@ -23,18 +23,17 @@ struct limine_tty {
 
 	bool shift;
 	bool caps;
+	bool control;
 };
 
 static struct tty *active_tty;
 
-static ssize_t limine_tty_read(struct tty *tty, void *buf, size_t count);
-static ssize_t limine_tty_write(struct tty *tty, const void *buf, size_t count);
+static void limine_tty_flush_output(struct tty *tty);
 static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg);
 
 static struct tty_ops limine_terminal_ops = {
-	.read = limine_tty_read,
-	.write = limine_tty_write,
-	.ioctl = limine_tty_ioctl
+	.ioctl = limine_tty_ioctl,
+	.flush_output = limine_tty_flush_output
 };
 
 static struct tty_driver limine_terminal_driver = {
@@ -47,16 +46,14 @@ static volatile struct limine_terminal_request limine_terminal_request = {
 };
 
 
-static void limine_print(struct limine_tty *ltty, const char *str, size_t length) {
+static void limine_print(struct limine_tty *ltty, char *str, size_t length) {
 	asm volatile("cli\n");
-	char *s = alloc(length);
-	memcpy(s, str, length);
 
 	uint64_t cr3;
 	asm volatile("mov %%cr3, %0" : "=r"(cr3));
 	asm volatile("mov %0, %%cr3" :: "r"((uint64_t) ltty->page_table.pml_high - HIGH_VMA) : "memory");
 
-	ltty->write(ltty->terminal, s, length);
+	ltty->write(ltty->terminal, str, length);
 
 	asm volatile("mov %0, %%cr3" :: "r"(cr3) : "memory");
 	asm volatile("sti\n");
@@ -95,47 +92,6 @@ static char keymap_shift_caps[] = {
 	'b', 'n', 'm', '<', '>',  '?', '\0', '\0', 27, ' '
 };
 
-
-static bool input_queue_push(struct tty *tty, char data) {
-	char *buf = tty->input_buffer;
-	if((tty->input_buffer_head == 0 && tty->input_buffer_tail ==
-		(tty->input_buffer_size - 1)) || (tty->input_buffer_head ==
-			(tty->input_buffer_tail + 1)))
-		return false;
-
-	if(tty->input_buffer_head == -1) {
-		tty->input_buffer_head = 0;
-		tty->input_buffer_tail = 0;
-	} else {
-		if(tty->input_buffer_tail == (tty->input_buffer_size - 1))
-			tty->input_buffer_tail = 0;
-		else
-			tty->input_buffer_tail++;
-	}
-
-	buf[tty->input_buffer_tail] = data;
-	return true;
-}
-
-static bool input_queue_pop(struct tty *tty, char *data) {
-	char *buf = tty->input_buffer;
-	if(tty->input_buffer_head == -1)
-		return false;
-
-	*data = buf[tty->input_buffer_head];
-	if(tty->input_buffer_head == tty->input_buffer_tail) {
-		tty->input_buffer_head = -1;
-		tty->input_buffer_tail = -1;
-	} else {
-		if(tty->input_buffer_head == (tty->input_buffer_size - 1))
-			tty->input_buffer_head = 0;
-		else
-			tty->input_buffer_head++;
-	}
-
-	return true;
-}
-
 static void ps2_handler(struct registers *, void *) {
 	if(!active_tty) {
 		while(inb(0x64) & 1)
@@ -144,8 +100,6 @@ static void ps2_handler(struct registers *, void *) {
 	}
 
 	struct limine_tty *ltty = active_tty->private_data;
-
-	spinlock(&active_tty->input_lock);
 
 	while(inb(0x64) & 1) {
 		uint8_t keycode = inb(0x60);
@@ -166,6 +120,12 @@ static void ps2_handler(struct registers *, void *) {
 			case 0x3a:
 				ltty->caps = !ltty->caps;
 				break;
+			case 0x1d:
+				ltty->control = true;
+				break;
+			case 0x9d:
+				ltty->control = false;
+				break;
 			default:
 				if(keycode <= 128) {
 					char character;
@@ -180,46 +140,34 @@ static void ps2_handler(struct registers *, void *) {
 						character = keymap_shift_caps[keycode];
 					}
 
-					if(input_queue_push(active_tty, character)) {
-						waitq_trigger_calibrate(ltty->trigger, CURRENT_TASK, CURRENT_THREAD, EVENT_COMMAND);
-						waitq_wake(ltty->trigger);
+					if(ltty->control) {
+						if((character >= 'A') && (character <= 'z')) {
+							if(character >= 'a') {
+								character = character - 'a' + 1;
+							} else if(character <= '^') {
+								character = character - 'A' + 1;
+							}
+						}
 					}
+
+					circular_queue_push(&active_tty->input_queue, &character);
 				}
 		}
 	}
 
-	spinrelease(&active_tty->input_lock);
 }
 
-static ssize_t limine_tty_read(struct tty *tty, void *buf, size_t count) {
-	struct limine_tty *ltty = tty->private_data;
-
-	waitq_wait(&ltty->waitq, EVENT_COMMAND);
-
-	spinlock(&tty->input_lock);
-
-	size_t i;
-	char *b = buf;
-
-	for(i = 0; i < count; i++) {
-		char data;
-
-		if(!input_queue_pop(tty, &data)) {
-			break;
-		}
-
-		limine_print(active_tty->private_data, &data, 1);
-		*b++ = data;
+static void limine_tty_flush_output(struct tty *tty) {
+	spinlock(&tty->output_lock);
+	char ch;
+	char buf[OUTPUT_BUFFER_SIZE];
+	size_t count = 0;
+	while(circular_queue_pop(&tty->output_queue, &ch)) {
+		buf[count] = ch;
+		count++;
 	}
-
-	spinrelease(&tty->input_lock);
-
-	return i;
-}
-
-static ssize_t limine_tty_write(struct tty *tty, const void *buf, size_t count) {
 	limine_print(tty->private_data, buf, count);
-	return count;
+	spinrelease(&tty->output_lock);
 }
 
 static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {
@@ -238,7 +186,7 @@ static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {
 
 			break;
 		default:
-			set_errno(EINVAL);
+			set_errno(ENOSYS);
 			return -1;
 	}
 
@@ -274,16 +222,6 @@ void limine_terminals_init() {
 
 		tty->driver = &limine_terminal_driver;
 		tty->private_data = ltty;
-		tty->input_buffer = (void *) (pmm_alloc(PAGE_SIZE / PAGE_SIZE, 1) + HIGH_VMA);
-		tty->input_buffer_size = PAGE_SIZE;
-		tty->input_buffer_head = -1;
-		tty->input_buffer_tail = -1;
-
-		tty->output_buffer = (void *) (pmm_alloc(PAGE_SIZE / PAGE_SIZE, 1) + HIGH_VMA);
-		tty->output_buffer_size = PAGE_SIZE;
-		tty->output_buffer_head = -1;
-		tty->output_buffer_tail = -1;
-
 		tty_register(makedev(LIMINE_TTY_MAJOR, limine_tty_minor), tty);
 
 		char *device_path = alloc(MAX_PATH_LENGTH);

@@ -82,7 +82,11 @@ typedef unsigned int tcflag_t;
 #define ISIG 0x40
 #define NOFLSH 0x80
 #define TOSTOP 0x100
-#define ECHOPRT 0x200
+
+// Mlibc clashes these two definitions. ECHOCTL is more
+// important for us, so support that first.
+//#define ECHOPRT 0x200
+#define ECHOCTL 0x200
 
 // c_ccs
 #define NCCS 11
@@ -105,4 +109,6 @@ struct termios {
 	tcflag_t c_cflag;
 	tcflag_t c_lflag;
 	cc_t c_cc[NCCS];
+	speed_t ibaud;
+	speed_t obaud;
 };

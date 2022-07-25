@@ -117,13 +117,16 @@ int signal_is_valid(int sig) {
 	return 0;
 }
 
-int signal_send(struct sched_thread *sender, struct sched_thread *target, int sig) {
+int signal_send_thread(struct sched_thread *sender, struct sched_thread *target, int sig) {
 	if(signal_is_valid(sig) == -1 && sig != 0) {
 		set_errno(EINVAL);
 		return -1;
 	}
 
-	struct sched_task *sender_task = sched_translate_pid(sender->pid);
+	struct sched_task *sender_task = NULL;
+	if(sender) {
+		sender_task = sched_translate_pid(target->pid);
+	}
 	struct sched_task *target_task = sched_translate_pid(target->pid);
 
 	struct signal_queue *queue = &target->signal_queue;
@@ -131,7 +134,7 @@ int signal_send(struct sched_thread *sender, struct sched_thread *target, int si
 	spinlock(&target_task->sig_lock);
 	spinlock(&queue->siglock);
 
-	if(signal_check_permissions(sender_task, target_task) == -1) {
+	if(sender != NULL && signal_check_permissions(sender_task, target_task) == -1) {
 		set_errno(EPERM);
 		spinrelease(&queue->siglock);
 		spinrelease(&target_task->sig_lock);
@@ -158,6 +161,22 @@ int signal_send(struct sched_thread *sender, struct sched_thread *target, int si
 
 	spinrelease(&queue->siglock);
 	spinrelease(&target_task->sig_lock);
+
+	return 0;
+}
+
+int signal_send_group(struct sched_thread *sender, struct process_group *target, int sig) {
+	for(size_t i = 0; i < target->process_list.length; i++) {
+		pid_t pid = target->process_list.data[i]->pid;
+
+		struct sched_thread *thread = sched_translate_tid(pid, 0);
+		if(!thread) {
+			set_errno(ESRCH);
+			return -1;
+		}
+
+		signal_send_thread(sender, thread, sig);
+	}
 
 	return 0;
 }
@@ -305,36 +324,12 @@ int kill(pid_t pid, int sig) {
 			return -1;
 		}
 
-		signal_send(sender, target, sig);
+		signal_send_thread(sender, target, sig);
 	} else if(pid == 0) {
-		struct process_group *group = current_task->group;
-
-		for(size_t i = 0; i < group->process_list.length; i++) {
-			struct sched_thread *target = sched_translate_tid(group->process_list.data[i]->pid, 0);
-			if(target == NULL) {
-				set_errno(ESRCH);
-				return -1;
-			}
-
-			signal_send(sender, target, sig);
-		}
+		signal_send_group(sender, current_task->group, sig);
 	} else if(pid == -1) {
-		struct process_group *group = current_task->group;
-
-		for(size_t i = 0; i < group->process_list.length; i++) {
-			pid_t pid = group->process_list.data[i]->pid;
-			if(pid == 1) {
-				continue;
-			}
-
-			struct sched_thread *target = sched_translate_tid(pid, 0);
-			if(target == NULL) {
-				set_errno(ESRCH);
-				return -1;
-			}
-
-			signal_send(sender, target, sig);
-		}
+		// TODO: Send signal to ALL processes in the system.
+		signal_send_group(sender, current_task->group, sig);
 	} else {
 		struct session *session = current_task->session;
 		struct process_group *group = hash_table_search(&session->group_list, &pid, sizeof(pid));
@@ -353,7 +348,7 @@ int kill(pid_t pid, int sig) {
 				return -1;
 			}
 
-			signal_send(sender, target, sig);
+			signal_send_thread(sender, target, sig);
 		}
 	}
 
