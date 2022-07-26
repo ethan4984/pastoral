@@ -49,7 +49,7 @@ static int tty_open(struct vfs_node *, struct file_handle *file) {
 			if(tty->driver->ops->connect(tty) == -1)
 				return -1;
 
-	if(!tty->session) {
+	if(!tty->session && !(file->flags & O_NOCTTY)) {
 		tty->session = CURRENT_TASK->session;
 		tty->foreground_group = CURRENT_TASK->group;
 		CURRENT_TASK->session->tty = tty;
