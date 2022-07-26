@@ -7,8 +7,6 @@
 #include <sched/signal.h>
 #include <lib/debug.h>
 
-
-
 static int tty_open(struct vfs_node *, struct file_handle *file);
 static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t);
 static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count, off_t);
@@ -22,7 +20,6 @@ struct file_ops tty_cdev_ops = {
 	.close = tty_close,
 	.ioctl = tty_ioctl
 };
-
 
 int tty_register(dev_t dev, struct tty *tty) {
 	circular_queue_init(&tty->input_queue, INPUT_BUFFER_SIZE, sizeof(char));
@@ -80,10 +77,6 @@ static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t
 	while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) == 0);
 	spinlock(&tty->input_lock);
 
-	// TODO: Proper raw and canonical mode.
-	// For raw mode, implement VMIN and VTIME.
-	// For canonical mode, only make new data ready for return
-	// only when new line or eof is found when typing it.
 	for(ret = 0; ret < (ssize_t)count; ret++) {
 		char ch;
 

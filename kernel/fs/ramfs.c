@@ -9,18 +9,15 @@
 
 struct hash_table ramfs_node_list;
 
-
 static struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, struct stat *stat);
 static int ramfs_truncate(struct vfs_node *node, off_t cnt);
 static ssize_t ramfs_read(struct file_handle *file, void *buf, size_t cnt, off_t offset);
 static ssize_t ramfs_write(struct file_handle *file, const void *buf, size_t cnt, off_t offset);
 
-
 struct filesystem ramfs_filesystem = {
 	.create = ramfs_create,
 	.truncate = ramfs_truncate
 };
-
 
 struct file_ops ramfs_fops = {
 	.read = ramfs_read,
