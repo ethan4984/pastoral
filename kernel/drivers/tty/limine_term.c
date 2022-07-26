@@ -221,6 +221,7 @@ void limine_terminals_init() {
 		ltty->trigger = waitq_alloc(&ltty->waitq, EVENT_COMMAND);
 
 		tty->driver = &limine_terminal_driver;
+		tty->generate_signals = true;
 		tty->private_data = ltty;
 		tty_register(makedev(LIMINE_TTY_MAJOR, limine_tty_minor), tty);
 

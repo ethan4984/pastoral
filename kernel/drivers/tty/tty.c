@@ -21,12 +21,15 @@ struct file_ops tty_cdev_ops = {
 	.ioctl = tty_ioctl
 };
 
-int tty_register(dev_t dev, struct tty *tty) {
+void tty_init(struct tty *tty) {
 	circular_queue_init(&tty->input_queue, MAX_LINE, sizeof(char));
 	circular_queue_init(&tty->output_queue, OUTPUT_BUFFER_SIZE, sizeof(char));
 	circular_queue_init(&tty->canon_queue, MAX_CANON_LINES, sizeof(struct circular_queue *));
-
 	tty_default_termios(&tty->termios);
+}
+
+int tty_register(dev_t dev, struct tty *tty) {
+	tty_init(tty);
 
 	struct cdev *cdev = alloc(sizeof(struct cdev));
 	cdev->fops = &tty_cdev_ops;

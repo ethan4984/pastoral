@@ -34,6 +34,7 @@ struct tty_driver {
 struct tty {
 	char lock;
 	int refcnt; // To track connections and disconnections.
+	bool generate_signals;
 
 	struct termios termios;
 	struct tty_driver *driver;
@@ -55,6 +56,7 @@ struct tty {
 	struct waitq_trigger *poll_trigger;
 };
 
+void tty_init(struct tty *);
 int tty_register(dev_t dev, struct tty *);
 int tty_unregister(dev_t dev);
 void tty_default_termios(struct termios *);
