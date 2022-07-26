@@ -186,7 +186,6 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 				return -1;
 			}
 
-
 			pid_t pgrp = *(pid_t *) arg;
 			struct process_group *group;
 
@@ -201,9 +200,6 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			return 0;
 		}
 
-// TODO: this for some reason faults.
-
-/*
 		case TCGETS: {
 #ifndef SYSCALL_DEBUG
 			print("syscall: [pid %x] tty_ioctl (TCGETS)\n", CORE_LOCAL->pid);
@@ -214,6 +210,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			*attr = tty->termios;
 			spinrelease(&tty->output_lock);
 			spinrelease(&tty->input_lock);
+			tty_unlock(tty);
 			return 0;
 		}
 
@@ -227,6 +224,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			tty->termios = *attr;
 			spinrelease(&tty->output_lock);
 			spinrelease(&tty->input_lock);
+			tty_unlock(tty);
 			return 0;
 		}
 
@@ -241,6 +239,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			tty->termios = *attr;
 			spinrelease(&tty->input_lock);
 			spinrelease(&tty->output_lock);
+			tty_unlock(tty);
 			return 0;
 		}
 
@@ -257,9 +256,9 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			while(circular_queue_pop(&tty->input_queue, &ch));
 			spinrelease(&tty->input_lock);
 			spinrelease(&tty->output_lock);
+			tty_unlock(tty);
 			return 0;
 		}
-*/
 
 		default:
 			if(tty->driver->ops->ioctl) {
