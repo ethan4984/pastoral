@@ -100,7 +100,7 @@ static void ps2_handler(struct registers *, void *) {
 	}
 
 	struct limine_tty *ltty = active_tty->private_data;
-
+	spinlock(&active_tty->input_lock);
 	while(inb(0x64) & 1) {
 		uint8_t keycode = inb(0x60);
 
@@ -154,7 +154,7 @@ static void ps2_handler(struct registers *, void *) {
 				}
 		}
 	}
-
+	spinrelease(&active_tty->input_lock);
 }
 
 static void limine_tty_flush_output(struct tty *tty) {

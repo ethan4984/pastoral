@@ -22,8 +22,10 @@ struct file_ops tty_cdev_ops = {
 };
 
 int tty_register(dev_t dev, struct tty *tty) {
-	circular_queue_init(&tty->input_queue, INPUT_BUFFER_SIZE, sizeof(char));
+	circular_queue_init(&tty->input_queue, MAX_LINE, sizeof(char));
 	circular_queue_init(&tty->output_queue, OUTPUT_BUFFER_SIZE, sizeof(char));
+	circular_queue_init(&tty->canon_queue, MAX_CANON_LINES, sizeof(struct circular_queue *));
+
 	tty_default_termios(&tty->termios);
 
 	struct cdev *cdev = alloc(sizeof(struct cdev));
@@ -58,71 +60,16 @@ static int tty_open(struct vfs_node *, struct file_handle *file) {
 	return 0;
 }
 
-static bool pass_to_buf(struct termios *attr, char ch) {
-	for(size_t i = 0; i < NCCS; i++) {
-		if(attr->c_cc[i] == ch) {
-			return false;
-		}
-	}
-
-	return true;
-}
-
 static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t) {
 	struct tty *tty = file->private_data;
 	ssize_t ret;
-	char *b = buf;
 
 	tty_lock(tty);
-	while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) == 0);
-	spinlock(&tty->input_lock);
-
-	for(ret = 0; ret < (ssize_t)count; ret++) {
-		char ch;
-
-		if(!circular_queue_pop(&tty->input_queue, &ch)) {
-			break;
-		}
-
-		if(tty->termios.c_lflag & ECHO) {
-			spinlock(&tty->output_lock);
-			if(ch > 31 || ch == '\n' || ch == '\t') {
-				circular_queue_push(&tty->output_queue, &ch);
-			} else if ((tty->termios.c_lflag & ECHOCTL)
-						&& ch != tty->termios.c_cc[VERASE]){
-				char aux[] = {'^', ch + 0100};
-				circular_queue_push(&tty->output_queue, &aux[0]);
-				circular_queue_push(&tty->output_queue, &aux[1]);
-			}
-			spinrelease(&tty->output_lock);
-			tty->driver->ops->flush_output(tty);
-		}
-
-		// TODO: this should only be handled on ICANON mode.
-		if(ch == tty->termios.c_cc[VERASE]) {
-			spinlock(&tty->output_lock);
-			char aux[] = {'\b', ' ', '\b'};
-			circular_queue_push(&tty->output_queue, &aux[0]);
-			circular_queue_push(&tty->output_queue, &aux[1]);
-			circular_queue_push(&tty->output_queue, &aux[2]);
-			spinrelease(&tty->output_lock);
-			tty->driver->ops->flush_output(tty);
-
-			*b = '\b';	// This should not returned, but let's make bash happy.
-			continue;
-		}
-
-		if(ch > 31 || ch == '\n' || ch == '\t' || pass_to_buf(&tty->termios, ch))
-			*b++ = ch;
-
-		// TODO: Signals (ISIG)
-
-		if(tty->termios.c_lflag & ICANON) {
-			if(ch == '\n' || ch == tty->termios.c_cc[VEOF])
-				break;
-		}
+	if(tty->termios.c_lflag & ICANON) {
+		ret = tty_handle_canon(tty, buf, count);
+	} else {
+		ret = tty_handle_raw(tty, buf, count);
 	}
-	spinrelease(&tty->input_lock);
 	tty_unlock(tty);
 
 	return ret;
@@ -274,7 +221,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 }
 
 void tty_default_termios(struct termios *attr) {
-	attr->c_lflag = ECHO | ECHOCTL | ICANON | ISIG;
+	attr->c_lflag = ECHO | ECHOCTL | ECHOE | ISIG | ICANON;
 
 	attr->c_cc[VEOF] = 4;		// ^D
 	attr->c_cc[VERASE] = 8;		// ^H
@@ -282,7 +229,10 @@ void tty_default_termios(struct termios *attr) {
 	attr->c_cc[VKILL] = 21;		// ^U
 	attr->c_cc[VSTART] = 17;	// ^Q
 	attr->c_cc[VSTOP] = 19;		// ^S
-	attr->c_cc[VSUSP] = 28;		// ^Z
+	attr->c_cc[VSUSP] = 26;		// ^Z
+	attr->c_cc[VEOL] = '\n';
+	attr->c_cc[VQUIT] = 28;
+
 	attr->c_cc[VTIME] = 0;
 	attr->c_cc[VMIN] = 1;
 }

@@ -23,6 +23,7 @@
 #include <time.h>
 #include <hash.h>
 #include <drivers/tty/self_tty.h>
+#include <drivers/tty/pty.h>
 
 static volatile struct limine_stack_size_request limine_stack_size_request = {
 	.id = LIMINE_STACK_SIZE_REQUEST,
@@ -152,6 +153,7 @@ void pastoral_thread() {
 
 	limine_terminals_init();
 	self_tty_init();
+	pty_init();
 
 	struct limine_framebuffer **framebuffers = limine_framebuffer_request.response->framebuffers;
 	uint64_t framebuffer_count = limine_framebuffer_request.response->framebuffer_count;

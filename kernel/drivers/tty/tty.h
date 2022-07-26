@@ -8,7 +8,11 @@
 #include <lib/circular_queue.h>
 #include <sched/queue.h>
 
-#define INPUT_BUFFER_SIZE 256
+#define MAX_LINE 256
+#define MAX_CANON 256
+
+#define MAX_CANON_LINES 256
+
 #define OUTPUT_BUFFER_SIZE 256
 
 struct tty;
@@ -44,14 +48,19 @@ struct tty {
 	char output_lock;
 	struct circular_queue output_queue;
 
+	char canon_lock;
+	struct circular_queue canon_queue;
+
 	struct waitq poll_waitq;
 	struct waitq_trigger *poll_trigger;
 };
 
 int tty_register(dev_t dev, struct tty *);
 int tty_unregister(dev_t dev);
-void tty_handle_cc(struct tty *, int cc);
 void tty_default_termios(struct termios *);
+
+ssize_t tty_handle_canon(struct tty *, void *, size_t);
+ssize_t tty_handle_raw(struct tty *, void *, size_t);
 
 static inline void tty_lock(struct tty *tty) {
 	spinlock(&tty->lock);
