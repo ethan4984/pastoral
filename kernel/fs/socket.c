@@ -17,7 +17,7 @@ static struct file_ops socket_file_ops = {
 };
 
 static bool socket_validate_family(int family) {
-	if(family != AF_UNIX || family != AF_LOCAL || family != AF_NETLINK) {
+	if(family != AF_UNIX && family != AF_NETLINK) {
 		return false;
 	} else {
 		return true;
@@ -25,7 +25,7 @@ static bool socket_validate_family(int family) {
 }
 
 static bool socket_validate_type(int type) {
-	if(type != SOCK_STREAM || type != SOCK_DGRAM || type != SOCK_RAW || type != SOCK_RDM) {
+	if(type != SOCK_STREAM && type != SOCK_DGRAM && type != SOCK_RAW && type != SOCK_RDM) {
 		return false;	
 	} else { 
 		return true;
