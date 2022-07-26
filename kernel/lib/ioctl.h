@@ -15,6 +15,7 @@
 #define TIOCSWINSZ 0x5414
 #define TIOCGSID 0x5429
 
+#define TIOCGPTN 0x80045430
 
 struct winsize {
 	uint16_t ws_row;

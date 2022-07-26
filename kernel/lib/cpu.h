@@ -55,8 +55,8 @@ struct registers {
 	uint64_t isr_number;
 	uint64_t error_code;
 	uint64_t rip;
-	uint64_t cs; 
-	uint64_t rflags; 
+	uint64_t cs;
+	uint64_t rflags;
 	uint64_t rsp;
 	uint64_t ss;
 };
@@ -149,7 +149,7 @@ static inline void spinrelease(void *lock) {
 }
 
 static inline void set_errno(uint64_t code) {
-	CORE_LOCAL->errno = code;	
+	CORE_LOCAL->errno = code;
 }
 
 static inline uint64_t get_errno() {
