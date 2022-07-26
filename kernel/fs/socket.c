@@ -69,6 +69,10 @@ static struct socket *socket_create(int family, int type, int protocol) {
 			socket->getpeername = unix_getpeername;
 			socket->accept = NULL;
 			socket->listen = NULL;
+
+			socket->addr = alloc(sizeof(struct socketaddr_un));
+			socket->family = AF_UNIX;
+
 			break;
 		case AF_NETLINK:
 			socket->bind = NULL;
@@ -79,6 +83,10 @@ static struct socket *socket_create(int family, int type, int protocol) {
 			socket->getpeername = NULL;
 			socket->accept = NULL;
 			socket->listen = NULL;
+
+			socket->addr = alloc(sizeof(struct socketaddr_un));
+			socket->family = AF_UNIX;
+
 			break;
 		default:
 			set_errno(EINVAL);
@@ -123,6 +131,11 @@ static int unix_bind(struct socket *socket, const struct socketaddr *socketaddr,
 
 	if(socket->state == SOCKET_CONNECTED || socket->state == SOCKET_CONNECTING) {
 		set_errno(EINVAL);
+		return -1;
+	}
+
+	if(unix_search_address(socketaddr_un, length)) {
+		set_errno(EADDRINUSE);
 		return -1;
 	}
 
