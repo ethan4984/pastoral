@@ -84,6 +84,10 @@ int waitq_add(struct waitq *waitq, struct waitq_trigger *trigger) {
 }
 
 int waitq_remove(struct waitq *waitq, struct waitq_trigger *trigger) {
+	if(waitq == NULL || trigger == NULL) {
+		return -1;
+	}
+
 	spinlock(&waitq->lock);
 
 	VECTOR_REMOVE_BY_VALUE(waitq->triggers, trigger);

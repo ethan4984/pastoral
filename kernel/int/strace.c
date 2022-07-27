@@ -65,6 +65,7 @@ extern void syscall_getpeername(struct registers*);
 extern void syscall_listen(struct registers*);
 extern void syscall_accept(struct registers*);
 extern void syscall_bind(struct registers*);
+extern void syscall_connect(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -176,7 +177,8 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_getpeername, .name = "getpeername" }, // 57
 	{ .handler = syscall_listen, .name = "listen" }, // 58
 	{ .handler = syscall_accept, .name = "accept" }, // 59
-	{ .handler = syscall_bind, .name = "bind" } // 60
+	{ .handler = syscall_bind, .name = "bind" }, // 60
+	{ .handler = syscall_connect, .name = "connect" } // 61
 };
 
 extern void syscall_handler(struct registers *regs) {

@@ -12,6 +12,7 @@ static int unix_getsockname(struct socket *socket, struct socketaddr *addr, sock
 static int unix_getpeername(struct socket *socket, struct socketaddr *addr, socklen_t *length);
 static int unix_listen(struct socket *socket, int backlog);
 static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t *length);
+static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length);
 
 static struct file_ops socket_file_ops = {
 	.read = socket_read,
@@ -56,7 +57,7 @@ static struct socket *socket_create(int family, int type, int protocol) {
 	switch(family) {
 		case AF_UNIX:
 			socket->bind = unix_bind;
-			socket->connect = NULL;
+			socket->connect = unix_connect;
 			socket->sendto = NULL;
 			socket->recvform = NULL;
 			socket->getsockname = unix_getsockname;
@@ -117,6 +118,8 @@ void syscall_socket(struct registers *regs) {
 
 	socket_fd_handle->file_handle = socket_file_handle;
 	socket_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
+
+	socket->fd_handle = socket_fd_handle;
 
 	stat_update_time(socket_file_handle->stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
@@ -261,6 +264,33 @@ void syscall_bind(struct registers *regs) {
 	regs->rax = socket->bind(socket, addr, addrlen);
 }
 
+void syscall_connect(struct registers *regs) {
+	int sockfd = regs->rdi;
+	const struct socketaddr *addr = (void*)regs->rsi;
+	socklen_t addrlen = regs->rdx;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] bind: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
+#endif
+
+	struct fd_handle *fd_handle = fd_translate(sockfd);
+	if(fd_handle == NULL) {
+		set_errno(EBADF);
+		regs->rax = -1;
+		return;
+	}
+
+	struct stat *stat = fd_handle->file_handle->stat;
+	if(!S_ISSOCK(stat->st_mode)) {
+		set_errno(ENOTSOCK);
+		regs->rax = -1;
+		return;
+	}
+
+	struct socket *socket = fd_handle->file_handle->private_data;
+	regs->rax = socket->connect(socket, addr, addrlen);
+}
+
 static struct hash_table unix_addr_table;
 
 static int unix_validate_address(struct socketaddr_un *addr, socklen_t length) {
@@ -332,10 +362,12 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 		return -1;
 	}
 
-	if(socket->fd_handle->flags & O_NONBLOCK) {
+	if((socket->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
 		goto handle;
 	}
 
+	socket->trigger = waitq_alloc(&socket->waitq, EVENT_SOCKET);
+	waitq_add(&socket->waitq, socket->trigger);
 	waitq_wait(&socket->waitq, EVENT_SOCKET);
 handle:
 
@@ -356,12 +388,41 @@ handle:
 	socket->state = SOCKET_CONNECTED;
 	socket->peer = peer;
 
+	waitq_remove(&socket->waitq, socket->trigger);
+
 	return 0; 
 }
 
-/*static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length) {
+static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length) {
+	spinlock(&socket->lock);
 
-}*/
+	struct socketaddr_un *socketaddr_un = (void*)addr;
+
+	if(unix_validate_address(socketaddr_un, length) == -1) {
+		return -1;
+	}
+
+	if(socket->state == SOCKET_CONNECTED || socket->state == SOCKET_CONNECTING) {
+		set_errno(EISCONN);
+		return -1;
+	}
+
+	struct socket *target_socket = unix_search_address(socketaddr_un, length);
+	if(target_socket == NULL) {
+		set_errno(EAFNOSUPPORT);
+		return -1;
+	}
+
+	target_socket->peer = socket;
+
+	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
+		waitq_wake(target_socket->trigger);	
+	}
+
+	spinrelease(&socket->lock);
+
+	return 0;
+}
 
 static int unix_getsockname(struct socket *socket, struct socketaddr *_ret, socklen_t *length) {
 	spinlock(&socket->lock);
