@@ -3,6 +3,22 @@
 #include <lib/circular_queue.h>
 #include <drivers/tty/tty.h>
 
+static bool ignore_char(struct termios *attr, char ch) {
+	if(ch == '\r' && (attr->c_iflag & IGNCR)) {
+		return true;
+	}
+	return false;
+}
+
+static char translate_char(struct termios *attr, char ch) {
+	if(ch == '\r' && (attr->c_iflag & ICRNL)) {
+		return attr->c_cc[VEOL];
+	}
+	if(ch == attr->c_cc[VEOL] && (attr->c_iflag & INLCR)) {
+		return '\r';
+	}
+	return ch;
+}
 
 static void do_echo(struct tty *tty, char ch) {
 	if(!(tty->termios.c_lflag & ECHO)) {
@@ -76,6 +92,12 @@ out:
 		spinlock(&tty->input_lock);
 
 		while(circular_queue_pop(&tty->input_queue, &ch)) {
+			if(ignore_char(&tty->termios, ch)) {
+				continue;
+			}
+
+			ch = translate_char(&tty->termios, ch);
+
 			if(pass_to_canon_buf(&tty->termios, ch)) {
 				circular_queue_push(line_queue, &ch);
 				items++;
@@ -126,6 +148,11 @@ ssize_t tty_handle_raw(struct tty *tty, void *buf, size_t count) {
 				break;
 			}
 
+			if(ignore_char(&tty->termios, *c_buf)) {
+				continue;
+			}
+			*c_buf = translate_char(&tty->termios, *c_buf);
+
 			do_echo(tty, *c_buf++);
 		}
 		spinrelease(&tty->output_lock);
@@ -139,6 +166,13 @@ ssize_t tty_handle_raw(struct tty *tty, void *buf, size_t count) {
 		spinlock(&tty->output_lock);
 		for(ret = 0; ret < (ssize_t) count; ret++) {
 			circular_queue_pop(&tty->input_queue, c_buf);
+
+			if(ignore_char(&tty->termios, *c_buf)) {
+				continue;
+			}
+
+			*c_buf = translate_char(&tty->termios, *c_buf);
+
 			do_echo(tty, *c_buf++);
 		}
 		spinrelease(&tty->output_lock);

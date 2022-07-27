@@ -263,6 +263,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 void tty_default_termios(struct termios *attr) {
 	attr->c_lflag = ECHO | ECHOCTL | ECHOE | ISIG | ICANON;
+	attr->c_iflag = IGNCR;
 
 	attr->c_cc[VEOF] = 4;		// ^D
 	attr->c_cc[VERASE] = 8;		// ^H
