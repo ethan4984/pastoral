@@ -419,7 +419,7 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 		waitq_wake(target_socket->trigger);	
 	}
 
-	VECTOR_PUSH(target_socket->backlog, target_socket);
+	VECTOR_PUSH(target_socket->backlog, socket);
 
 	spinrelease(&socket->lock);
 
