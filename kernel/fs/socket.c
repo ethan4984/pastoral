@@ -29,9 +29,9 @@ static bool socket_validate_family(int family) {
 }
 
 static bool socket_validate_type(int type) {
-	if(type != SOCK_STREAM && type != SOCK_DGRAM && type != SOCK_RAW && type != SOCK_RDM) {
+	if(type != SOCK_DGRAM && type != SOCK_RAW && type != SOCK_SEQPACKET && type != SOCK_STREAM) {
 		return false;	
-	} else { 
+	} else {
 		return true;
 	}
 }
@@ -294,8 +294,8 @@ void syscall_connect(struct registers *regs) {
 static struct hash_table unix_addr_table;
 
 static int unix_validate_address(struct socketaddr_un *addr, socklen_t length) {
-	if(length > sizeof(struct socketaddr_un) ||
-			length <= offsetof(struct socketaddr_un, sun_path) ||
+	if((length > sizeof(struct socketaddr_un) ||
+			length <= offsetof(struct socketaddr_un, sun_path)) &&
 			addr->sun_family != AF_UNIX) {
 		set_errno(EINVAL);
 		return -1;
@@ -371,7 +371,7 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 	waitq_wait(&socket->waitq, EVENT_SOCKET);
 handle:
 
-	struct socket *peer; 
+	struct socket *peer;
 
 	if(VECTOR_POP(socket->backlog, peer) == -1) {
 		set_errno(EAGAIN);
@@ -418,6 +418,8 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
 		waitq_wake(target_socket->trigger);	
 	}
+
+	VECTOR_PUSH(target_socket->backlog, target_socket);
 
 	spinrelease(&socket->lock);
 

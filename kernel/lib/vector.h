@@ -5,8 +5,8 @@
 #define VECTOR(TYPE) \
 	struct { \
 		TYPE *data; \
-		size_t length; \
-		size_t buffer_capacity; \
+		int length; \
+		int buffer_capacity; \
 	}
 
 #define VECTOR_INIT(THIS, SIZE) \
@@ -64,12 +64,11 @@ _ret: \
 
 #define VECTOR_POP(THIS, RET) ({ \
 	int _status = 0; \
-	(THIS).length--; \
 	if((THIS).length <= 0) { \
 		_status = -1; \
 	} else { \
-		RET = (THIS).data[(THIS).length - 1]; \
-	}; \
+		RET = (THIS).data[--(THIS).length]; \
+	} \
 	_status; \
 })
 
