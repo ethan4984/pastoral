@@ -1170,7 +1170,6 @@ void syscall_ioctl(struct registers *regs) {
 	}
 
 	if(fd_handle->file_handle->ops->ioctl == NULL) {
-		print("how is this true\n");
 		set_errno(ENOTTY);
 		regs->rax = -1;
 		return;

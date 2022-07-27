@@ -34,7 +34,6 @@ struct tty_driver {
 struct tty {
 	char lock;
 	int refcnt; // To track connections and disconnections.
-	bool generate_signals;
 
 	struct termios termios;
 	struct tty_driver *driver;

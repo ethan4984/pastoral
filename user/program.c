@@ -17,19 +17,18 @@ int main() {
 	printf("Hello\n");
 	int ptm = posix_openpt(O_RDWR | O_NOCTTY);
 	assert(ptm >= 0);
+	grantpt(ptm);
+	unlockpt(ptm);
 
 	printf("pts name is %s\n", ptsname(ptm));
 	int pts = open(ptsname(ptm), O_RDWR | O_NOCTTY);
 	assert(pts >= 0);
 
-	printf("disabling echo on master and slave\n");
+	printf("disabling echo on slave\n");
 	struct termios attr;
-	tcgetattr(ptm, &attr);
-	attr.c_lflag &= ~(ECHO | ECHOCTL | ECHOE);
-	tcsetattr(ptm, TCSAFLUSH, &attr);
 	tcgetattr(pts, &attr);
 	attr.c_lflag &= ~(ECHO | ECHOCTL | ECHOE);
-	tcsetattr(ptm, TCSAFLUSH, &attr);
+	tcsetattr(pts, TCSAFLUSH, &attr);
 
 	printf("writing hello to master\n");
 	char buf[1000];
