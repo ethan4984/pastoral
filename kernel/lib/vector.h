@@ -1,12 +1,12 @@
-#pragma once 
+#pragma once
 
 #include <mm/slab.h>
 
 #define VECTOR(TYPE) \
 	struct { \
 		TYPE *data; \
-		int length; \
-		int buffer_capacity; \
+		size_t length; \
+		size_t buffer_capacity; \
 	}
 
 #define VECTOR_INIT(THIS, SIZE) \

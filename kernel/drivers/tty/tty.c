@@ -61,6 +61,10 @@ static int tty_open(struct vfs_node *, struct file_handle *file) {
 		CURRENT_TASK->session->tty = tty;
 	}
 
+	tty_lock(tty);
+	VECTOR_PUSH(tty->files, file);
+	tty_unlock(tty);
+
 	return 0;
 }
 
@@ -68,13 +72,11 @@ static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t
 	struct tty *tty = file->private_data;
 	ssize_t ret;
 
-	tty_lock(tty);
 	if(tty->termios.c_lflag & ICANON) {
 		ret = tty_handle_canon(tty, buf, count);
 	} else {
 		ret = tty_handle_raw(tty, buf, count);
 	}
-	tty_unlock(tty);
 
 	return ret;
 }
@@ -84,16 +86,29 @@ static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count
 	ssize_t ret;
 	const char *b = buf;
 
-	tty_lock(tty);
+	// Can we at least satisfy a partial write?
+	if(file->flags & O_NONBLOCK) {
+		if(__atomic_load_n(&tty->output_queue.items, __ATOMIC_RELAXED) > (count % OUTPUT_BUFFER_SIZE)) {
+			set_errno(EAGAIN);
+			return -1;
+		}
+	}
+
 	spinlock(&tty->output_lock);
 	for(ret = 0; ret < (ssize_t)count; ret++) {
 		if(!circular_queue_push(&tty->output_queue, b++)) {
-			break;
+			if(file->flags & O_NONBLOCK) {
+				break;
+			}
+
+			// Try again.
+			spinrelease(&tty->output_lock);
+			tty->driver->ops->flush_output(tty);
+			spinlock(&tty->output_lock);
 		}
 	}
 	spinrelease(&tty->output_lock);
 	tty->driver->ops->flush_output(tty);
-	tty_unlock(tty);
 
 	return ret;
 }
@@ -102,8 +117,11 @@ static int tty_close(struct vfs_node *, struct file_handle *file) {
 	struct tty *tty = file->private_data;
 	if(__atomic_sub_fetch(&tty->refcnt, 1, __ATOMIC_RELAXED) == 0)
 		if(tty->driver->ops->disconnect)
-			return tty->driver->ops->disconnect(tty);
+			tty->driver->ops->disconnect(tty);
 
+	tty_lock(tty);
+	VECTOR_REMOVE_BY_VALUE(tty->files, file);
+	tty_unlock(tty);
 	return 0;
 }
 
@@ -157,6 +175,15 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 #ifndef SYSCALL_DEBUG
 			print("syscall: [pid %x] tty_ioctl (TIOCSCTTY)\n", CORE_LOCAL->pid);
 #endif
+			if(tty->session || (CURRENT_TASK->session->pgid_leader
+				!= CURRENT_TASK->group->pgid)) {
+					set_errno(EPERM);
+					return -1;
+			}
+
+			tty->session = CURRENT_TASK->session;
+			tty->foreground_group = CURRENT_TASK->group;
+
 			tty_unlock(tty);
 			return 0;
 		}
@@ -228,7 +255,6 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 				return ret;
 			} else {
 				tty_unlock(tty);
-				print("why is this true\n");
 				set_errno(ENOTTY);
 				return -1;
 			}

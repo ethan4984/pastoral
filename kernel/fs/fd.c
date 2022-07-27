@@ -732,7 +732,6 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 		if(pollfd->events & POLLOUT) type |= EVENT_POLLOUT;
 
 		if(type) {
-			print("adding poll on handle %x %x\n", file_handle, fd_handle->fd_number);
 			file_handle->trigger = waitq_alloc(&waitq, type);
 			waitq_add(&waitq, file_handle->trigger);
 			VECTOR_PUSH(handle_list, file_handle);

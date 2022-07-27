@@ -22,6 +22,7 @@ struct pts_data {
 	int slave_no;
 	struct tty *tty;
 	struct ptm_data *master;
+	struct winsize winsize;
 };
 
 struct ptm_data {
@@ -43,6 +44,7 @@ static ssize_t ptm_write(struct file_handle *file, const void *buf, size_t count
 static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg);
 
 static void pts_flush_output(struct tty *tty);
+static int pts_ioctl(struct tty *tty, uint64_t req, void *arg);
 
 static struct file_ops ptmx_ops = {
 	.open = ptmx_open
@@ -55,7 +57,8 @@ static struct file_ops ptm_ops = {
 };
 
 static struct tty_ops pts_ops = {
-	.flush_output = pts_flush_output
+	.flush_output = pts_flush_output,
+	.ioctl = pts_ioctl
 };
 
 static struct tty_driver pts_driver = {
@@ -182,6 +185,7 @@ static ssize_t ptm_write(struct file_handle *file, const void *buf, size_t count
 
 static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 	struct ptm_data *ptm = file->private_data;
+	struct pts_data *pts = ptm->slave;
 
 	switch(req) {
 		case TIOCGPTN:
@@ -189,8 +193,53 @@ static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			print("syscall: [pid %x] pty_ioctl: TIOCGPTN\n", CORE_LOCAL->pid);
 #endif
 			int *ptn = arg;
-			*ptn = ptm->slave->slave_no;
+			*ptn = pts->slave_no;
 			return 0;
+
+		case TIOCGWINSZ: {
+#ifndef SYSCALL_DEBUG
+			print("syscall: [pid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid);
+#endif
+			memcpy(arg, &pts->winsize, sizeof(struct winsize));
+			return 0;
+		}
+
+		case TIOCSWINSZ: {
+#ifndef SYSCALL_DEBUG
+			print("syscall: [pid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid);
+#endif
+			memcpy(&pts->winsize, arg, sizeof(struct winsize));
+			// TODO: inject signal.
+			return 0;
+		}
+
+		default:
+			set_errno(ENOSYS);
+			return -1;
+	}
+}
+
+static int pts_ioctl(struct tty *tty, uint64_t req, void *arg) {
+	struct pts_data *pts = tty->private_data;
+
+	switch(req) {
+		case TIOCGWINSZ: {
+#ifndef SYSCALL_DEBUG
+			print("syscall: [pid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid);
+#endif
+			memcpy(arg, &pts->winsize, sizeof(struct winsize));
+			return 0;
+		}
+
+		case TIOCSWINSZ: {
+#ifndef SYSCALL_DEBUG
+			print("syscall: [pid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid);
+#endif
+			memcpy(&pts->winsize, arg, sizeof(struct winsize));
+			// TODO: inject signal.
+			return 0;
+		}
+
 		default:
 			set_errno(ENOSYS);
 			return -1;

@@ -35,15 +35,10 @@ void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 		.id = { 0 },
 		.smem_start = (uint64_t)framebuffer->address,
 		.smem_len = framebuffer->pitch * framebuffer->height,
-		.type = 0,
-		.type_aux = 0,
-		.visual = 2,
-		.xpanstep = 0,
-		.ypanstep = 0,
-		.ywrapstep = 0,
+		.type = FB_TYPE_PACKED_PIXELS,
+		.visual = FB_VISUAL_TRUECOLOR,
 		.line_length = framebuffer->pitch,
-		.mmio_start = 0,
-		.mmio_len = 0,
+		.accel = FB_ACCEL_NONE,
 		.capabilities = 0,
 		.reserved = { 0 }
 	};

@@ -1,6 +1,7 @@
 #include <limine.h>
 #include <drivers/tty/tty.h>
 #include <drivers/tty/limine_term.h>
+#include <drivers/tty/console_ioctl.h>
 #include <sched/queue.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>
@@ -24,6 +25,9 @@ struct limine_tty {
 	bool shift;
 	bool caps;
 	bool control;
+
+	bool graphics;
+	struct vt_mode vt_mode;
 };
 
 static struct tty *active_tty;
@@ -150,10 +154,13 @@ static void ps2_handler(struct registers *, void *) {
 						}
 					}
 
-					circular_queue_push(&active_tty->input_queue, &character);
+					if(!circular_queue_push(&active_tty->input_queue, &character)) {
+						break;
+					}
 				}
 		}
 	}
+
 	spinrelease(&active_tty->input_lock);
 }
 
@@ -185,6 +192,25 @@ static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {
 			};
 
 			break;
+
+		case KDSETMODE:
+			ltty->graphics = (int) arg;
+			break;
+
+		case KDGETMODE: {
+			int *mode = arg;
+			*mode = ltty->graphics;
+			break;
+		}
+
+		case VT_GETMODE:
+			memcpy(arg, &ltty->vt_mode, sizeof(struct vt_mode));
+			break;
+
+		case VT_SETMODE:
+			memcpy(&ltty->vt_mode, arg, sizeof(struct vt_mode));
+			break;
+
 		default:
 			set_errno(ENOSYS);
 			return -1;

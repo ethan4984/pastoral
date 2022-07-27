@@ -6,7 +6,16 @@
 
 #define FBDEV_MAJOR 29
 
+// fb_fix_screeninfo.type
+#define FB_TYPE_PACKED_PIXELS 0
 
+// fb_fix_screeninfo.visual
+#define FB_VISUAL_TRUECOLOR 2
+
+// fb_fix_screeninfo.accel
+#define FB_ACCEL_NONE 0
+
+// fbdev ioctls
 #define FBIOGET_VSCREENINFO 0x4600
 #define FBIOPUT_VSCREENINFO 0x4601
 #define FBIOGET_FSCREENINFO 0x4602
