@@ -116,6 +116,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 #endif
 			if(CURRENT_TASK->session != tty->session) {
 				tty_unlock(tty);
+				print("why is this true\n");
 				set_errno(ENOTTY);
 				return -1;
 			}
@@ -132,6 +133,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 #endif
 			if(CURRENT_TASK->session != tty->session) {
 				tty_unlock(tty);
+				print("why is this true\n");
 				set_errno(ENOTTY);
 				return -1;
 			}
@@ -225,6 +227,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 				return ret;
 			} else {
 				tty_unlock(tty);
+				print("why is this true\n");
 				set_errno(ENOTTY);
 				return -1;
 			}

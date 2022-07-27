@@ -331,8 +331,16 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 		set_errno(EOPNOTSUPP);
 		return -1;
 	}
-	
+
+	if(socket->fd_handle->flags & O_NONBLOCK) {
+		goto handle;
+	}
+
+	waitq_wait(&socket->waitq, EVENT_SOCKET);
+handle:
+
 	struct socket *peer; 
+
 	if(VECTOR_POP(socket->backlog, peer) == -1) {
 		set_errno(EAGAIN);
 		return -1;
@@ -350,6 +358,10 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 
 	return 0; 
 }
+
+/*static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length) {
+
+}*/
 
 static int unix_getsockname(struct socket *socket, struct socketaddr *_ret, socklen_t *length) {
 	spinlock(&socket->lock);

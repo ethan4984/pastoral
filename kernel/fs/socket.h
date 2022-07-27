@@ -1,5 +1,6 @@
 #pragma once
 
+#include <sched/queue.h>
 #include <types.h>
 
 #define SOCKET_CONNECTED 0
@@ -49,11 +50,15 @@ struct socket {
 	int (*accept)(struct socket*, struct socketaddr*, socklen_t*);
 	int (*listen)(struct socket*, int);
 
+	struct waitq waitq;
+	struct waitq_trigger *trigger;
+
 	struct socket *peer;
 	VECTOR(struct socket*) backlog;
 	int backlog_max;
 
 	struct file_handle *file_handle;
+	struct fd_handle *fd_handle;
 
 	char lock;
 };

@@ -939,6 +939,7 @@ void syscall_readdir(struct registers *regs) {
 
 	if(!S_ISDIR(dir->stat->st_mode)) {
 		set_errno(ENOTDIR);
+		print("returingin here\n");
 		regs->rax = -1;
 		return;
 	}
@@ -1169,6 +1170,7 @@ void syscall_ioctl(struct registers *regs) {
 	}
 
 	if(fd_handle->file_handle->ops->ioctl == NULL) {
+		print("how is this true\n");
 		set_errno(ENOTTY);
 		regs->rax = -1;
 		return;

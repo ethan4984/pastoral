@@ -12,6 +12,7 @@
 #define EVENT_COMMAND (1 << 5)
 #define EVENT_POLLIN (1 << 6)
 #define EVENT_POLLOUT (1 << 7)
+#define EVENT_SOCKET (1 << 8)
 
 struct sched_task;
 struct sched_thread;
