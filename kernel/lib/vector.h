@@ -62,6 +62,17 @@ _ret: \
 	_j; \
 })
 
+#define VECTOR_POP(THIS, RET) ({ \
+	int _status = 0; \
+	(THIS).length--; \
+	if((THIS).length <= 0) { \
+		_status = -1; \
+	} else { \
+		RET = (THIS).data[(THIS).length - 1]; \
+	}; \
+	_status; \
+})
+
 #define VECTOR_CLEAR(THIS) \
 	free((THIS).data); \
 	(THIS).length = 0; \

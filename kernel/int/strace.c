@@ -59,6 +59,12 @@ extern void syscall_pause(struct registers*);
 extern void syscall_sigsuspend(struct registers*);
 extern void syscall_poll(struct registers*);
 extern void syscall_ppoll(struct registers*);
+extern void syscall_socket(struct registers*);
+extern void syscall_getsockname(struct registers*);
+extern void syscall_getpeername(struct registers*);
+extern void syscall_listen(struct registers*);
+extern void syscall_accept(struct registers*);
+extern void syscall_bind(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -164,7 +170,13 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_pause, .name = "pause" }, // 51
 	{ .handler = syscall_sigsuspend, .name = "sigsuspend" }, // 52
 	{ .handler = syscall_poll, .name = "poll" }, // 53
-	{ .handler = syscall_ppoll, .name = "ppoll" } // 54
+	{ .handler = syscall_ppoll, .name = "ppoll" }, // 54
+	{ .handler = syscall_socket, .name = "socket" }, // 55
+	{ .handler = syscall_getsockname, .name = "getsockname" }, // 56
+	{ .handler = syscall_getpeername, .name = "getpeername" }, // 57
+	{ .handler = syscall_listen, .name = "listen" }, // 58
+	{ .handler = syscall_accept, .name = "accept" }, // 59
+	{ .handler = syscall_bind, .name = "bind" } // 60
 };
 
 extern void syscall_handler(struct registers *regs) {

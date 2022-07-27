@@ -8,7 +8,6 @@
 #include <lib/ioctl.h>
 #include <lib/errno.h>
 
-
 #define PTMX_MAJOR 5
 #define PTMX_MINOR 2
 

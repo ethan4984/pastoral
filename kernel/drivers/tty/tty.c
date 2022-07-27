@@ -150,6 +150,14 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			return 0;
 		}
 
+		case TIOCSCTTY: {
+#ifndef SYSCALL_DEBUG
+			print("syscall: [pid %x] tty_ioctl (TIOCSCTTY)\n", CORE_LOCAL->pid);
+#endif
+			tty_unlock(tty);
+			return 0;
+		}
+
 		case TCGETS: {
 #ifndef SYSCALL_DEBUG
 			print("syscall: [pid %x] tty_ioctl (TCGETS)\n", CORE_LOCAL->pid);

@@ -142,7 +142,7 @@ extern char sched_lock;
 #define TASK_YIELD 2
 
 #define THREAD_KERNEL_STACK_SIZE 0x4000
-#define THREAD_USER_STACK_SIZE 0x10000
+#define THREAD_USER_STACK_SIZE 0x100000
 
 #define TASK_MAX_PRIORITY ~(0ull)
 #define TASK_MIN_PRIORITY ~(0)

@@ -142,6 +142,8 @@ void init_process() {
 	VECTOR_PUSH(task->group->process_list, task);
 
 	task->sched_status = TASK_WAITING;
+
+	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
 }
 
 void pastoral_thread() {

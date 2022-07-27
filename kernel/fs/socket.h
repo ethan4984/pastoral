@@ -6,6 +6,7 @@
 #define SOCKET_UNCONNECTED 1
 #define SOCKET_CONNECTING 2
 #define SOCKET_DISCONNECTING 3
+#define SOCKET_PASSIVE 4
 
 #define AF_LOCAL 1
 #define AF_UNIX AF_LOCAL
@@ -16,7 +17,7 @@
 #define SOCK_DGRAM 2
 #define SOCK_RAW 3
 #define SOCK_RDM 4
-#define SOCK_CONN_DGRAM 5
+#define SOCK_SEQPACKET 5
 
 typedef unsigned short sa_family_t;
 typedef int socklen_t;
@@ -49,6 +50,8 @@ struct socket {
 	int (*listen)(struct socket*, int);
 
 	struct socket *peer;
+	VECTOR(struct socket*) backlog;
+	int backlog_max;
 
 	struct file_handle *file_handle;
 
