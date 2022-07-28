@@ -6,6 +6,7 @@
 #include <lib/cpu.h>
 #include <sched/sched.h>
 #include <sched/queue.h>
+#include <lock.h>
 
 #define PIPE_BUFFER_SIZE 0x10000
 
@@ -17,7 +18,7 @@ struct fd_handle;
 struct pipe;
 
 struct file_handle {
-	char lock;
+	struct spinlock lock;
 	int refcnt;
 
 	struct vfs_node *vfs_node;
@@ -43,7 +44,7 @@ struct file_handle {
 };
 
 struct fd_handle {
-	char lock;
+	struct spinlock lock;
 	struct file_handle *file_handle;
 	int fd_number;
 	int flags;
@@ -71,11 +72,11 @@ static inline void fd_init(struct fd_handle *handle) {
 }
 
 static inline void fd_lock(struct fd_handle *handle) {
-	spinlock(&handle->lock);
+	spinlock_irqsave(&handle->lock);
 }
 
 static inline void fd_unlock(struct fd_handle *handle) {
-	spinrelease(&handle->lock);
+	spinrelease_irqsave(&handle->lock);
 }
 
 static inline void file_init(struct file_handle *handle) {
@@ -84,11 +85,11 @@ static inline void file_init(struct file_handle *handle) {
 }
 
 static inline void file_lock(struct file_handle *handle) {
-	spinlock(&handle->lock);
+	spinlock_irqsave(&handle->lock);
 }
 
 static inline void file_unlock(struct file_handle *handle) {
-	spinrelease(&handle->lock);
+	spinrelease_irqsave(&handle->lock);
 }
 
 // Use functions below when cloning a file descriptor.

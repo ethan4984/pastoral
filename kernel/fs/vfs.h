@@ -4,6 +4,7 @@
 #include <types.h>
 #include <vector.h>
 #include <hash.h>
+#include <lock.h>
 
 #define MAX_PATH_LENGTH 4096
 #define MAX_FILENAME 256
@@ -13,7 +14,7 @@ struct vfs_node;
 struct file_ops;
 
 struct vfs_node {
-	char lock;
+	struct spinlock lock;
 	const char *name;
 
 	struct file_ops *fops;
@@ -47,9 +48,9 @@ int vfs_mount(struct vfs_node *vfs_node, const char *source, const char *target,
 void vfs_init();
 
 static inline void node_lock(struct vfs_node *node) {
-	spinlock(&node->lock);
+	spinlock_irqsave(&node->lock);
 }
 
 static inline void node_unlock(struct vfs_node *node) {
-	spinrelease(&node->lock);
+	spinrelease_irqsave(&node->lock);
 }

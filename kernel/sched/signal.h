@@ -3,10 +3,10 @@
 #include <types.h>
 #include <vector.h>
 #include <sched/queue.h>
+#include <lock.h>
 
 #define SIG_IGN (void *) (-2)
 #define SIG_DFL (void *) (-3)
-
 
 #define SIGHUP 1
 #define SIGINT 2
@@ -106,7 +106,7 @@ struct sched_thread;
 struct sched_task;
 
 struct signal_queue {
-	char siglock;
+	struct spinlock siglock;
 	sigset_t sigmask;
 
 	struct signal queue[SIGNAL_MAX];

@@ -6,16 +6,16 @@ int waitq_wait(struct waitq *waitq, int type) {
 	struct sched_task *task = CURRENT_TASK;
 	struct sched_thread *thread = CURRENT_THREAD;
 
-	spinlock(&waitq->lock);
+	spinlock_irqsave(&waitq->lock);
 
 	if((waitq->status & type) == type) {
-		spinrelease(&waitq->lock);
+		spinrelease_irqsave(&waitq->lock);
 		return type;
 	}
 
 	VECTOR_PUSH(waitq->threads, thread);
 
-	spinrelease(&waitq->lock);
+	spinrelease_irqsave(&waitq->lock);
 
 	for(;;) {
 		sched_dequeue(task, thread);
@@ -60,14 +60,14 @@ int waitq_set_timer(struct waitq *waitq, struct timespec timespec) {
 }
 
 int waitq_add(struct waitq *waitq, struct waitq_trigger *trigger) {
-	spinlock(&waitq->lock);
+	spinlock_irqsave(&waitq->lock);
 
 	VECTOR_PUSH(waitq->triggers, trigger);
 
 	trigger->waitq = waitq;
 	trigger->refcnt++;
 
-	spinrelease(&waitq->lock);
+	spinrelease_irqsave(&waitq->lock);
 
 	return 0;
 }
@@ -77,7 +77,7 @@ int waitq_remove(struct waitq *waitq, struct waitq_trigger *trigger) {
 		return -1;
 	}
 
-	spinlock(&waitq->lock);
+	spinlock_irqsave(&waitq->lock);
 
 	VECTOR_REMOVE_BY_VALUE(waitq->triggers, trigger);
 
@@ -86,7 +86,7 @@ int waitq_remove(struct waitq *waitq, struct waitq_trigger *trigger) {
 		free(trigger);
 	}
 
-	spinrelease(&waitq->lock);
+	spinrelease_irqsave(&waitq->lock);
 
 	return 0;
 }
@@ -98,7 +98,7 @@ int waitq_wake(struct waitq_trigger *trigger) {
 
 	struct waitq *waitq = trigger->waitq;
 
-	spinlock(&waitq->lock);
+	spinlock_irqsave(&waitq->lock);
 
 	trigger->fired = 1;
 
@@ -115,7 +115,7 @@ int waitq_wake(struct waitq_trigger *trigger) {
 
 	VECTOR_CLEAR(waitq->threads);
 
-	spinrelease(&waitq->lock);
+	spinrelease_irqsave(&waitq->lock);
 
 	return 0;
 }
@@ -125,13 +125,13 @@ int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct sched_task *ta
 		return -1;
 	}
 
-	spinlock(&trigger->lock);
+	spinlock_irqsave(&trigger->lock);
 
 	trigger->agent_task = task;
 	trigger->agent_thread = thread;
 	trigger->type = type;
 
-	spinrelease(&trigger->lock);
+	spinrelease_irqsave(&trigger->lock);
 
 	return 0;
 }

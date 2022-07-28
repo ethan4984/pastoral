@@ -140,14 +140,6 @@ static inline void invlpg(uint64_t vaddr) {
 	asm volatile ("invlpg %0" :: "m"((*((int(*)[])((void*)vaddr)))) : "memory");
 }
 
-static inline void spinlock(void *lock) {
-	while(__atomic_test_and_set(lock, __ATOMIC_ACQUIRE));
-}
-
-static inline void spinrelease(void *lock) {
-	__atomic_clear(lock, __ATOMIC_RELEASE);
-}
-
 static inline void set_errno(uint64_t code) {
 	CORE_LOCAL->errno = code;
 }

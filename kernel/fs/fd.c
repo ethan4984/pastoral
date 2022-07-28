@@ -158,9 +158,9 @@ struct fd_handle *fd_translate(int index) {
 		return NULL;
 	}
 
-	spinlock(&current_task->fd_lock);
+	spinlock_irqsave(&current_task->fd_lock);
 	struct fd_handle *handle = fd_translate_unlocked(index);
-	spinrelease(&current_task->fd_lock);
+	spinrelease_irqsave(&current_task->fd_lock);
 
 	return handle;
 }
@@ -474,22 +474,22 @@ static void fd_close_unlocked(struct fd_handle *handle) {
 int fd_close(int fd) {
 	struct sched_task *current_task = CURRENT_TASK;
 
-	spinlock(&current_task->fd_lock);
+	spinlock_irqsave(&current_task->fd_lock);
 	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
-		spinrelease(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
 	if(current_task == NULL) {
-		spinrelease(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_lock);
 		set_errno(ENOENT);
 		return -1;
 	}
 
 	fd_close_unlocked(fd_handle);
-	spinrelease(&current_task->fd_lock);
+	spinrelease_irqsave(&current_task->fd_lock);
 
 	return 0;
 }
@@ -563,11 +563,11 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 
 int fd_dup(int fd, bool clear_cloexec) {
 	struct sched_task *current_task = CURRENT_TASK;
-	spinlock(&current_task->fd_lock);
+	spinlock_irqsave(&current_task->fd_lock);
 
 	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
-		spinrelease(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
@@ -583,24 +583,24 @@ int fd_dup(int fd, bool clear_cloexec) {
 
 	file_get(handle->file_handle);
 	hash_table_push(&current_task->fd_list, &handle->fd_number, handle, sizeof(handle->fd_number));
-	spinrelease(&current_task->fd_lock);
+	spinrelease_irqsave(&current_task->fd_lock);
 
 	return handle->fd_number;
 }
 
 int fd_dup2(int oldfd, int newfd) {
 	struct sched_task *current_task = CURRENT_TASK;
-	spinlock(&current_task->fd_lock);
+	spinlock_irqsave(&current_task->fd_lock);
 
 	struct fd_handle *oldfd_handle = fd_translate_unlocked(oldfd), *new_handle;;
 	if(oldfd_handle == NULL) {
-		spinrelease(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
 	if(oldfd == newfd) {
-		spinrelease(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_lock);
 		return newfd;
 	}
 
@@ -618,7 +618,7 @@ int fd_dup2(int oldfd, int newfd) {
 
 	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 
-	spinrelease(&current_task->fd_lock);
+	spinrelease_irqsave(&current_task->fd_lock);
 
 	return new_handle->fd_number;
 }
@@ -729,8 +729,7 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 
 		int type = 0;
 
-		if(pollfd->events & POLLIN) type |= EVENT_POLLIN;
-		if(pollfd->events & POLLOUT) type |= EVENT_POLLOUT;
+		if(pollfd->events == POLLIN) type |= EVENT_POLLIN;
 
 		if(type) {
 			file_handle->trigger = waitq_alloc(&waitq, type);
@@ -738,6 +737,7 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 			VECTOR_PUSH(handle_list, file_handle);
 		} else {
 			print("poll: unrecognised event type {%x}\n", type);
+			return 0;
 		}
 	}
 
@@ -754,7 +754,7 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 			ret++;
 		}
 
-		handle->trigger = NULL;
+		waitq_obtain(&handle->waitq, trigger->type);
 		waitq_remove(&waitq, trigger);
 	}
 
@@ -1070,10 +1070,10 @@ void syscall_pipe(struct registers *regs) {
 
 	stat_update_time(pipe_stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
-	spinlock(&CURRENT_TASK->fd_lock);
+	spinlock_irqsave(&CURRENT_TASK->fd_lock);
 	hash_table_push(&CURRENT_TASK->fd_list, &read_fd_handle->fd_number, read_fd_handle, sizeof(read_fd_handle->fd_number));
 	hash_table_push(&CURRENT_TASK->fd_list, &write_fd_handle->fd_number, write_fd_handle, sizeof(write_fd_handle->fd_number));
-	spinrelease(&CURRENT_TASK->fd_lock);
+	spinrelease_irqsave(&CURRENT_TASK->fd_lock);
 
 	regs->rax = 0;
 }
@@ -1282,7 +1282,7 @@ void syscall_ppoll(struct registers *regs) {
 	sigset_t *sigmask = (void*)regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] poll: fds {%x}, nfds {%x}, timespec {%x}, sigmask {%x}\n", CORE_LOCAL->pid, fds, nfds, timespec, sigmask);
+	print("syscall: [pid %x] ppoll: fds {%x}, nfds {%x}, timespec {%x}, sigmask {%x}\n", CORE_LOCAL->pid, fds, nfds, timespec, sigmask);
 #endif
 
 	sigset_t original_mask;

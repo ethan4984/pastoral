@@ -4,6 +4,7 @@
 #include <cpu.h>
 #include <string.h>
 #include <limine.h>
+#include <lock.h>
 
 struct pmm_module {
 	struct limine_memmap_entry *mmap_entry;
@@ -15,7 +16,7 @@ struct pmm_module {
 
 	struct pmm_module *next;
 
-	char lock;
+	struct spinlock lock;
 };
 
 static struct pmm_module *root_module;
@@ -40,14 +41,14 @@ static void pmm_init_module(struct pmm_module *module, struct limine_memmap_entr
 }
 
 static uint64_t pmm_module_alloc(struct pmm_module *module, uint64_t cnt, uint64_t align) {
-	spinlock(&module->lock);
+	spinlock_irqsave(&module->lock);
 
 	size_t alloc_base = ALIGN_UP(module->mmap_entry->base + (module->last_free * PAGE_SIZE), align * PAGE_SIZE); // calcuate base address for the allocation
 	size_t bit_base = (alloc_base - module->mmap_entry->base) / PAGE_SIZE;
 
 	for(size_t i = bit_base; i < module->bitmap_entry_cnt; i += align) {
 		if(module->bitmap_entry_cnt < (i + cnt)) {
-			spinrelease(&module->lock);
+			spinrelease_irqsave(&module->lock);
 			return -1;
 		}
 
@@ -71,26 +72,26 @@ static uint64_t pmm_module_alloc(struct pmm_module *module, uint64_t cnt, uint64
 					}
 				}
 
-				spinrelease(&module->lock);
+				spinrelease_irqsave(&module->lock);
 
 				return alloc_base;
 			}
 		}
 	}
 
-	spinrelease(&module->lock);
+	spinrelease_irqsave(&module->lock);
 
 	return -1;
 }
 
 static void pmm_module_free(struct pmm_module *module, uint64_t base, uint64_t cnt) {
-	spinlock(&module->lock);
+	spinlock_irqsave(&module->lock);
 
 	for(size_t i = DIV_ROUNDUP(base, PAGE_SIZE); i < (DIV_ROUNDUP(base, PAGE_SIZE) + cnt); i++) {
 		BIT_CLEAR(module->bitmap, i);
 	}
 
-	spinrelease(&module->lock);
+	spinrelease_irqsave(&module->lock);
 }
 
 void pmm_init() {

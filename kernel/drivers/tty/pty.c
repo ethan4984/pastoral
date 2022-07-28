@@ -2,14 +2,14 @@
 #include <drivers/tty/pty.h>
 #include <fs/cdev.h>
 #include <fs/fd.h>
-#include <lib/cpu.h>
-#include <lib/types.h>
-#include <lib/termios.h>
-#include <lib/ioctl.h>
-#include <lib/errno.h>
-#include <lib/circular_queue.h>
-#include <lib/debug.h>
-
+#include <cpu.h>
+#include <types.h>
+#include <termios.h>
+#include <ioctl.h>
+#include <errno.h>
+#include <circular_queue.h>
+#include <debug.h>
+#include <lock.h>
 
 #define PTMX_MAJOR 5
 #define PTMX_MINOR 2
@@ -26,7 +26,7 @@ struct pts_data {
 };
 
 struct ptm_data {
-	char input_lock;
+	struct spinlock input_lock;
 	struct circular_queue input_queue;
 	struct pts_data *slave;
 };
@@ -35,7 +35,8 @@ struct ptm_data {
 static struct bitmap pts_bitmap = {
 	.resizable = true
 };
-static char pty_lock;
+
+static struct spinlock pty_lock;
 
 // Driver operations
 static int ptmx_open(struct vfs_node *node, struct file_handle *file);
@@ -65,7 +66,6 @@ static struct tty_driver pts_driver = {
 	.ops = &pts_ops
 };
 
-
 // Implementation
 
 int pty_init() {
@@ -85,7 +85,7 @@ int pty_init() {
 }
 
 static int ptmx_open(struct vfs_node *node, struct file_handle *file) {
-	spinlock(&pty_lock);
+	spinlock_irqsave(&pty_lock);
 
 	int slave_no = bitmap_alloc(&pts_bitmap);
 
@@ -124,7 +124,7 @@ static int ptmx_open(struct vfs_node *node, struct file_handle *file) {
 	sprint(pts_name, "/dev/pts/%d", slave_no);
 	vfs_create_node_deep(NULL, NULL, NULL, pts_stat, pts_name);
 
-	spinrelease(&pty_lock);
+	spinrelease_irqsave(&pty_lock);
 	return 0;
 }
 
@@ -133,8 +133,8 @@ static void pts_flush_output(struct tty *tty) {
 	struct ptm_data *ptm = pts->master;
 	char ch;
 
-	spinlock(&tty->output_lock);
-	spinlock(&ptm->input_lock);
+	spinlock_irqsave(&tty->output_lock);
+	spinlock_irqsave(&ptm->input_lock);
 
 	while(circular_queue_pop(&tty->output_queue, &ch)) {
 		if(!circular_queue_push(&ptm->input_queue, &ch)) {
@@ -142,8 +142,8 @@ static void pts_flush_output(struct tty *tty) {
 		}
 	}
 
-	spinrelease(&ptm->input_lock);
-	spinrelease(&tty->output_lock);
+	spinrelease_irqsave(&ptm->input_lock);
+	spinrelease_irqsave(&tty->output_lock);
 }
 
 static ssize_t ptm_read(struct file_handle *file, void *buf, size_t count, off_t) {
@@ -151,7 +151,7 @@ static ssize_t ptm_read(struct file_handle *file, void *buf, size_t count, off_t
 	ssize_t ret;
 	char *c_buf = buf;
 
-	spinlock(&ptm->input_lock);
+	spinlock_irqsave(&ptm->input_lock);
 
 	for(ret = 0; ret < (ssize_t)count; ret++) {
 		if(!circular_queue_pop(&ptm->input_queue, c_buf)) {
@@ -160,7 +160,7 @@ static ssize_t ptm_read(struct file_handle *file, void *buf, size_t count, off_t
 		c_buf++;
 	}
 
-	spinrelease(&ptm->input_lock);
+	spinrelease_irqsave(&ptm->input_lock);
 	return ret;
 }
 
@@ -170,7 +170,7 @@ static ssize_t ptm_write(struct file_handle *file, const void *buf, size_t count
 	ssize_t ret;
 	const char *c_buf = buf;
 
-	spinlock(&pts->tty->input_lock);
+	spinlock_irqsave(&pts->tty->input_lock);
 
 	for(ret = 0; ret < (ssize_t)count; ret++) {
 		if(!circular_queue_push(&pts->tty->input_queue, c_buf)) {
@@ -179,7 +179,7 @@ static ssize_t ptm_write(struct file_handle *file, const void *buf, size_t count
 		c_buf++;
 	}
 
-	spinrelease(&pts->tty->input_lock);
+	spinrelease_irqsave(&pts->tty->input_lock);
 	return ret;
 }
 

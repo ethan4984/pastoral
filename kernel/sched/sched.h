@@ -10,6 +10,7 @@
 #include <elf.h>
 #include <sched/signal.h>
 #include <drivers/tty/tty.h>
+#include <lock.h>
 
 struct sched_thread {
 	tid_t tid;
@@ -34,11 +35,11 @@ struct process_group;
 struct session;
 
 struct sched_task {
-	char fd_lock;
+	struct spinlock fd_lock;
 	struct hash_table fd_list;
 	struct bitmap fd_bitmap;
 
-	char tid_lock;
+	struct spinlock tid_lock;
 	struct hash_table thread_list;
 	struct bitmap tid_bitmap;
 
@@ -50,7 +51,7 @@ struct sched_task {
 
 	struct vfs_node *cwd;
 
-	char lock;
+	struct spinlock lock;
 	pid_t pid;
 	pid_t ppid;
 	struct process_group *group;
@@ -72,7 +73,7 @@ struct sched_task {
 
 	mode_t umask;
 
-	char sig_lock;
+	struct spinlock sig_lock;
 	struct sigaction sigactions[SIGNAL_MAX];
 
 	VECTOR(struct sched_task*) children;
@@ -81,7 +82,7 @@ struct sched_task {
 };
 
 struct process_group {
-	char lock;
+	struct spinlock lock;
 
 	pid_t pgid;
 	pid_t pid_leader;
@@ -93,7 +94,7 @@ struct process_group {
 };
 
 struct session {
-	char lock;
+	struct spinlock lock;
 
 	pid_t sid;
 	pid_t pgid_leader;
@@ -127,7 +128,7 @@ void sched_yield();
 void task_terminate(struct sched_task *task, int status);
 int task_create_session(struct sched_task *task, bool force);
 
-extern char sched_lock;
+extern struct spinlock sched_lock;
 
 #define CURRENT_TASK ({ \
 	sched_translate_pid(CORE_LOCAL->pid); \
@@ -148,27 +149,27 @@ extern char sched_lock;
 #define TASK_MIN_PRIORITY ~(0)
 
 static inline void session_lock(struct session *session) {
-	spinlock(&session->lock);
+	spinlock_irqsave(&session->lock);
 }
 
 static inline void session_unlock(struct session *session) {
-	spinrelease(&session->lock);
+	spinrelease_irqsave(&session->lock);
 }
 
 static inline void process_group_lock(struct process_group *group) {
-	spinlock(&group->lock);
+	spinlock_irqsave(&group->lock);
 }
 
 static inline void process_group_unlock(struct process_group *group) {
-	spinrelease(&group->lock);
+	spinrelease_irqsave(&group->lock);
 }
 
 static inline void task_lock(struct sched_task *task) {
-	spinlock(&task->lock);
+	spinlock_irqsave(&task->lock);
 }
 
 static inline void task_unlock(struct sched_task *task) {
-	spinrelease(&task->lock);
+	spinrelease_irqsave(&task->lock);
 }
 
 

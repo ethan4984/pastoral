@@ -16,7 +16,7 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 
 	struct signal_queue *queue = &CURRENT_THREAD->signal_queue;
 
-	spinlock(&task->sig_lock);
+	spinlock_irqsave(&task->sig_lock);
 
 	struct sigaction *current_action = &task->sigactions[sig - 1];
 
@@ -28,16 +28,16 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 		*current_action = *act;
 		current_action->sa_mask &= ~(SIGMASK(SIGKILL) | SIGMASK(SIGSTOP));
 
-		spinlock(&queue->siglock);
+		spinlock_irqsave(&queue->siglock);
 
 		if(act->handler.sa_sigaction == SIG_IGN && queue->sigpending & (1 << sig)) {
 			queue->sigpending &= ~(1 << sig);
 		}
 
-		spinrelease(&queue->siglock);
+		spinrelease_irqsave(&queue->siglock);
 	}
 
-	spinrelease(&task->sig_lock);
+	spinrelease_irqsave(&task->sig_lock);
 	return 0;
 }
 
@@ -49,9 +49,9 @@ int sigpending(sigset_t *set) {
 
 	struct signal_queue *queue = &thread->signal_queue;
 
-	spinlock(&queue->siglock);
+	spinlock_irqsave(&queue->siglock);
 	*set = queue->sigpending;
-	spinrelease(&queue->siglock);
+	spinrelease_irqsave(&queue->siglock);
 
 	return 0;
 }
@@ -64,7 +64,7 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 
 	struct signal_queue *queue = &thread->signal_queue;
 
-	spinlock(&queue->siglock);
+	spinlock_irqsave(&queue->siglock);
 
 	if(oldset) {
 		*oldset = queue->sigmask;
@@ -83,12 +83,12 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 				break;
 			default:
 				set_errno(EINVAL);
-				spinrelease(&queue->siglock);
+				spinrelease_irqsave(&queue->siglock);
 				return -1;
 		}
 	}
 
-	spinrelease(&queue->siglock);
+	spinrelease_irqsave(&queue->siglock);
 
 	return 0;
 }
@@ -131,20 +131,20 @@ int signal_send_thread(struct sched_thread *sender, struct sched_thread *target,
 
 	struct signal_queue *queue = &target->signal_queue;
 
-	spinlock(&target_task->sig_lock);
-	spinlock(&queue->siglock);
+	spinlock_irqsave(&target_task->sig_lock);
+	spinlock_irqsave(&queue->siglock);
 
 	if(sender != NULL && signal_check_permissions(sender_task, target_task) == -1) {
 		set_errno(EPERM);
-		spinrelease(&queue->siglock);
-		spinrelease(&target_task->sig_lock);
+		spinrelease_irqsave(&queue->siglock);
+		spinrelease_irqsave(&target_task->sig_lock);
 		return -1;
 	}
 
 	if(sig != SIGSTOP && sig != SIGKILL) {
 		if(target_task->sigactions[sig - 1].handler.sa_sigaction == SIG_IGN) {
-			spinrelease(&queue->siglock);
-			spinrelease(&target_task->sig_lock);
+			spinrelease_irqsave(&queue->siglock);
+			spinrelease_irqsave(&target_task->sig_lock);
 			return 0;
 		}
 	}
@@ -159,8 +159,8 @@ int signal_send_thread(struct sched_thread *sender, struct sched_thread *target,
 	signal->queue = signal_queue;
 	signal_queue->sigpending |= SIGMASK(sig);
 
-	spinrelease(&queue->siglock);
-	spinrelease(&target_task->sig_lock);
+	spinrelease_irqsave(&queue->siglock);
+	spinrelease_irqsave(&target_task->sig_lock);
 
 	return 0;
 }
@@ -219,9 +219,9 @@ static void signal_default_action(int signo) {
 int signal_dispatch(struct sched_thread *thread) {
 	struct signal_queue *queue = &thread->signal_queue;
 
-	spinlock(&queue->siglock);
+	spinlock_irqsave(&queue->siglock);
 	if(queue->sigpending == 0) {
-		spinrelease(&queue->siglock);
+		spinrelease_irqsave(&queue->siglock);
 		return -1;
 	}
 
@@ -243,11 +243,11 @@ int signal_dispatch(struct sched_thread *thread) {
 			thread->regs.rsp -= 128;
 			thread->regs.rsp &= -16ll;
 
-			spinlock(&CURRENT_TASK->sig_lock);
+			spinlock_irqsave(&CURRENT_TASK->sig_lock);
 			if(action->handler.sa_sigaction == SIG_DFL) {
 				thread->signal_queue.sigpending &= ~SIGMASK(i);
 				signal_default_action(i);
-				spinrelease(&CURRENT_TASK->sig_lock);
+				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 				break;
 			}
 
@@ -268,12 +268,12 @@ int signal_dispatch(struct sched_thread *thread) {
 			}
 
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
-			spinrelease(&CURRENT_TASK->sig_lock);
+			spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 			break;
 		}
 	}
 
-	spinrelease(&queue->siglock);
+	spinrelease_irqsave(&queue->siglock);
 	return 0;
 }
 
@@ -282,7 +282,7 @@ int signal_wait(struct signal_queue *signal_queue, sigset_t mask, struct timespe
 		waitq_set_timer(&signal_queue->waitq, *timespec);
 	}
 
-	spinlock(&signal_queue->siglock);
+	spinlock_irqsave(&signal_queue->siglock);
 	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
 		if(mask & SIGMASK(i)) {
 			struct signal *signal = &signal_queue->queue[i - 1];
@@ -298,7 +298,7 @@ int signal_wait(struct signal_queue *signal_queue, sigset_t mask, struct timespe
 	waitq_wait(&signal_queue->waitq, EVENT_SIGNAL);
 	waitq_release(&signal_queue->waitq, EVENT_SIGNAL);
 
-	spinlock(&signal_queue->siglock);
+	spinlock_irqsave(&signal_queue->siglock);
 
 	return 0;
 }

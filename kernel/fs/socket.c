@@ -123,9 +123,9 @@ void syscall_socket(struct registers *regs) {
 
 	stat_update_time(socket_file_handle->stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
-	spinlock(&CURRENT_TASK->fd_lock);
+	spinlock_irqsave(&CURRENT_TASK->fd_lock);
 	hash_table_push(&CURRENT_TASK->fd_list, &socket_fd_handle->fd_number, socket_fd_handle, sizeof(socket_fd_handle->fd_number));
-	spinrelease(&CURRENT_TASK->fd_lock);
+	spinrelease_irqsave(&CURRENT_TASK->fd_lock);
 
 	regs->rax = socket_fd_handle->fd_number;
 }
@@ -315,12 +315,12 @@ static struct socket *unix_search_address(struct socketaddr_un *addr, socklen_t 
 }
 
 static int unix_bind(struct socket *socket, const struct socketaddr *socketaddr, socklen_t length) {
-	spinlock(&socket->lock);
+	spinlock_irqsave(&socket->lock);
 
 	struct socketaddr_un *socketaddr_un = (void*)socketaddr;
 
 	if(unix_validate_address(socketaddr_un, length) == -1) {
-		spinrelease(&socket->lock);
+		spinrelease_irqsave(&socket->lock);
 		return -1;
 	}
 
@@ -338,7 +338,7 @@ static int unix_bind(struct socket *socket, const struct socketaddr *socketaddr,
 
 	hash_table_push(&unix_addr_table, socket->addr, socket, sizeof(struct socketaddr_un));
 
-	spinrelease(&socket->lock);
+	spinrelease_irqsave(&socket->lock);
 
 	return 0;
 }
@@ -395,7 +395,7 @@ handle:
 }
 
 static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length) {
-	spinlock(&socket->lock);
+	spinlock_irqsave(&socket->lock);
 
 	struct socketaddr_un *socketaddr_un = (void*)addr;
 
@@ -422,13 +422,13 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 
 	VECTOR_PUSH(target_socket->backlog, socket);
 
-	spinrelease(&socket->lock);
+	spinrelease_irqsave(&socket->lock);
 
 	return 0;
 }
 
 static int unix_getsockname(struct socket *socket, struct socketaddr *_ret, socklen_t *length) {
-	spinlock(&socket->lock);
+	spinlock_irqsave(&socket->lock);
 
 	socklen_t len = *length; 
 
@@ -449,13 +449,13 @@ static int unix_getsockname(struct socket *socket, struct socketaddr *_ret, sock
 
 	*length = sizeof(sa_family_t) + strlen(addr->sun_path);
 
-	spinrelease(&socket->lock);
+	spinrelease_irqsave(&socket->lock);
 
 	return 0;
 }
 
 static int unix_getpeername(struct socket *socket, struct socketaddr *_ret, socklen_t *length) {
-	spinlock(&socket->lock);
+	spinlock_irqsave(&socket->lock);
 
 	if(socket->state != SOCKET_CONNECTED) {
 		set_errno(ENOTCONN);
@@ -481,7 +481,7 @@ static int unix_getpeername(struct socket *socket, struct socketaddr *_ret, sock
 
 	*length = sizeof(sa_family_t) + strlen(peer_addr->sun_path);
 
-	spinrelease(&socket->lock);
+	spinrelease_irqsave(&socket->lock);
 
 	return 0;
 }

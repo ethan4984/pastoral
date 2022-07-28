@@ -8,8 +8,9 @@
 #include <string.h>
 #include <cpu.h>
 #include <debug.h>
+#include <lock.h>
 
-static char core_init_lock;
+static struct spinlock core_init_lock;
 
 size_t logical_processor_cnt;
 
@@ -19,7 +20,7 @@ static void core_bootstrap(struct cpu_local *cpu_local) {
 
 	print("initalising core: apic_id %x\n", xapic_read(XAPIC_ID_REG_OFF) >> 24);
 
-	spinrelease(&core_init_lock);
+	spinrelease_irqsave(&core_init_lock);
 
 	wrmsr(MSR_GS_BASE, (uintptr_t)cpu_local);
 
@@ -76,7 +77,7 @@ void boot_aps() {
 			continue;
 		}
 
-		spinlock(&core_init_lock);
+		spinlock_irqsave(&core_init_lock);
 
 		uint64_t *parameters = (uint64_t*)0x81000;
 
@@ -101,7 +102,7 @@ void boot_aps() {
 		xapic_write(XAPIC_ICR_OFF, 0x600 | 0x80); // MT = 0b11 V=0x80 for 0x80000
 	}
 
-	spinlock(&core_init_lock);
+	spinlock_irqsave(&core_init_lock);
 
 	kernel_mappings.unmap_page(&kernel_mappings, 0);
 }

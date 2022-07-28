@@ -94,7 +94,7 @@ static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count
 		}
 	}
 
-	spinlock(&tty->output_lock);
+	spinlock_irqsave(&tty->output_lock);
 	for(ret = 0; ret < (ssize_t)count; ret++) {
 		if(!circular_queue_push(&tty->output_queue, b++)) {
 			if(file->flags & O_NONBLOCK) {
@@ -102,12 +102,12 @@ static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count
 			}
 
 			// Try again.
-			spinrelease(&tty->output_lock);
+			spinrelease_irqsave(&tty->output_lock);
 			tty->driver->ops->flush_output(tty);
-			spinlock(&tty->output_lock);
+			spinlock_irqsave(&tty->output_lock);
 		}
 	}
-	spinrelease(&tty->output_lock);
+	spinrelease_irqsave(&tty->output_lock);
 	tty->driver->ops->flush_output(tty);
 
 	return ret;
@@ -195,12 +195,12 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 #ifndef SYSCALL_DEBUG
 			print("syscall: [pid %x] tty_ioctl (TCGETS)\n", CORE_LOCAL->pid);
 #endif
-			spinlock(&tty->input_lock);
-			spinlock(&tty->output_lock);
+			spinlock_irqsave(&tty->input_lock);
+			spinlock_irqsave(&tty->output_lock);
 			struct termios *attr = arg;
 			*attr = tty->termios;
-			spinrelease(&tty->output_lock);
-			spinrelease(&tty->input_lock);
+			spinrelease_irqsave(&tty->output_lock);
+			spinrelease_irqsave(&tty->input_lock);
 			tty_unlock(tty);
 			return 0;
 		}
@@ -209,12 +209,12 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 #ifndef SYSCALL_DEBUG
 			print("syscall: [pid %x] tty_ioctl (TCSETS)\n", CORE_LOCAL->pid);
 #endif
-			spinlock(&tty->input_lock);
-			spinlock(&tty->output_lock);
+			spinlock_irqsave(&tty->input_lock);
+			spinlock_irqsave(&tty->output_lock);
 			struct termios *attr = arg;
 			tty->termios = *attr;
-			spinrelease(&tty->output_lock);
-			spinrelease(&tty->input_lock);
+			spinrelease_irqsave(&tty->output_lock);
+			spinrelease_irqsave(&tty->input_lock);
 			tty_unlock(tty);
 			return 0;
 		}
@@ -224,12 +224,12 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			print("syscall: [pid %x] tty_ioctl (TCSETW)\n", CORE_LOCAL->pid);
 #endif
 			while(__atomic_load_n(&tty->output_queue.items, __ATOMIC_RELAXED));
-			spinlock(&tty->output_lock);
-			spinlock(&tty->input_lock);
+			spinlock_irqsave(&tty->output_lock);
+			spinlock_irqsave(&tty->input_lock);
 			struct termios *attr = arg;
 			tty->termios = *attr;
-			spinrelease(&tty->input_lock);
-			spinrelease(&tty->output_lock);
+			spinrelease_irqsave(&tty->input_lock);
+			spinrelease_irqsave(&tty->output_lock);
 			tty_unlock(tty);
 			return 0;
 		}
@@ -239,14 +239,14 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			print("syscall: [pid %x] tty_ioctl (TCSETF)\n", CORE_LOCAL->pid);
 #endif
 			while(__atomic_load_n(&tty->output_queue.items, __ATOMIC_RELAXED));
-			spinlock(&tty->output_lock);
-			spinlock(&tty->input_lock);
+			spinlock_irqsave(&tty->output_lock);
+			spinlock_irqsave(&tty->input_lock);
 			struct termios *attr = arg;
 			tty->termios = *attr;
 			char ch;
 			while(circular_queue_pop(&tty->input_queue, &ch));
-			spinrelease(&tty->input_lock);
-			spinrelease(&tty->output_lock);
+			spinrelease_irqsave(&tty->input_lock);
+			spinrelease_irqsave(&tty->output_lock);
 			tty_unlock(tty);
 			return 0;
 		}

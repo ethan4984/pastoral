@@ -40,7 +40,7 @@ struct page_table kernel_mappings;
 
 static uint64_t *pml4_map_page(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags) {
 	struct pml_indices pml_indices = compute_table_indices(vaddr);
-	spinlock(&page_table->lock);
+	spinlock_irqsave(&page_table->lock);
 
 	if((page_table->pml_high[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
 		page_table->pml_high[pml_indices.pml4_index] = pmm_alloc(1, 1) | (flags & PML4_FLAGS_MASK) | VMM_FLAGS_RW;
@@ -56,7 +56,7 @@ static uint64_t *pml4_map_page(struct page_table *page_table, uintptr_t vaddr, u
 
 	if(flags & VMM_FLAGS_PS) {
 		pml2[pml_indices.pml2_index] = paddr | flags;
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return NULL;
 	}
 
@@ -68,7 +68,7 @@ static uint64_t *pml4_map_page(struct page_table *page_table, uintptr_t vaddr, u
 
 	pml1[pml_indices.pml1_index] = paddr | flags;
 
-	spinrelease(&page_table->lock);
+	spinrelease_irqsave(&page_table->lock);
 
 	return &pml1[pml_indices.pml1_index];
 }
@@ -76,17 +76,17 @@ static uint64_t *pml4_map_page(struct page_table *page_table, uintptr_t vaddr, u
 static size_t pml4_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
 	struct pml_indices pml_indices = compute_table_indices(vaddr);
 
-	spinlock(&page_table->lock);
+	spinlock_irqsave(&page_table->lock);
 
 	if((page_table->pml_high[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return 0;
 	}
 
 	uint64_t *pml3 = (uint64_t*)((page_table->pml_high[pml_indices.pml4_index] & ~(0xfff)) + HIGH_VMA);
 
 	if((pml3[pml_indices.pml3_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return 0;
 	}
 
@@ -95,12 +95,12 @@ static size_t pml4_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
 	if((pml2[pml_indices.pml2_index] & 0xfff) & VMM_FLAGS_PS) {
 		pml2[pml_indices.pml2_index] &= ~(VMM_FLAGS_P);
 		invlpg(vaddr);
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return 0x200000;
 	}
 
 	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return 0;
 	}
 
@@ -109,7 +109,7 @@ static size_t pml4_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
 	pml1[pml_indices.pml1_index] &= ~(VMM_FLAGS_P);
 	invlpg(vaddr);
 
-	spinrelease(&page_table->lock);
+	spinrelease_irqsave(&page_table->lock);
 
 	return 0x1000;
 }
@@ -117,35 +117,35 @@ static size_t pml4_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
 static uint64_t *pml4_lowest_level(struct page_table *page_table, uintptr_t vaddr) {
 	struct pml_indices pml_indices = compute_table_indices(vaddr);
 
-	spinlock(&page_table->lock);
+	spinlock_irqsave(&page_table->lock);
 
 	if((page_table->pml_high[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return NULL;
 	}
 
 	uint64_t *pml3 = (uint64_t*)((page_table->pml_high[pml_indices.pml4_index] & ~(0xfff)) + HIGH_VMA);
 
 	if((pml3[pml_indices.pml3_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return NULL;
 	}
 
 	uint64_t *pml2 = (uint64_t*)((pml3[pml_indices.pml3_index] & ~(0xfff)) + HIGH_VMA);
 
 	if(pml2[pml_indices.pml2_index] & VMM_FLAGS_PS) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return &pml2[pml_indices.pml2_index];
 	}
 
 	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return NULL;
 	}
 
 	uint64_t *pml1 = (uint64_t*)((pml2[pml_indices.pml2_index] & ~(0xfff)) + HIGH_VMA);
 
-	spinrelease(&page_table->lock);
+	spinrelease_irqsave(&page_table->lock);
 
 	return pml1 + pml_indices.pml1_index;
 }
@@ -153,42 +153,42 @@ static uint64_t *pml4_lowest_level(struct page_table *page_table, uintptr_t vadd
 static uint64_t *pml5_lowest_level(struct page_table *page_table, uintptr_t vaddr) {
 	struct pml_indices pml_indices = compute_table_indices(vaddr);
 
-	spinlock(&page_table->lock);
+	spinlock_irqsave(&page_table->lock);
 
 	if((page_table->pml_high[pml_indices.pml5_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return NULL;
 	}
 
 	uint64_t *pml4 = (uint64_t*)((page_table->pml_high[pml_indices.pml5_index] & ~(0xfff)) + HIGH_VMA);
 
 	if((pml4[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return NULL;
 	}
 
 	uint64_t *pml3 = (uint64_t*)((pml4[pml_indices.pml4_index] & ~(0xfff)) + HIGH_VMA);
 
 	if((pml3[pml_indices.pml3_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return NULL;
 	}
 
 	uint64_t *pml2 = (uint64_t*)((pml3[pml_indices.pml3_index] & ~(0xfff)) + HIGH_VMA);
 
 	if(pml2[pml_indices.pml2_index] & VMM_FLAGS_PS) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return &pml2[pml_indices.pml2_index];
 	}
 
 	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return NULL;
 	}
 
 	uint64_t *pml1 = (uint64_t*)((pml2[pml_indices.pml2_index] & ~(0xfff)) + HIGH_VMA);
 
-	spinrelease(&page_table->lock);
+	spinrelease_irqsave(&page_table->lock);
 
 	return pml1 + pml_indices.pml1_index;
 }
@@ -196,7 +196,7 @@ static uint64_t *pml5_lowest_level(struct page_table *page_table, uintptr_t vadd
 static uint64_t *pml5_map_page(struct page_table *page_table, uintptr_t vaddr, uint64_t paddr, uint64_t flags) {
 	struct pml_indices pml_indices = compute_table_indices(vaddr);
 
-	spinlock(&page_table->lock);
+	spinlock_irqsave(&page_table->lock);
 
 	if((page_table->pml_high[pml_indices.pml5_index] & VMM_FLAGS_P) == 0) {
 		page_table->pml_high[pml_indices.pml5_index] = pmm_alloc(1, 1) | (flags & PML5_FLAGS_MASK);
@@ -218,7 +218,7 @@ static uint64_t *pml5_map_page(struct page_table *page_table, uintptr_t vaddr, u
 
 	if(flags & VMM_FLAGS_PS) {
 		pml2[pml_indices.pml2_index] = paddr | flags;
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return NULL;
 	}
 
@@ -230,7 +230,7 @@ static uint64_t *pml5_map_page(struct page_table *page_table, uintptr_t vaddr, u
 
 	pml1[pml_indices.pml1_index] = paddr | flags;
 
-	spinrelease(&page_table->lock);
+	spinrelease_irqsave(&page_table->lock);
 
 	return &pml1[pml_indices.pml1_index];
 }
@@ -238,24 +238,24 @@ static uint64_t *pml5_map_page(struct page_table *page_table, uintptr_t vaddr, u
 static size_t pml5_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
 	struct pml_indices pml_indices = compute_table_indices(vaddr);
 
-	spinlock(&page_table->lock);
+	spinlock_irqsave(&page_table->lock);
 
 	if((page_table->pml_high[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return 0;
 	}
 
 	uint64_t *pml4 = (uint64_t*)((page_table->pml_high[pml_indices.pml4_index] & ~(0xfff)) + HIGH_VMA);
 
 	if((pml4[pml_indices.pml4_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return 0;
 	}
 
 	uint64_t *pml3 = (uint64_t*)((pml4[pml_indices.pml4_index] & ~(0xfff)) + HIGH_VMA);
 
 	if((pml3[pml_indices.pml3_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return 0;
 	}
 
@@ -264,12 +264,12 @@ static size_t pml5_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
 	if((pml2[pml_indices.pml2_index] & 0xfff) & VMM_FLAGS_PS) {
 		pml2[pml_indices.pml2_index] &= ~(VMM_FLAGS_P);
 		invlpg(vaddr);
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return 0x200000;
 	}
 
 	if((pml2[pml_indices.pml2_index] & VMM_FLAGS_P) == 0) {
-		spinrelease(&page_table->lock);
+		spinrelease_irqsave(&page_table->lock);
 		return 0;
 	}
 
@@ -278,7 +278,7 @@ static size_t pml5_unmap_page(struct page_table *page_table, uintptr_t vaddr) {
 	pml1[pml_indices.pml1_index] &= ~(VMM_FLAGS_P);
 	invlpg(vaddr);
 
-	spinrelease(&page_table->lock);
+	spinrelease_irqsave(&page_table->lock);
 
 	return 0x1000;
 }

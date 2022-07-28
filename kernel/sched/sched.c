@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <fs/fd.h>
 #include <time.h>
+#include <lock.h>
 
 static struct hash_table task_list;
 
@@ -20,7 +21,7 @@ static struct bitmap pid_bitmap = {
 	.resizable = true
 };
 
-char sched_lock;
+struct spinlock sched_lock;
 
 // does not lock **remember**
 struct sched_task *sched_translate_pid(pid_t pid) {
@@ -81,7 +82,7 @@ struct sched_task *find_next_task() {
 
 void sched_idle() {
 	xapic_write(XAPIC_EOI_OFF, 0);
-	spinrelease(&sched_lock);
+	spinrelease_irqsave(&sched_lock);
 
 	asm volatile ("sti");
 
@@ -98,7 +99,7 @@ void reschedule(struct registers *regs, void*) {
 	struct sched_task *next_task = find_next_task();
 	if(next_task == NULL) {
 		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-			spinrelease(&sched_lock);
+			spinrelease_irqsave(&sched_lock);
 			return;
 		}
 		sched_idle();
@@ -107,7 +108,7 @@ void reschedule(struct registers *regs, void*) {
 	struct sched_thread *next_thread = find_next_thread(next_task);
 	if(next_thread == NULL) {
 		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-			spinrelease(&sched_lock);
+			spinrelease_irqsave(&sched_lock);
 			return;
 		}
 		sched_idle();
@@ -164,7 +165,7 @@ void reschedule(struct registers *regs, void*) {
 	}
 
 	xapic_write(XAPIC_EOI_OFF, 0);
-	spinrelease(&sched_lock);
+	spinrelease_irqsave(&sched_lock);
 
 	asm volatile (
 		"mov %0, %%rsp\n\t"
@@ -190,7 +191,7 @@ void reschedule(struct registers *regs, void*) {
 }
 
 void sched_dequeue(struct sched_task *task, struct sched_thread *thread) {
-	spinlock(&sched_lock);
+	spinlock_irqsave(&sched_lock);
 
 	if(task) {
 		task->sched_status = TASK_YIELD;
@@ -200,7 +201,7 @@ void sched_dequeue(struct sched_task *task, struct sched_thread *thread) {
 		thread->sched_status = TASK_YIELD;
 	}
 
-	spinrelease(&sched_lock);
+	spinrelease_irqsave(&sched_lock);
 }
 
 
@@ -220,7 +221,7 @@ void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *threa
 }
 
 void sched_requeue(struct sched_task *task, struct sched_thread *thread) {
-	spinlock(&sched_lock);
+	spinlock_irqsave(&sched_lock);
 
 	task->sched_status = TASK_WAITING;
 	task->idle_cnt = TASK_MAX_PRIORITY;
@@ -228,7 +229,7 @@ void sched_requeue(struct sched_task *task, struct sched_thread *thread) {
 	thread->sched_status = TASK_WAITING;
 	thread->idle_cnt = TASK_MAX_PRIORITY;
 
-	spinrelease(&sched_lock);
+	spinrelease_irqsave(&sched_lock);
 }
 
 void sched_requeue_and_yield(struct sched_task *task, struct sched_thread *thread) {
@@ -391,7 +392,7 @@ struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, ui
 }
 
 struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status) {
-	spinlock(&sched_lock);
+	spinlock_irqsave(&sched_lock);
 
 	struct sched_task *task = sched_default_task();
 
@@ -409,7 +410,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		print("I hjate everything\n");
 		fd_close(fd);
 		CORE_LOCAL->pid = current_task->pid;
-		spinrelease(&sched_lock);
+		spinrelease_irqsave(&sched_lock);
 		return NULL;
 	}
 
@@ -419,7 +420,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	if(elf_load(task->page_table, &aux, fd, 0, &ld_path) == -1) {
 		fd_close(fd);
 		CORE_LOCAL->pid = current_task->pid;
-		spinrelease(&sched_lock);
+		spinrelease_irqsave(&sched_lock);
 		return NULL;
 	}
 
@@ -432,7 +433,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		if(ld_fd == -1) {
 			fd_close(ld_fd);
 			CORE_LOCAL->pid = current_task->pid;
-			spinrelease(&sched_lock);
+			spinrelease_irqsave(&sched_lock);
 			return NULL;
 		}
 
@@ -440,7 +441,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 		if(elf_load(task->page_table, &ld_aux, ld_fd, 0x40000000, NULL) == -1) {
 			fd_close(ld_fd);
 			CORE_LOCAL->pid = current_task->pid;
-			spinrelease(&sched_lock);
+			spinrelease_irqsave(&sched_lock);
 			return NULL;
 		}
 
@@ -453,7 +454,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	if(thread == NULL) {
 		CORE_LOCAL->pid = current_task->pid;
-		spinrelease(&sched_lock);
+		spinrelease_irqsave(&sched_lock);
 		return NULL;
 	}
 
@@ -464,7 +465,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 	waitq_trigger_calibrate(task->exit_trigger, task, thread, EVENT_EXIT);
 	waitq_add(current_task->waitq, task->exit_trigger);
 
-	spinrelease(&sched_lock);
+	spinrelease_irqsave(&sched_lock);
 
 	task->sched_status = status;
 	thread->sched_status = TASK_WAITING;
@@ -782,7 +783,7 @@ void syscall_execve(struct registers *regs) {
 }
 
 void syscall_fork(struct registers *regs) {
-	spinlock(&sched_lock);
+	spinlock_irqsave(&sched_lock);
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] fork\n", CORE_LOCAL->pid);
@@ -862,7 +863,7 @@ void syscall_fork(struct registers *regs) {
 
 	VECTOR_PUSH(current_task->children, task);
 
-	spinrelease(&sched_lock);
+	spinrelease_irqsave(&sched_lock);
 }
 
 void syscall_getpid(struct registers *regs) {

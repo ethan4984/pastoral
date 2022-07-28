@@ -2,6 +2,7 @@
 
 #include <sched/queue.h>
 #include <types.h>
+#include <lock.h>
 
 #define SOCKET_CONNECTED 0
 #define SOCKET_UNCONNECTED 1
@@ -81,5 +82,5 @@ struct socket {
 	struct file_handle *file_handle;
 	struct fd_handle *fd_handle;
 
-	char lock;
+	struct spinlock lock;
 };

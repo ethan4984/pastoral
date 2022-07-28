@@ -2,6 +2,7 @@
 
 #include <types.h>
 #include <vector.h>
+#include <lock.h>
 
 #define VMM_FLAGS_P (1 << 0)
 #define VMM_FLAGS_RW (1 << 1)
@@ -64,7 +65,7 @@ struct page_table {
 
 	uint64_t *pml_high;
 
-	char lock;
+	struct spinlock lock;
 };
 
 extern struct page_table kernel_mappings;

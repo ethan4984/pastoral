@@ -7,6 +7,7 @@
 #include <lib/ioctl.h>
 #include <lib/circular_queue.h>
 #include <sched/queue.h>
+#include <lock.h>
 
 #define MAX_LINE 8192
 #define MAX_CANON 8192
@@ -32,7 +33,7 @@ struct tty_driver {
 };
 
 struct tty {
-	char lock;
+	struct spinlock lock;
 	int refcnt; // To track connections and disconnections.
 
 	struct termios termios;
@@ -42,16 +43,16 @@ struct tty {
 	struct session *session;
 	struct process_group *foreground_group;
 
-	char input_lock;
+	struct spinlock input_lock;
 	struct circular_queue input_queue;
 
-	char output_lock;
+	struct spinlock output_lock;
 	struct circular_queue output_queue;
 
-	char canon_lock;
+	struct spinlock canon_lock;
 	struct circular_queue canon_queue;
 
-	char file_lock;
+	struct spinlock file_lock;
 	VECTOR(struct file_handle*) files;
 };
 
@@ -64,9 +65,9 @@ ssize_t tty_handle_canon(struct tty *, void *, size_t);
 ssize_t tty_handle_raw(struct tty *, void *, size_t);
 
 static inline void tty_lock(struct tty *tty) {
-	spinlock(&tty->lock);
+	spinlock_irqsave(&tty->lock);
 }
 
 static inline void tty_unlock(struct tty *tty) {
-	spinrelease(&tty->lock);
+	spinrelease_irqsave(&tty->lock);
 }

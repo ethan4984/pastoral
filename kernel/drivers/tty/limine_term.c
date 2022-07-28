@@ -104,7 +104,7 @@ static void ps2_handler(struct registers *, void *) {
 	}
 
 	struct limine_tty *ltty = active_tty->private_data;
-	spinlock(&active_tty->input_lock);
+	spinlock_irqsave(&active_tty->input_lock);
 	while(inb(0x64) & 1) {
 		uint8_t keycode = inb(0x60);
 
@@ -166,11 +166,11 @@ static void ps2_handler(struct registers *, void *) {
 		waitq_wake(handle->trigger);
 	}
 
-	spinrelease(&active_tty->input_lock);
+	spinrelease_irqsave(&active_tty->input_lock);
 }
 
 static void limine_tty_flush_output(struct tty *tty) {
-	spinlock(&tty->output_lock);
+	spinlock_irqsave(&tty->output_lock);
 	char ch;
 	char buf[OUTPUT_BUFFER_SIZE];
 	size_t count = 0;
@@ -179,7 +179,7 @@ static void limine_tty_flush_output(struct tty *tty) {
 		count++;
 	}
 	limine_print(tty->private_data, buf, count);
-	spinrelease(&tty->output_lock);
+	spinrelease_irqsave(&tty->output_lock);
 }
 
 static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {
