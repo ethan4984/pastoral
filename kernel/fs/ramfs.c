@@ -35,9 +35,9 @@ struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, struct 
 	struct ramfs_handle *ramfs_handle = alloc(sizeof(struct ramfs_handle));
 	ramfs_handle->inode = stat->st_ino;
 
-	spinlock_irqdef(&ramfs_lock);
+	spinlock_irqsave(&ramfs_lock);
 	hash_table_push(&ramfs_node_list, &ramfs_handle->inode, ramfs_handle, sizeof(ramfs_handle->inode));
-	spinrelease_irqdef(&ramfs_lock);
+	spinrelease_irqsave(&ramfs_lock);
 
 	struct vfs_node *vfs_node = vfs_create_node(parent, &ramfs_fops, &ramfs_filesystem, stat, name, 0);
 
@@ -48,9 +48,9 @@ ssize_t ramfs_read(struct file_handle *file, void *buf, size_t cnt, off_t offset
 	node_lock(file->vfs_node);
 	struct stat *stat = file->stat;
 
-	spinlock_irqdef(&ramfs_lock);
+	spinlock_irqsave(&ramfs_lock);
 	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
-	spinrelease_irqdef(&ramfs_lock);
+	spinrelease_irqsave(&ramfs_lock);
 
 	if(ramfs_handle == NULL) {
 		node_unlock(file->vfs_node);
@@ -76,9 +76,9 @@ ssize_t ramfs_write(struct file_handle *file, const void *buf, size_t cnt, off_t
 	node_lock(file->vfs_node);
 	struct stat *stat = file->stat;
 
-	spinlock_irqdef(&ramfs_lock);
+	spinlock_irqsave(&ramfs_lock);
 	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
-	spinrelease_irqdef(&ramfs_lock);
+	spinrelease_irqsave(&ramfs_lock);
 
 	if(ramfs_handle == NULL) {
 		node_unlock(file->vfs_node);
@@ -101,9 +101,9 @@ int ramfs_truncate(struct vfs_node *node, off_t cnt) {
 	node_lock(node);
 	struct stat *stat = node->stat;
 
-	spinlock_irqdef(&ramfs_lock);
+	spinlock_irqsave(&ramfs_lock);
 	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
-	spinrelease_irqdef(&ramfs_lock);
+	spinrelease_irqsave(&ramfs_lock);
 
 	if(ramfs_handle == NULL) {
 		node_unlock(node);

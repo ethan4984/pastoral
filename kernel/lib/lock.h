@@ -6,7 +6,7 @@ struct spinlock {
 };
 
 static inline void raw_spinlock(void *lock) {
-	while(__atomic_test_and_set(lock, __ATOMIC_RELEASE));
+	while(__atomic_test_and_set(lock, __ATOMIC_ACQUIRE));
 }
 
 static inline void raw_spinrelease(void *lock) {

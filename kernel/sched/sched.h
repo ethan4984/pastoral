@@ -152,35 +152,35 @@ extern struct spinlock sched_lock;
 #define TASK_MIN_PRIORITY ~(0)
 
 static inline void session_lock(struct session *session) {
-	spinlock_irqdef(&session->lock);
+	spinlock_irqsave(&session->lock);
 }
 
 static inline void session_unlock(struct session *session) {
-	spinrelease_irqdef(&session->lock);
+	spinrelease_irqsave(&session->lock);
 }
 
 static inline void process_group_lock(struct process_group *group) {
-	spinlock_irqdef(&group->lock);
+	spinlock_irqsave(&group->lock);
 }
 
 static inline void process_group_unlock(struct process_group *group) {
-	spinrelease_irqdef(&group->lock);
+	spinrelease_irqsave(&group->lock);
 }
 
 static inline void task_lock(struct sched_task *task) {
-	spinlock_irqdef(&task->lock);
+	spinlock_irqsave(&task->lock);
 }
 
 static inline void task_unlock(struct sched_task *task) {
-	spinrelease_irqdef(&task->lock);
+	spinrelease_irqsave(&task->lock);
 }
 
 static inline void thread_lock(struct sched_thread *thread) {
-	spinlock_irqdef(&thread->lock);
+	spinlock_irqsave(&thread->lock);
 }
 
 static inline void thread_unlock(struct sched_thread *thread) {
-	spinrelease_irqdef(&thread->lock);
+	spinrelease_irqsave(&thread->lock);
 }
 
 #define WEXITSTATUS(x) ((x) & 0xff)

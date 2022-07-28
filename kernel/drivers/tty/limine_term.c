@@ -165,7 +165,7 @@ static void ps2_handler(struct registers *, void *) {
 }
 
 static void limine_tty_flush_output(struct tty *tty) {
-	spinlock_irqdef(&tty->output_lock);
+	spinlock_irqsave(&tty->output_lock);
 	char ch;
 	char buf[OUTPUT_BUFFER_SIZE];
 	size_t count = 0;
@@ -174,7 +174,7 @@ static void limine_tty_flush_output(struct tty *tty) {
 		count++;
 	}
 	limine_print(tty->private_data, buf, count);
-	spinrelease_irqdef(&tty->output_lock);
+	spinrelease_irqsave(&tty->output_lock);
 }
 
 static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {

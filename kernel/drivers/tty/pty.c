@@ -85,7 +85,7 @@ int pty_init() {
 }
 
 static int ptmx_open(struct vfs_node *node, struct file_handle *file) {
-	spinlock_irqdef(&pty_lock);
+	spinlock_irqsave(&pty_lock);
 
 	int slave_no = bitmap_alloc(&pts_bitmap);
 
@@ -124,7 +124,7 @@ static int ptmx_open(struct vfs_node *node, struct file_handle *file) {
 	sprint(pts_name, "/dev/pts/%d", slave_no);
 	vfs_create_node_deep(NULL, NULL, NULL, pts_stat, pts_name);
 
-	spinrelease_irqdef(&pty_lock);
+	spinrelease_irqsave(&pty_lock);
 	return 0;
 }
 
@@ -133,7 +133,7 @@ static void pts_flush_output(struct tty *tty) {
 	struct ptm_data *ptm = pts->master;
 	char ch;
 
-	spinlock_irqdef(&tty->output_lock);
+	spinlock_irqsave(&tty->output_lock);
 	spinlock_irqsave(&ptm->input_lock);
 
 	while(circular_queue_pop(&tty->output_queue, &ch)) {
@@ -143,7 +143,7 @@ static void pts_flush_output(struct tty *tty) {
 	}
 
 	spinrelease_irqsave(&ptm->input_lock);
-	spinrelease_irqdef(&tty->output_lock);
+	spinrelease_irqsave(&tty->output_lock);
 }
 
 static ssize_t ptm_read(struct file_handle *file, void *buf, size_t count, off_t) {

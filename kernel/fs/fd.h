@@ -72,11 +72,11 @@ static inline void fd_init(struct fd_handle *handle) {
 }
 
 static inline void fd_lock(struct fd_handle *handle) {
-	spinlock_irqdef(&handle->lock);
+	spinlock_irqsave(&handle->lock);
 }
 
 static inline void fd_unlock(struct fd_handle *handle) {
-	spinrelease_irqdef(&handle->lock);
+	spinrelease_irqsave(&handle->lock);
 }
 
 static inline void file_init(struct file_handle *handle) {
@@ -85,11 +85,11 @@ static inline void file_init(struct file_handle *handle) {
 }
 
 static inline void file_lock(struct file_handle *handle) {
-	spinlock_irqdef(&handle->lock);
+	spinlock_irqsave(&handle->lock);
 }
 
 static inline void file_unlock(struct file_handle *handle) {
-	spinrelease_irqdef(&handle->lock);
+	spinrelease_irqsave(&handle->lock);
 }
 
 // Use functions below when cloning a file descriptor.
