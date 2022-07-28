@@ -149,27 +149,27 @@ extern struct spinlock sched_lock;
 #define TASK_MIN_PRIORITY ~(0)
 
 static inline void session_lock(struct session *session) {
-	spinlock_irqsave(&session->lock);
+	spinlock_irqdef(&session->lock);
 }
 
 static inline void session_unlock(struct session *session) {
-	spinrelease_irqsave(&session->lock);
+	spinrelease_irqdef(&session->lock);
 }
 
 static inline void process_group_lock(struct process_group *group) {
-	spinlock_irqsave(&group->lock);
+	spinlock_irqdef(&group->lock);
 }
 
 static inline void process_group_unlock(struct process_group *group) {
-	spinrelease_irqsave(&group->lock);
+	spinrelease_irqdef(&group->lock);
 }
 
 static inline void task_lock(struct sched_task *task) {
-	spinlock_irqsave(&task->lock);
+	spinlock_irqdef(&task->lock);
 }
 
 static inline void task_unlock(struct sched_task *task) {
-	spinrelease_irqsave(&task->lock);
+	spinrelease_irqdef(&task->lock);
 }
 
 

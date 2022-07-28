@@ -101,9 +101,9 @@ out:
 			if(pass_to_canon_buf(&tty->termios, ch)) {
 				circular_queue_push(line_queue, &ch);
 				items++;
-				spinlock_irqsave(&tty->output_lock);
+				spinlock_irqdef(&tty->output_lock);
 				do_echo(tty, ch);
-				spinrelease_irqsave(&tty->output_lock);
+				spinrelease_irqdef(&tty->output_lock);
 				tty->driver->ops->flush_output(tty);
 			}
 
@@ -117,11 +117,11 @@ out:
 				if(items) {
 					items--;
 					char aux2[] = {'\b', ' ', '\b'};
-					spinlock_irqsave(&tty->output_lock);
+					spinlock_irqdef(&tty->output_lock);
 					circular_queue_push(&tty->output_queue, &aux2[0]);
 					circular_queue_push(&tty->output_queue, &aux2[1]);
 					circular_queue_push(&tty->output_queue, &aux2[2]);
-					spinrelease_irqsave(&tty->output_lock);
+					spinrelease_irqdef(&tty->output_lock);
 					tty->driver->ops->flush_output(tty);
 					circular_queue_pop_tail(line_queue, &aux);
 				}
@@ -141,8 +141,12 @@ ssize_t tty_handle_raw(struct tty *tty, void *buf, size_t count) {
 	ssize_t ret;
 
 	if(min == 0 && time == 0) {
+		if(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) == 0) {
+			return 0;
+		}
+
 		spinlock_irqsave(&tty->input_lock);
-		spinlock_irqsave(&tty->output_lock);
+		spinlock_irqdef(&tty->output_lock);
 		for(ret = 0; ret < (ssize_t) count; ret++) {
 			if(!circular_queue_pop(&tty->input_queue, c_buf)) {
 				break;
@@ -155,15 +159,15 @@ ssize_t tty_handle_raw(struct tty *tty, void *buf, size_t count) {
 
 			do_echo(tty, *c_buf++);
 		}
-		spinrelease_irqsave(&tty->output_lock);
+		spinrelease_irqdef(&tty->output_lock);
 		tty->driver->ops->flush_output(tty);
 		spinrelease_irqsave(&tty->input_lock);
 
 		return ret;
 	} else if(min > 0 && time == 0) {
-		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) != min);
+		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) < min);
 		spinlock_irqsave(&tty->input_lock);
-		spinlock_irqsave(&tty->output_lock);
+		spinlock_irqdef(&tty->output_lock);
 		for(ret = 0; ret < (ssize_t) count; ret++) {
 			circular_queue_pop(&tty->input_queue, c_buf);
 
@@ -175,7 +179,7 @@ ssize_t tty_handle_raw(struct tty *tty, void *buf, size_t count) {
 
 			do_echo(tty, *c_buf++);
 		}
-		spinrelease_irqsave(&tty->output_lock);
+		spinrelease_irqdef(&tty->output_lock);
 		tty->driver->ops->flush_output(tty);
 		spinrelease_irqsave(&tty->input_lock);
 

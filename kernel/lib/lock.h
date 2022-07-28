@@ -6,7 +6,7 @@ struct spinlock {
 };
 
 static inline void raw_spinlock(void *lock) {
-	while(__atomic_test_and_set(lock, __ATOMIC_ACQUIRE));
+	while(__atomic_test_and_set(lock, __ATOMIC_RELEASE));
 }
 
 static inline void raw_spinrelease(void *lock) {
@@ -14,6 +14,14 @@ static inline void raw_spinrelease(void *lock) {
 }
 
 bool get_interrupt_state();
+
+static inline void spinlock_irqdef(struct spinlock *spinlock) {
+	raw_spinlock(&spinlock->lock);
+}
+
+static inline void spinrelease_irqdef(struct spinlock *spinlock) {
+	raw_spinrelease(&spinlock->lock);
+}
 
 static inline void spinlock_irqsave(struct spinlock *spinlock) {
 	spinlock->interrupts = get_interrupt_state();
@@ -24,7 +32,7 @@ static inline void spinlock_irqsave(struct spinlock *spinlock) {
 static inline void spinrelease_irqsave(struct spinlock *spinlock) {
 	raw_spinrelease(&spinlock->lock);
 
-	if(spinlock->interrupts) { 
+	if(spinlock->interrupts) {
 		asm volatile ("sti");
 	} else {
 		asm volatile ("cli");
