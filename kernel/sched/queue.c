@@ -106,7 +106,7 @@ int waitq_wake(struct waitq_trigger *trigger) {
 
 	for(size_t i = 0; i < waitq->threads.length; i++) {
 		struct sched_thread *thread = waitq->threads.data[i];
-		struct sched_task *task = sched_translate_pid(thread->pid);
+		struct sched_task *task = thread->task;
 
 		task->last_trigger = trigger;
 

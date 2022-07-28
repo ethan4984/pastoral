@@ -125,9 +125,9 @@ int signal_send_thread(struct sched_thread *sender, struct sched_thread *target,
 
 	struct sched_task *sender_task = NULL;
 	if(sender) {
-		sender_task = sched_translate_pid(target->pid);
+		sender_task = target->task;
 	}
-	struct sched_task *target_task = sched_translate_pid(target->pid);
+	struct sched_task *target_task = target->task;
 
 	struct signal_queue *queue = &target->signal_queue;
 

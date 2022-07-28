@@ -12,9 +12,12 @@
 #include <drivers/tty/tty.h>
 #include <lock.h>
 
+struct sched_task;
 struct sched_thread {
+	struct spinlock lock;
+
 	tid_t tid;
-	pid_t pid;
+	struct sched_task *task;
 
 	size_t sched_status;
 	size_t idle_cnt;
@@ -53,7 +56,7 @@ struct sched_task {
 
 	struct spinlock lock;
 	pid_t pid;
-	pid_t ppid;
+	struct sched_task *parent;
 	struct process_group *group;
 	struct session *session;
 
@@ -172,6 +175,13 @@ static inline void task_unlock(struct sched_task *task) {
 	spinrelease_irqdef(&task->lock);
 }
 
+static inline void thread_lock(struct sched_thread *thread) {
+	spinlock_irqdef(&thread->lock);
+}
+
+static inline void thread_unlock(struct sched_thread *thread) {
+	spinrelease_irqdef(&thread->lock);
+}
 
 #define WEXITSTATUS(x) ((x) & 0xff)
 #define WIFCONTINUED(x) ((x) & 0x100)
