@@ -48,9 +48,9 @@ int vfs_mount(struct vfs_node *vfs_node, const char *source, const char *target,
 void vfs_init();
 
 static inline void node_lock(struct vfs_node *node) {
-	spinlock_irqsave(&node->lock);
+	spinlock_irqdef(&node->lock);
 }
 
 static inline void node_unlock(struct vfs_node *node) {
-	spinrelease_irqsave(&node->lock);
+	spinrelease_irqdef(&node->lock);
 }

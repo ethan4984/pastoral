@@ -9,12 +9,20 @@
 #include <termios.h>
 
 static void sighand(int sig) {
-	printf("sigint %d\n", sig);
+	printf("sig %d\n", sig);
 	exit(EXIT_SUCCESS);
 }
 
 int main() {
-	printf("Hello\n");
+	setbuf(stdout, NULL);
+	printf("1. doing weird fork stuff\n");
+	signal(SIGCHLD, sighand);
+	if(!fork()) {
+		printf("hello from child\n");
+		_exit(0);
+	}
+
+	printf("2. doing weird pty stuff\n");
 	int ptm = posix_openpt(O_RDWR | O_NOCTTY);
 	assert(ptm >= 0);
 	grantpt(ptm);
@@ -49,5 +57,9 @@ int main() {
 
 	close(pts);
 	close(ptm);
+
+	for(size_t i = 0; i < SIZE_MAX - 1; i++)
+		asm volatile("nop");
+
 	return 0;
 }

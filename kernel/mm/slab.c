@@ -105,7 +105,7 @@ static void *slab_alloc(struct slab *slab) {
 static void *cache_alloc_obj(struct cache *cache) {
 	struct slab *slab = NULL;
 
-	spinlock_irqsave(&cache->lock);
+	spinlock_irqdef(&cache->lock);
 
 	if(cache->slab_partial) {
 		slab = cache->slab_partial;
@@ -126,7 +126,7 @@ static void *cache_alloc_obj(struct cache *cache) {
 		cache_move_slab(&cache->slab_partial, &cache->slab_empty, slab);
 	}
 
-	spinrelease_irqsave(&cache->lock);
+	spinrelease_irqdef(&cache->lock);
 
 	return addr;
 }
@@ -135,19 +135,19 @@ static size_t slab_get_object_size(struct slab *slab, void *obj) {
 	if(!slab)
 		return 0;
 
-	spinlock_irqsave(&slab->cache->lock);
+	spinlock_irqdef(&slab->cache->lock);
 
 	struct slab *root = slab;
 
 	while(slab) {
 		if(slab->buffer <= obj && (slab->buffer + slab->cache->object_size * slab->total_objects) > obj) {
-			spinrelease_irqsave(&root->cache->lock);
+			spinrelease_irqdef(&root->cache->lock);
 			return slab->cache->object_size;
 		}
 		slab = slab->next;
 	}
 
-	spinrelease_irqsave(&root->cache->lock);
+	spinrelease_irqdef(&root->cache->lock);
 
 	return 0;
 }
@@ -170,7 +170,7 @@ static int slab_free_object(struct slab *slab, void *obj) {
 	if(slab == NULL)
 		return 0;
 
-	spinlock_irqsave(&slab->cache->lock);
+	spinlock_irqdef(&slab->cache->lock);
 
 	struct slab *root = slab;
 
@@ -180,7 +180,7 @@ static int slab_free_object(struct slab *slab, void *obj) {
 			if(BIT_TEST(slab->bitmap, index)) {
 				BIT_CLEAR(slab->bitmap, index);
 				slab->available_objects++;
-				spinrelease_irqsave(&root->cache->lock);
+				spinrelease_irqdef(&root->cache->lock);
 				return 1;
 			}
 		}
@@ -188,7 +188,7 @@ static int slab_free_object(struct slab *slab, void *obj) {
 		slab = slab->next;
 	}
 
-	spinrelease_irqsave(&root->cache->lock);
+	spinrelease_irqdef(&root->cache->lock);
 
 	return 0;
 }

@@ -131,7 +131,7 @@ void init_process() {
 	hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
 	hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
 */
-	struct sched_task *parent = sched_translate_pid(task->ppid);
+	struct sched_task *parent = task->parent;
 	if(parent == NULL) {
 		panic("");
 	}

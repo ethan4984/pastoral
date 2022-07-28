@@ -158,9 +158,9 @@ struct fd_handle *fd_translate(int index) {
 		return NULL;
 	}
 
-	spinlock_irqsave(&current_task->fd_lock);
+	spinlock_irqdef(&current_task->fd_lock);
 	struct fd_handle *handle = fd_translate_unlocked(index);
-	spinrelease_irqsave(&current_task->fd_lock);
+	spinrelease_irqdef(&current_task->fd_lock);
 
 	return handle;
 }
@@ -474,22 +474,22 @@ static void fd_close_unlocked(struct fd_handle *handle) {
 int fd_close(int fd) {
 	struct sched_task *current_task = CURRENT_TASK;
 
-	spinlock_irqsave(&current_task->fd_lock);
+	spinlock_irqdef(&current_task->fd_lock);
 	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqdef(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
 	if(current_task == NULL) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqdef(&current_task->fd_lock);
 		set_errno(ENOENT);
 		return -1;
 	}
 
 	fd_close_unlocked(fd_handle);
-	spinrelease_irqsave(&current_task->fd_lock);
+	spinrelease_irqdef(&current_task->fd_lock);
 
 	return 0;
 }
@@ -563,11 +563,11 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 
 int fd_dup(int fd, bool clear_cloexec) {
 	struct sched_task *current_task = CURRENT_TASK;
-	spinlock_irqsave(&current_task->fd_lock);
+	spinlock_irqdef(&current_task->fd_lock);
 
 	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqdef(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
@@ -583,24 +583,24 @@ int fd_dup(int fd, bool clear_cloexec) {
 
 	file_get(handle->file_handle);
 	hash_table_push(&current_task->fd_list, &handle->fd_number, handle, sizeof(handle->fd_number));
-	spinrelease_irqsave(&current_task->fd_lock);
+	spinrelease_irqdef(&current_task->fd_lock);
 
 	return handle->fd_number;
 }
 
 int fd_dup2(int oldfd, int newfd) {
 	struct sched_task *current_task = CURRENT_TASK;
-	spinlock_irqsave(&current_task->fd_lock);
+	spinlock_irqdef(&current_task->fd_lock);
 
 	struct fd_handle *oldfd_handle = fd_translate_unlocked(oldfd), *new_handle;;
 	if(oldfd_handle == NULL) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqdef(&current_task->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
 	if(oldfd == newfd) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqdef(&current_task->fd_lock);
 		return newfd;
 	}
 
@@ -618,7 +618,7 @@ int fd_dup2(int oldfd, int newfd) {
 
 	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 
-	spinrelease_irqsave(&current_task->fd_lock);
+	spinrelease_irqdef(&current_task->fd_lock);
 
 	return new_handle->fd_number;
 }
@@ -737,7 +737,6 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 			VECTOR_PUSH(handle_list, file_handle);
 		} else {
 			print("poll: unrecognised event type {%x}\n", type);
-			return 0;
 		}
 	}
 
@@ -1070,10 +1069,10 @@ void syscall_pipe(struct registers *regs) {
 
 	stat_update_time(pipe_stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
-	spinlock_irqsave(&CURRENT_TASK->fd_lock);
+	spinlock_irqdef(&CURRENT_TASK->fd_lock);
 	hash_table_push(&CURRENT_TASK->fd_list, &read_fd_handle->fd_number, read_fd_handle, sizeof(read_fd_handle->fd_number));
 	hash_table_push(&CURRENT_TASK->fd_list, &write_fd_handle->fd_number, write_fd_handle, sizeof(write_fd_handle->fd_number));
-	spinrelease_irqsave(&CURRENT_TASK->fd_lock);
+	spinrelease_irqdef(&CURRENT_TASK->fd_lock);
 
 	regs->rax = 0;
 }

@@ -12,9 +12,12 @@
 #include <drivers/tty/tty.h>
 #include <lock.h>
 
+struct sched_task;
 struct sched_thread {
+	struct spinlock lock;
+
 	tid_t tid;
-	pid_t pid;
+	struct sched_task *task;
 
 	size_t sched_status;
 	size_t idle_cnt;
@@ -53,7 +56,7 @@ struct sched_task {
 
 	struct spinlock lock;
 	pid_t pid;
-	pid_t ppid;
+	struct sched_task *parent;
 	struct process_group *group;
 	struct session *session;
 
@@ -149,29 +152,36 @@ extern struct spinlock sched_lock;
 #define TASK_MIN_PRIORITY ~(0)
 
 static inline void session_lock(struct session *session) {
-	spinlock_irqsave(&session->lock);
+	spinlock_irqdef(&session->lock);
 }
 
 static inline void session_unlock(struct session *session) {
-	spinrelease_irqsave(&session->lock);
+	spinrelease_irqdef(&session->lock);
 }
 
 static inline void process_group_lock(struct process_group *group) {
-	spinlock_irqsave(&group->lock);
+	spinlock_irqdef(&group->lock);
 }
 
 static inline void process_group_unlock(struct process_group *group) {
-	spinrelease_irqsave(&group->lock);
+	spinrelease_irqdef(&group->lock);
 }
 
 static inline void task_lock(struct sched_task *task) {
-	spinlock_irqsave(&task->lock);
+	spinlock_irqdef(&task->lock);
 }
 
 static inline void task_unlock(struct sched_task *task) {
-	spinrelease_irqsave(&task->lock);
+	spinrelease_irqdef(&task->lock);
 }
 
+static inline void thread_lock(struct sched_thread *thread) {
+	spinlock_irqdef(&thread->lock);
+}
+
+static inline void thread_unlock(struct sched_thread *thread) {
+	spinrelease_irqdef(&thread->lock);
+}
 
 #define WEXITSTATUS(x) ((x) & 0xff)
 #define WIFCONTINUED(x) ((x) & 0x100)

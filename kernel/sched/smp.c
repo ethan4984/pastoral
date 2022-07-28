@@ -20,7 +20,7 @@ static void core_bootstrap(struct cpu_local *cpu_local) {
 
 	print("initalising core: apic_id %x\n", xapic_read(XAPIC_ID_REG_OFF) >> 24);
 
-	spinrelease_irqsave(&core_init_lock);
+	spinrelease_irqdef(&core_init_lock);
 
 	wrmsr(MSR_GS_BASE, (uintptr_t)cpu_local);
 
@@ -77,7 +77,7 @@ void boot_aps() {
 			continue;
 		}
 
-		spinlock_irqsave(&core_init_lock);
+		spinlock_irqdef(&core_init_lock);
 
 		uint64_t *parameters = (uint64_t*)0x81000;
 
@@ -102,7 +102,7 @@ void boot_aps() {
 		xapic_write(XAPIC_ICR_OFF, 0x600 | 0x80); // MT = 0b11 V=0x80 for 0x80000
 	}
 
-	spinlock_irqsave(&core_init_lock);
+	spinlock_irqdef(&core_init_lock);
 
 	kernel_mappings.unmap_page(&kernel_mappings, 0);
 }

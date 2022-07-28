@@ -6,16 +6,16 @@ int waitq_wait(struct waitq *waitq, int type) {
 	struct sched_task *task = CURRENT_TASK;
 	struct sched_thread *thread = CURRENT_THREAD;
 
-	spinlock_irqsave(&waitq->lock);
+	spinlock_irqdef(&waitq->lock);
 
 	if((waitq->status & type) == type) {
-		spinrelease_irqsave(&waitq->lock);
+		spinrelease_irqdef(&waitq->lock);
 		return type;
 	}
 
 	VECTOR_PUSH(waitq->threads, thread);
 
-	spinrelease_irqsave(&waitq->lock);
+	spinrelease_irqdef(&waitq->lock);
 
 	for(;;) {
 		sched_dequeue(task, thread);
@@ -60,14 +60,14 @@ int waitq_set_timer(struct waitq *waitq, struct timespec timespec) {
 }
 
 int waitq_add(struct waitq *waitq, struct waitq_trigger *trigger) {
-	spinlock_irqsave(&waitq->lock);
+	spinlock_irqdef(&waitq->lock);
 
 	VECTOR_PUSH(waitq->triggers, trigger);
 
 	trigger->waitq = waitq;
 	trigger->refcnt++;
 
-	spinrelease_irqsave(&waitq->lock);
+	spinrelease_irqdef(&waitq->lock);
 
 	return 0;
 }
@@ -77,7 +77,7 @@ int waitq_remove(struct waitq *waitq, struct waitq_trigger *trigger) {
 		return -1;
 	}
 
-	spinlock_irqsave(&waitq->lock);
+	spinlock_irqdef(&waitq->lock);
 
 	VECTOR_REMOVE_BY_VALUE(waitq->triggers, trigger);
 
@@ -86,7 +86,7 @@ int waitq_remove(struct waitq *waitq, struct waitq_trigger *trigger) {
 		free(trigger);
 	}
 
-	spinrelease_irqsave(&waitq->lock);
+	spinrelease_irqdef(&waitq->lock);
 
 	return 0;
 }
@@ -98,7 +98,7 @@ int waitq_wake(struct waitq_trigger *trigger) {
 
 	struct waitq *waitq = trigger->waitq;
 
-	spinlock_irqsave(&waitq->lock);
+	spinlock_irqdef(&waitq->lock);
 
 	trigger->fired = 1;
 
@@ -106,7 +106,7 @@ int waitq_wake(struct waitq_trigger *trigger) {
 
 	for(size_t i = 0; i < waitq->threads.length; i++) {
 		struct sched_thread *thread = waitq->threads.data[i];
-		struct sched_task *task = sched_translate_pid(thread->pid);
+		struct sched_task *task = thread->task;
 
 		task->last_trigger = trigger;
 
@@ -115,7 +115,7 @@ int waitq_wake(struct waitq_trigger *trigger) {
 
 	VECTOR_CLEAR(waitq->threads);
 
-	spinrelease_irqsave(&waitq->lock);
+	spinrelease_irqdef(&waitq->lock);
 
 	return 0;
 }
@@ -125,13 +125,13 @@ int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct sched_task *ta
 		return -1;
 	}
 
-	spinlock_irqsave(&trigger->lock);
+	spinlock_irqdef(&trigger->lock);
 
 	trigger->agent_task = task;
 	trigger->agent_thread = thread;
 	trigger->type = type;
 
-	spinrelease_irqsave(&trigger->lock);
+	spinrelease_irqdef(&trigger->lock);
 
 	return 0;
 }
