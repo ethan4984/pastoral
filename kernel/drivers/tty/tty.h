@@ -52,7 +52,7 @@ struct tty {
 	struct circular_queue canon_queue;
 
 	char file_lock;
-	VECTOR(struct file_handle *) files;
+	VECTOR(struct file_handle*) files;
 };
 
 void tty_init(struct tty *);

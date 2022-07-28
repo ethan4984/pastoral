@@ -369,6 +369,7 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 	socket->trigger = waitq_alloc(&socket->waitq, EVENT_SOCKET);
 	waitq_add(&socket->waitq, socket->trigger);
 	waitq_wait(&socket->waitq, EVENT_SOCKET);
+	waitq_release(&socket->waitq, EVENT_SOCKET);
 handle:
 
 	struct socket *peer;

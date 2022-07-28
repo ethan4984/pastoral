@@ -8,18 +8,9 @@ int waitq_wait(struct waitq *waitq, int type) {
 
 	spinlock(&waitq->lock);
 
-	if(waitq->pending) {
-		struct waitq_trigger *trigger = (void*)task->last_trigger;
-		if(trigger == NULL) {
-			waitq->pending--;
-			spinrelease(&waitq->lock);
-			return -1;
-		}
-
-		waitq->pending--;
+	if((waitq->status & type) == type) {
 		spinrelease(&waitq->lock);
-
-		return trigger->type;
+		return type;
 	}
 
 	VECTOR_PUSH(waitq->threads, thread);
@@ -40,8 +31,6 @@ int waitq_wait(struct waitq *waitq, int type) {
 		if(trigger == NULL) {
 			continue;
 		}
-
-		waitq->pending--;
 
 		if(type == EVENT_ANY) {
 			return trigger->type;
@@ -113,7 +102,7 @@ int waitq_wake(struct waitq_trigger *trigger) {
 
 	trigger->fired = 1;
 
-	waitq->pending++;
+	waitq_obtain(waitq, trigger->type);
 
 	for(size_t i = 0; i < waitq->threads.length; i++) {
 		struct sched_thread *thread = waitq->threads.data[i];

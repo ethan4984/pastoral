@@ -296,6 +296,8 @@ int signal_wait(struct signal_queue *signal_queue, sigset_t mask, struct timespe
 	}
 
 	waitq_wait(&signal_queue->waitq, EVENT_SIGNAL);
+	waitq_release(&signal_queue->waitq, EVENT_SIGNAL);
+
 	spinlock(&signal_queue->siglock);
 
 	return 0;

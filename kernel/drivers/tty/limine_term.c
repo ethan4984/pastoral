@@ -161,6 +161,11 @@ static void ps2_handler(struct registers *, void *) {
 		}
 	}
 
+	for(size_t i = 0; i < active_tty->files.length; i++) {
+		struct file_handle *handle = active_tty->files.data[i];
+		waitq_wake(handle->trigger);
+	}
+
 	spinrelease(&active_tty->input_lock);
 }
 

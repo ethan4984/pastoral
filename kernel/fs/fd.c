@@ -290,7 +290,8 @@ ssize_t pipe_read(struct file_handle *file, void *buf, size_t cnt, off_t offset)
 	const void *out = file->pipe->buffer;
 
 	if(offset > stat->st_size) {
-		waitq_wait(file->waitq, EVENT_WRITE);
+		waitq_wait(&file->waitq, EVENT_WRITE);
+		waitq_release(&file->waitq, EVENT_WRITE);
 	}
 
 	stat_update_time(stat, STAT_ACCESS);

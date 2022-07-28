@@ -406,6 +406,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	int fd = fd_openat(AT_FDCWD, path, O_RDONLY, 0);
 	if(fd == -1) {
+		print("I hjate everything\n");
 		fd_close(fd);
 		CORE_LOCAL->pid = current_task->pid;
 		spinrelease(&sched_lock);
@@ -564,6 +565,7 @@ void syscall_waitpid(struct registers *regs) {
 	}
 
 	waitq_wait(current_task->waitq, EVENT_EXIT);
+	waitq_release(current_task->waitq, EVENT_EXIT);
 
 	struct waitq_trigger *trigger = current_task->last_trigger;
 	struct sched_task *agent = trigger->agent_task;

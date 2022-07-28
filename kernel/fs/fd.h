@@ -32,7 +32,7 @@ struct file_handle {
 	};
 	struct pipe *pipe;
 
-	struct waitq *waitq;
+	struct waitq waitq;
 	struct waitq_trigger *trigger;
 
 	// Pointer untouched by the kernel, use it on drivers.

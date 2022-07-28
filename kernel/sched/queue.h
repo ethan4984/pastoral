@@ -40,7 +40,8 @@ struct waitq {
 	struct timespec timespec;
 	struct waitq_trigger *timer_trigger;
 
-	int pending;
+	int status;
+
 	char lock;
 };
 
@@ -50,5 +51,12 @@ int waitq_add(struct waitq *waitq, struct waitq_trigger *trigger);
 int waitq_remove(struct waitq *waitq, struct waitq_trigger *trigger);
 int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct sched_task *task, struct sched_thread *thread, int type);
 int waitq_wake(struct waitq_trigger *trigger);
-
 struct waitq_trigger *waitq_alloc(struct waitq *waitq, int type);
+
+static inline void waitq_release(struct waitq *waitq, int type) {
+	waitq->status &= ~(type);
+}
+
+static inline void waitq_obtain(struct waitq *waitq, int type) {
+	waitq->status |= type;
+}

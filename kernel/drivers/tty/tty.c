@@ -119,9 +119,12 @@ static int tty_close(struct vfs_node *, struct file_handle *file) {
 		if(tty->driver->ops->disconnect)
 			tty->driver->ops->disconnect(tty);
 
-	tty_lock(tty);
-	VECTOR_REMOVE_BY_VALUE(tty->files, file);
-	tty_unlock(tty);
+	if(file->refcnt == 1) {
+		tty_lock(tty);
+		VECTOR_REMOVE_BY_VALUE(tty->files, file);
+		tty_unlock(tty);
+	}
+
 	return 0;
 }
 
