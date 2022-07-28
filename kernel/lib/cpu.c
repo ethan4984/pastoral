@@ -47,3 +47,9 @@ void init_cpu_features() {
 		HIGH_VMA = 0xff00000000000000;
 	}
 }
+
+bool get_interrupt_state() {
+	uint64_t rflags = 0;
+	asm volatile ("pushfq\n\tpop %0" : "=r"(rflags));
+	return (rflags >> 9) & 1;
+}

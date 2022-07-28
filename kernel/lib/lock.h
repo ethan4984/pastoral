@@ -13,11 +13,10 @@ static inline void raw_spinrelease(void *lock) {
 	__atomic_clear(lock, __ATOMIC_RELEASE);
 }
 
-static inline void spinlock_irqsave(struct spinlock *spinlock) {
-	uint64_t rflags;
-	asm volatile ("pushfq\n\tpop %0" : "=r"(rflags));
-	spinlock->interrupts = (rflags >> 9) & 1;
+bool get_interrupt_state();
 
+static inline void spinlock_irqsave(struct spinlock *spinlock) {
+	spinlock->interrupts = get_interrupt_state();
 	asm volatile ("cli");
 	raw_spinlock(&spinlock->lock);
 }
