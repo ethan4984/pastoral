@@ -66,6 +66,7 @@ extern void syscall_listen(struct registers*);
 extern void syscall_accept(struct registers*);
 extern void syscall_bind(struct registers*);
 extern void syscall_connect(struct registers*);
+extern void syscall_sigreturn(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -178,13 +179,14 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_listen, .name = "listen" }, // 58
 	{ .handler = syscall_accept, .name = "accept" }, // 59
 	{ .handler = syscall_bind, .name = "bind" }, // 60
-	{ .handler = syscall_connect, .name = "connect" } // 61
+	{ .handler = syscall_connect, .name = "connect" }, // 61
+	{ .handler = syscall_sigreturn, .name = "sigreturn" } // 62
 };
 
 extern void syscall_handler(struct registers *regs) {
 	uint64_t syscall_number = regs->rax;
 
-	if((syscall_number + 1) >= LENGTHOF(syscall_list)) {
+	if(syscall_number >= LENGTHOF(syscall_list)) {
 		print("SYSCALL: unknown syscall number %d\n", syscall_number);
 		regs->rax = -1;
 		set_errno(ENOSYS);

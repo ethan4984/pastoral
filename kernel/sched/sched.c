@@ -49,12 +49,6 @@ struct sched_thread *find_next_thread(struct sched_task *task) {
 		struct sched_thread *next_thread = task->thread_list.data[i];
 		next_thread->idle_cnt++;
 
-		// To avoid null pointers in here, set current task.
-		pid_t saved_pid = CORE_LOCAL->pid;
-		CORE_LOCAL->pid = task->pid;
-		signal_dispatch(next_thread);
-		CORE_LOCAL->pid = saved_pid;
-
 		if(next_thread->sched_status == TASK_WAITING && cnt < next_thread->idle_cnt) {
 			cnt = next_thread->idle_cnt;
 			ret = next_thread;
@@ -103,6 +97,7 @@ void reschedule(struct registers *regs, void*) {
 	struct sched_task *next_task = find_next_task();
 	if(next_task == NULL) {
 		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
+			signal_dispatch(CURRENT_THREAD, regs);
 			spinrelease_irqsave(&sched_lock);
 			return;
 		}
@@ -112,6 +107,7 @@ void reschedule(struct registers *regs, void*) {
 	struct sched_thread *next_thread = find_next_thread(next_task);
 	if(next_thread == NULL) {
 		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
+			signal_dispatch(CURRENT_THREAD, regs);
 			spinrelease_irqsave(&sched_lock);
 			return;
 		}
@@ -153,6 +149,8 @@ void reschedule(struct registers *regs, void*) {
 	CORE_LOCAL->page_table = next_task->page_table;
 
 	vmm_init_page_table(CORE_LOCAL->page_table);
+
+	signal_dispatch(next_thread, regs);
 
 	next_thread->idle_cnt = 0;
 	next_task->idle_cnt = 0;

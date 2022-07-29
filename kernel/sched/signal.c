@@ -216,7 +216,7 @@ static void signal_default_action(int signo) {
 	}
 }
 
-int signal_dispatch(struct sched_thread *thread) {
+int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 	struct signal_queue *queue = &thread->signal_queue;
 
 	spinlock_irqsave(&queue->siglock);
@@ -251,35 +251,31 @@ int signal_dispatch(struct sched_thread *thread) {
 			thread->regs.rsp -= 128;
 			thread->regs.rsp &= -16ll;
 
-			struct page_table *old_table = CURRENT_TASK->page_table;
-			vmm_init_page_table(thread->task->page_table);
+			thread->regs.rsp -= sizeof(struct siginfo);
+			struct siginfo *siginfo = (void*)thread->regs.rsp;
+			*siginfo = *signal->siginfo;
+
+			thread->regs.rsp -= sizeof(struct registers);
+			struct registers *ucontext = (void*)thread->regs.rsp;
+			*ucontext = *state;
+
+			thread->regs.rsp -= sizeof(uint64_t);
+			*(uint64_t*)thread->regs.rsp = (uint64_t)action->sa_restorer;
 
 			if(action->sa_flags & SA_SIGINFO) {
-				thread->regs.rsp -= sizeof(struct siginfo);
-				struct siginfo *siginfo = (void*)thread->regs.rsp;
-
-				thread->regs.rsp -= sizeof(struct registers);
-				struct registers *ucontext = (void*)thread->regs.rsp;
-
-				thread->regs.rsp -= sizeof(uint64_t);
-				*(uint64_t*)thread->regs.rsp = (uint64_t)action->sa_restorer;
-
 				thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
 				thread->regs.rdi = signal->signum;
 				thread->regs.rsi = (uint64_t)siginfo;
 				thread->regs.rdx = (uint64_t)ucontext;
 			} else {
-				thread->regs.rsp -= sizeof(uint64_t);
-				*(uint64_t*)thread->regs.rsp = (uint64_t)action->sa_restorer;
-
 				thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
 				thread->regs.rdi = signal->signum;
 			}
 
-			vmm_init_page_table(old_table);
-
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
+
 			spinrelease_irqsave(&CURRENT_TASK->sig_lock);
+
 			break;
 		}
 	}
@@ -366,6 +362,22 @@ int kill(pid_t pid, int sig) {
 	}
 
 	return 0;
+}
+
+void syscall_sigreturn(struct registers *regs) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] sigreturn\n", CORE_LOCAL->pid);
+#endif
+
+	struct registers *context = (void*)regs->rsp;
+	regs->rsp += sizeof(struct registers);
+
+	struct siginfo *siginfo = (void*)regs->rsp;
+	regs->rsp += sizeof(struct siginfo);
+
+	for(;;) {
+		asm ("hlt\ncli");
+	}
 }
 
 void syscall_sigaction(struct registers *regs) {
