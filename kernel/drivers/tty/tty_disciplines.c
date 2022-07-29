@@ -88,6 +88,7 @@ out:
 	circular_queue_push(&tty->canon_queue, &line_queue);
 
 	while (1) {
+		asm volatile ("sti");
 		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) == 0);
 		spinlock_irqsave(&tty->input_lock);
 
@@ -165,6 +166,7 @@ ssize_t tty_handle_raw(struct tty *tty, void *buf, size_t count) {
 
 		return ret;
 	} else if(min > 0 && time == 0) {
+		asm volatile ("sti");
 		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) < min);
 		spinlock_irqsave(&tty->input_lock);
 		spinlock_irqsave(&tty->output_lock);

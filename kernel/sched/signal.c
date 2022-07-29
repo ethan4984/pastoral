@@ -237,13 +237,8 @@ int signal_dispatch(struct sched_thread *thread) {
 
 	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
 		if(((thread->signal_queue.sigpending & SIGMASK(i)) && !(thread->signal_queue.sigmask & SIGMASK(i)))) {
-			print("dispatching\n"); 
-
 			struct signal *signal = &thread->signal_queue.queue[i - 1];
 			struct sigaction *action = signal->sigaction;
-
-			thread->regs.rsp -= 128;
-			thread->regs.rsp &= -16ll;
 
 			spinlock_irqsave(&CURRENT_TASK->sig_lock);
 			if(action->handler.sa_sigaction == SIG_DFL) {
@@ -253,6 +248,12 @@ int signal_dispatch(struct sched_thread *thread) {
 				break;
 			}
 
+			thread->regs.rsp -= 128;
+			thread->regs.rsp &= -16ll;
+
+			struct page_table *old_table = CURRENT_TASK->page_table;
+			vmm_init_page_table(thread->task->page_table);
+
 			if(action->sa_flags & SA_SIGINFO) {
 				thread->regs.rsp -= sizeof(struct siginfo);
 				struct siginfo *siginfo = (void*)thread->regs.rsp;
@@ -260,14 +261,22 @@ int signal_dispatch(struct sched_thread *thread) {
 				thread->regs.rsp -= sizeof(struct registers);
 				struct registers *ucontext = (void*)thread->regs.rsp;
 
+				thread->regs.rsp -= sizeof(uint64_t);
+				*(uint64_t*)thread->regs.rsp = (uint64_t)action->sa_restorer;
+
 				thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
 				thread->regs.rdi = signal->signum;
 				thread->regs.rsi = (uint64_t)siginfo;
 				thread->regs.rdx = (uint64_t)ucontext;
 			} else {
+				thread->regs.rsp -= sizeof(uint64_t);
+				*(uint64_t*)thread->regs.rsp = (uint64_t)action->sa_restorer;
+
 				thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
 				thread->regs.rdi = signal->signum;
 			}
+
+			vmm_init_page_table(old_table);
 
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
 			spinrelease_irqsave(&CURRENT_TASK->sig_lock);

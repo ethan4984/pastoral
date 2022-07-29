@@ -184,7 +184,7 @@ static struct syscall_handle syscall_list[] = {
 extern void syscall_handler(struct registers *regs) {
 	uint64_t syscall_number = regs->rax;
 
-	if(syscall_number >= LENGTHOF(syscall_list)) {
+	if((syscall_number + 1) >= LENGTHOF(syscall_list)) {
 		print("SYSCALL: unknown syscall number %d\n", syscall_number);
 		regs->rax = -1;
 		set_errno(ENOSYS);
