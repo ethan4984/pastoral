@@ -218,7 +218,7 @@ static void signal_default_action(int signo) {
 	}
 }
 
-int signal_dispatch(struct sched_thread *thread) {
+int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 	struct signal_queue *queue = &thread->signal_queue;
 
 	spinlock_irqsave(&queue->siglock);
@@ -236,8 +236,6 @@ int signal_dispatch(struct sched_thread *thread) {
 		signal_default_action(SIGSTOP);
 		panic("");
 	}
-
-	struct registers *state = &thread->regs; 
 
 	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
 		if(((thread->signal_queue.sigpending & SIGMASK(i)) && !(thread->signal_queue.sigmask & SIGMASK(i)))) {

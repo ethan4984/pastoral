@@ -97,7 +97,7 @@ void reschedule(struct registers *regs, void*) {
 	struct sched_task *next_task = find_next_task();
 	if(next_task == NULL) {
 		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-			signal_dispatch(CURRENT_THREAD);
+			signal_dispatch(CURRENT_THREAD, regs);
 			spinrelease_irqsave(&sched_lock);
 			return;
 		}
@@ -107,7 +107,7 @@ void reschedule(struct registers *regs, void*) {
 	struct sched_thread *next_thread = find_next_thread(next_task);
 	if(next_thread == NULL) {
 		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-			signal_dispatch(CURRENT_THREAD);
+			signal_dispatch(CURRENT_THREAD, regs);
 			spinrelease_irqsave(&sched_lock);
 			return;
 		}
@@ -150,7 +150,7 @@ void reschedule(struct registers *regs, void*) {
 
 	vmm_init_page_table(CORE_LOCAL->page_table);
 
-	signal_dispatch(next_thread); 
+	signal_dispatch(next_thread, &next_thread->regs); 
 
 	next_thread->idle_cnt = 0;
 	next_task->idle_cnt = 0;
