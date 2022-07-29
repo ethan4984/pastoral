@@ -221,6 +221,10 @@ static void signal_default_action(int signo) {
 int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 	struct signal_queue *queue = &thread->signal_queue;
 
+	if(!(state->cs & 0x3)) {
+		return -1;
+	}
+
 	spinlock_irqsave(&queue->siglock);
 	if(queue->sigpending == 0) {
 		spinrelease_irqsave(&queue->siglock);
@@ -272,7 +276,6 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 			*ucontext = *state;
 
 			thread->signal_context = *state;
-			view_registers(&thread->signal_context);
 
 			stack -= sizeof(uint64_t);
 			*(uint64_t*)stack = (uint64_t)action->sa_restorer;
@@ -394,18 +397,25 @@ void syscall_sigreturn(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] sigreturn\n", CORE_LOCAL->pid);
 #endif
-
 	asm volatile ("cli");
 
-	/*struct registers *context = (void*)regs->rsp;
+	struct registers *context = (void*)regs->rsp;
 	regs->rsp += sizeof(struct registers);
 
 	struct siginfo *siginfo = (void*)regs->rsp;
-	regs->rsp += sizeof(struct siginfo);*/
+	regs->rsp += sizeof(struct siginfo);
 
 	struct sched_thread *thread = CURRENT_THREAD;
+	struct signal_queue *signal_queue = &thread->signal_queue;
 
-	view_registers(&thread->signal_context);
+	spinlock_irqsave(&signal_queue->siglock);
+
+	struct signal *signal = &signal_queue->queue[siginfo->si_signo - 1];
+	waitq_wake(signal->trigger);
+
+	spinrelease_irqsave(&signal_queue->siglock);
+
+	thread->regs = thread->signal_context;
 
 	if(thread->blocking) {
 		thread->blocking = false;
