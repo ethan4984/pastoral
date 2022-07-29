@@ -30,6 +30,8 @@ struct sched_thread {
 	size_t user_stack_size;
 	size_t errno;
 
+	bool signal_release_block;
+
 	struct signal_queue signal_queue;
 
 	struct registers regs;

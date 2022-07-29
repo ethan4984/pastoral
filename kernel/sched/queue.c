@@ -1,5 +1,6 @@
 #include <sched/queue.h>
 #include <sched/sched.h>
+#include <errno.h>
 #include <cpu.h>
 
 int waitq_wait(struct waitq *waitq, int type) {
@@ -26,6 +27,12 @@ int waitq_wait(struct waitq *waitq, int type) {
 
 		while(task->waiting);
 		task->waiting = 0;
+
+		if(thread->signal_release_block) {
+			thread->signal_release_block = false;
+			set_errno(EINTR);
+			return -1;
+		}
 
 		struct waitq_trigger *trigger = (void*)task->last_trigger;
 		if(trigger == NULL) {
