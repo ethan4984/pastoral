@@ -291,8 +291,6 @@ int signal_dispatch(struct sched_thread *thread) {
 				state->rdx = (uint64_t)ucontext;
 			}
 
-			print("aaaaaaaaaaaaaaaaaaaaaaaa dispatching signal with restorer %x on %x\n", action->sa_restorer, CORE_LOCAL->pid);
-
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
 
 			spinrelease_irqsave(&CURRENT_TASK->sig_lock);
