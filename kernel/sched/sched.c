@@ -97,7 +97,7 @@ void reschedule(struct registers *regs, void*) {
 	struct sched_task *next_task = find_next_task();
 	if(next_task == NULL) {
 		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-			signal_dispatch(CURRENT_THREAD, regs);
+			signal_dispatch(CURRENT_THREAD);
 			spinrelease_irqsave(&sched_lock);
 			return;
 		}
@@ -107,7 +107,7 @@ void reschedule(struct registers *regs, void*) {
 	struct sched_thread *next_thread = find_next_thread(next_task);
 	if(next_thread == NULL) {
 		if(CORE_LOCAL->tid != -1 && CORE_LOCAL->pid != -1) {
-			signal_dispatch(CURRENT_THREAD, regs);
+			signal_dispatch(CURRENT_THREAD);
 			spinrelease_irqsave(&sched_lock);
 			return;
 		}
@@ -140,17 +140,17 @@ void reschedule(struct registers *regs, void*) {
 		last_thread->user_stack = CORE_LOCAL->user_stack;
 	}
 
-	CORE_LOCAL->page_table = next_task->page_table;
-
-	vmm_init_page_table(CORE_LOCAL->page_table);
-
-	signal_dispatch(next_thread, regs);
-
 	CORE_LOCAL->pid = next_task->pid;
 	CORE_LOCAL->tid = next_thread->tid;
 	CORE_LOCAL->errno = next_thread->errno;
 	CORE_LOCAL->kernel_stack = next_thread->kernel_stack;
 	CORE_LOCAL->user_stack = next_thread->user_stack;
+
+	CORE_LOCAL->page_table = next_task->page_table;
+
+	vmm_init_page_table(CORE_LOCAL->page_table);
+
+	signal_dispatch(next_thread); 
 
 	next_thread->idle_cnt = 0;
 	next_task->idle_cnt = 0;
@@ -165,6 +165,8 @@ void reschedule(struct registers *regs, void*) {
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
 	}
+
+	//print("rescheduling to %x:%x to %x:%x\n", next_thread->regs.cs, next_thread->regs.rip, next_task->pid, next_thread->tid);
 
 	xapic_write(XAPIC_EOI_OFF, 0);
 	spinrelease_irqsave(&sched_lock);

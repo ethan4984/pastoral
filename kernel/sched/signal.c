@@ -1,5 +1,6 @@
 #include <sched/signal.h>
 #include <sched/sched.h>
+#include <mm/mmap.h>
 #include <debug.h>
 #include <errno.h>
 
@@ -216,7 +217,7 @@ static void signal_default_action(int signo) {
 	}
 }
 
-int signal_dispatch(struct sched_thread *thread, struct registers *state) {
+int signal_dispatch(struct sched_thread *thread) {
 	struct signal_queue *queue = &thread->signal_queue;
 
 	spinlock_irqsave(&queue->siglock);
@@ -235,6 +236,8 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 		panic("");
 	}
 
+	struct registers *state = &thread->regs; 
+
 	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
 		if(((thread->signal_queue.sigpending & SIGMASK(i)) && !(thread->signal_queue.sigmask & SIGMASK(i)))) {
 			struct signal *signal = &thread->signal_queue.queue[i - 1];
@@ -248,28 +251,43 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 				break;
 			}
 
-			thread->regs.rsp -= 128;
-			thread->regs.rsp &= -16ll;
+			uint64_t stack = (uint64_t)mmap(
+					CORE_LOCAL->page_table,
+					NULL,
+					THREAD_USER_STACK_SIZE,
+					MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_USER,
+					MMAP_MAP_ANONYMOUS,
+					0,
+					0
+			) + THREAD_USER_STACK_SIZE;
 
-			thread->regs.rsp -= sizeof(struct siginfo);
-			struct siginfo *siginfo = (void*)thread->regs.rsp;
+			stack -= 128;
+			stack &= -16ll;
+
+			stack -= sizeof(struct siginfo);
+			struct siginfo *siginfo = (void*)stack;
 			*siginfo = *signal->siginfo;
 
-			thread->regs.rsp -= sizeof(struct registers);
-			struct registers *ucontext = (void*)thread->regs.rsp;
+			stack -= sizeof(struct registers);
+			struct registers *ucontext = (void*)stack;
 			*ucontext = *state;
 
-			thread->regs.rsp -= sizeof(uint64_t);
-			*(uint64_t*)thread->regs.rsp = (uint64_t)action->sa_restorer;
+			stack -= sizeof(uint64_t);
+			*(uint64_t*)stack = (uint64_t)action->sa_restorer;
+
+			memset8((void*)state, 0, sizeof(*state));
+
+			state->ss = 0x3b;
+			state->rsp = stack;
+			state->rflags = 0x202;
+			state->cs = 0x43;
+			state->rip = (uint64_t)action->handler.sa_sigaction;
+
+			state->rdi = signal->signum;
 
 			if(action->sa_flags & SA_SIGINFO) {
-				thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
-				thread->regs.rdi = signal->signum;
-				thread->regs.rsi = (uint64_t)siginfo;
-				thread->regs.rdx = (uint64_t)ucontext;
-			} else {
-				thread->regs.rip = (uint64_t)action->handler.sa_sigaction;
-				thread->regs.rdi = signal->signum;
+				state->rsi = (uint64_t)siginfo;
+				state->rdx = (uint64_t)ucontext;
 			}
 
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
@@ -281,6 +299,7 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 	}
 
 	spinrelease_irqsave(&queue->siglock);
+
 	return 0;
 }
 
@@ -371,6 +390,8 @@ int kill(pid_t pid, int sig) {
 }
 
 void syscall_sigreturn(struct registers *regs) {
+	print("I hate eveyrthing\n");
+
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] sigreturn\n", CORE_LOCAL->pid);
 #endif
@@ -385,8 +406,10 @@ void syscall_sigreturn(struct registers *regs) {
 	thread->regs = *context;
 
 	if(context->cs & 0x3) {
+		print("from userspace\n");
 		sched_yield();
 	} else {
+		print("from kernelspace\n");
 		thread->signal_release_block = true;
 		sched_yield();
 	}
