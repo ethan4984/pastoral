@@ -566,8 +566,13 @@ void syscall_waitpid(struct registers *regs) {
 		waitq_add(current_task->waitq, process_list.data[i]->exit_trigger);
 	}
 
-	waitq_wait(current_task->waitq, EVENT_EXIT);
+	int ret = waitq_wait(current_task->waitq, EVENT_EXIT);
 	waitq_release(current_task->waitq, EVENT_EXIT);
+
+	if(ret == -1) {
+		regs->rax = -1;
+		return;
+	}
 
 	struct waitq_trigger *trigger = current_task->last_trigger;
 	struct sched_task *agent = trigger->agent_task;

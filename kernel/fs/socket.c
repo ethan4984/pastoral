@@ -368,8 +368,13 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 
 	socket->trigger = waitq_alloc(&socket->waitq, EVENT_SOCKET);
 	waitq_add(&socket->waitq, socket->trigger);
-	waitq_wait(&socket->waitq, EVENT_SOCKET);
+
+	int ret = waitq_wait(&socket->waitq, EVENT_SOCKET);
 	waitq_release(&socket->waitq, EVENT_SOCKET);
+
+	if(ret == -1) {
+		return -1;
+	}
 handle:
 
 	struct socket *peer;
@@ -380,7 +385,7 @@ handle:
 	}
 
 	if(addr && length) {
-		int ret = unix_getsockname(peer, addr, length);
+		ret = unix_getsockname(peer, addr, length);
 		if(ret == -1) {
 			return -1;
 		}

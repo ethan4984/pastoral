@@ -290,8 +290,12 @@ ssize_t pipe_read(struct file_handle *file, void *buf, size_t cnt, off_t offset)
 	const void *out = file->pipe->buffer;
 
 	if(offset > stat->st_size) {
-		waitq_wait(&file->waitq, EVENT_WRITE);
+		int ret = waitq_wait(&file->waitq, EVENT_WRITE);
 		waitq_release(&file->waitq, EVENT_WRITE);
+
+		if(ret == -1) {
+			return -1;
+		}
 	}
 
 	stat_update_time(stat, STAT_ACCESS);
@@ -740,9 +744,12 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 		}
 	}
 
-	waitq_wait(&waitq, EVENT_ANY);
+	int ret = waitq_wait(&waitq, EVENT_ANY);
+	if(ret == -1) {
+		return -1;
+	}
 
-	int ret = 0;
+	ret = 0;
 
 	for(size_t i = 0; i < handle_list.length; i++) {
 		struct file_handle *handle = handle_list.data[i];
