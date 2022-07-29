@@ -375,6 +375,15 @@ void syscall_sigreturn(struct registers *regs) {
 	struct siginfo *siginfo = (void*)regs->rsp;
 	regs->rsp += sizeof(struct siginfo);
 
+	struct sched_thread *thread = CURRENT_THREAD;
+
+	if(context->cs & 0x3) {
+		thread->regs = *context;
+		sched_yield();
+	} else {
+		// syscall came from kernel space, stop blocking whatever is blocking
+	}
+
 	for(;;) {
 		asm ("hlt\ncli");
 	}

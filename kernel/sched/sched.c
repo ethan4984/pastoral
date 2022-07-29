@@ -140,17 +140,17 @@ void reschedule(struct registers *regs, void*) {
 		last_thread->user_stack = CORE_LOCAL->user_stack;
 	}
 
-	CORE_LOCAL->pid = next_task->pid;
-	CORE_LOCAL->tid = next_thread->tid;
-	CORE_LOCAL->errno = next_thread->errno;
-	CORE_LOCAL->kernel_stack = next_thread->kernel_stack;
-	CORE_LOCAL->user_stack = next_thread->user_stack;
-
 	CORE_LOCAL->page_table = next_task->page_table;
 
 	vmm_init_page_table(CORE_LOCAL->page_table);
 
 	signal_dispatch(next_thread, regs);
+
+	CORE_LOCAL->pid = next_task->pid;
+	CORE_LOCAL->tid = next_thread->tid;
+	CORE_LOCAL->errno = next_thread->errno;
+	CORE_LOCAL->kernel_stack = next_thread->kernel_stack;
+	CORE_LOCAL->user_stack = next_thread->user_stack;
 
 	next_thread->idle_cnt = 0;
 	next_task->idle_cnt = 0;

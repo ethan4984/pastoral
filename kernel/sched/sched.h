@@ -13,6 +13,7 @@
 #include <lock.h>
 
 struct sched_task;
+
 struct sched_thread {
 	struct spinlock lock;
 
