@@ -21,12 +21,10 @@ int waitq_wait(struct waitq *waitq, int type) {
 	for(;;) {
 		sched_dequeue(task, thread);
 
-		task->waiting = 1;
-
+		thread->blocking = true;
 		asm volatile ("sti");
-
-		while(task->waiting);
-		task->waiting = 0;
+		while(thread->blocking);
+		thread->blocking = false;
 
 		if(thread->signal_release_block) {
 			thread->signal_release_block = false;
@@ -116,6 +114,7 @@ int waitq_wake(struct waitq_trigger *trigger) {
 		struct sched_task *task = thread->task;
 
 		task->last_trigger = trigger;
+		thread->blocking = false;
 
 		sched_requeue(task, thread);
 	}

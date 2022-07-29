@@ -160,8 +160,6 @@ void reschedule(struct registers *regs, void*) {
 	set_user_fs(next_thread->user_fs_base);
 	set_user_gs(next_thread->user_gs_base);
 
-	next_task->waiting = 0;
-
 	if(next_thread->regs.cs & 0x3) {
 		swapgs();
 	}
@@ -252,6 +250,8 @@ void sched_requeue_and_yield(struct sched_task *task, struct sched_thread *threa
 }
 
 void sched_yield() {
+	asm volatile ("sti");
+
 	xapic_write(XAPIC_ICR_OFF + 0x10, CORE_LOCAL->apic_id << 24);
 	xapic_write(XAPIC_ICR_OFF, 32);
 
@@ -550,6 +550,38 @@ void syscall_waitpid(struct registers *regs) {
 
 	struct sched_task *current_task = CURRENT_TASK;
 
+	for(size_t i = 0; i < current_task->zombies.length; i++) {
+		struct sched_task *zombie = current_task->zombies.data[i];
+
+		if(pid < -1) {
+			if(zombie->group->pgid != zombie->pid) {
+				continue;	
+			}
+		} else if(pid == 0) {
+			if(zombie->group->pgid != current_task->group->pgid) {
+				continue;	
+			}
+		} else if(pid > 0) {
+			if(zombie->pid != pid) {
+				continue;
+			}
+		}
+
+		if(status) {
+			*status = zombie->exit_status;
+		}
+
+		VECTOR_REMOVE_BY_VALUE(current_task->zombies, zombie);
+
+		regs->rax = zombie->pid;
+		return;
+	}
+
+	if((options & WNOHANG) == WNOHANG && current_task->zombies.length == 0) {
+		regs->rax = 0;
+		return;
+	}
+
 	VECTOR(struct sched_task*) process_list = { 0 };
 
 	if(pid < -1) {
@@ -630,12 +662,22 @@ void task_terminate(struct sched_task *task, int status) {
 		struct sched_task *child = task->children.data[i];
 
 		child->exit_trigger->waitq = parent->waitq;
-		child->parent = sched_translate_pid(1);
+		child->parent = parent;
 
 		VECTOR_PUSH(parent->children, child);
 	}
 
+	for(size_t i = 0; i < task->zombies.length; i++) {
+		struct sched_task *zombie = task->zombies.data[i];
+
+		zombie->exit_trigger->waitq = parent->waitq;
+		zombie->parent = parent;
+
+		VECTOR_PUSH(parent->zombies, zombie);
+	}
+
 	VECTOR_REMOVE_BY_VALUE(task->parent->children, task);
+	VECTOR_PUSH(task->parent->zombies, task);
 
 	task->exit_status = status;
 	waitq_wake(task->exit_trigger);

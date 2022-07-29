@@ -30,6 +30,7 @@ struct sched_thread {
 	size_t user_stack_size;
 	size_t errno;
 
+	bool blocking;
 	bool signal_release_block;
 
 	struct signal_queue signal_queue;
@@ -50,7 +51,6 @@ struct sched_task {
 	struct bitmap tid_bitmap;
 
 	struct waitq *waitq;
-	volatile int waiting;
 
 	struct waitq_trigger *exit_trigger;
 	struct waitq_trigger *last_trigger;
@@ -83,6 +83,7 @@ struct sched_task {
 	struct sigaction sigactions[SIGNAL_MAX];
 
 	VECTOR(struct sched_task*) children;
+	VECTOR(struct sched_task*) zombies;
 
 	struct page_table *page_table;
 };

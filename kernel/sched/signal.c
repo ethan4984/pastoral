@@ -154,6 +154,7 @@ int signal_send_thread(struct sched_thread *sender, struct sched_thread *target,
 	struct signal *signal = &signal_queue->queue[sig - 1];
 
 	signal->refcnt = 1;
+	signal->signum = sig;
 	signal->siginfo = alloc(sizeof(struct siginfo));
 	signal->sigaction = &target_task->sigactions[sig - 1];
 	signal->trigger = waitq_alloc(&queue->waitq, EVENT_SIGNAL);
@@ -290,6 +291,8 @@ int signal_dispatch(struct sched_thread *thread) {
 				state->rdx = (uint64_t)ucontext;
 			}
 
+			print("aaaaaaaaaaaaaaaaaaaaaaaa dispatching signal with restorer %x on %x\n", action->sa_restorer, CORE_LOCAL->pid);
+
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
 
 			spinrelease_irqsave(&CURRENT_TASK->sig_lock);
@@ -390,8 +393,6 @@ int kill(pid_t pid, int sig) {
 }
 
 void syscall_sigreturn(struct registers *regs) {
-	print("I hate eveyrthing\n");
-
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] sigreturn\n", CORE_LOCAL->pid);
 #endif
@@ -403,16 +404,37 @@ void syscall_sigreturn(struct registers *regs) {
 	regs->rsp += sizeof(struct siginfo);
 
 	struct sched_thread *thread = CURRENT_THREAD;
-	thread->regs = *context;
+
+	if(thread->blocking) {
+		thread->blocking = false;
+		thread->signal_release_block = true;
+	}
 
 	if(context->cs & 0x3) {
-		print("from userspace\n");
-		sched_yield();
-	} else {
-		print("from kernelspace\n");
-		thread->signal_release_block = true;
-		sched_yield();
+		swapgs();
 	}
+
+	asm volatile (
+		"mov %0, %%rsp\n\t"
+		"pop %%r15\n\t"
+		"pop %%r14\n\t"
+		"pop %%r13\n\t"
+		"pop %%r12\n\t"
+		"pop %%r11\n\t"
+		"pop %%r10\n\t"
+		"pop %%r9\n\t"
+		"pop %%r8\n\t"
+		"pop %%rsi\n\t"
+		"pop %%rdi\n\t"
+		"pop %%rbp\n\t"
+		"pop %%rdx\n\t"
+		"pop %%rcx\n\t"
+		"pop %%rbx\n\t"
+		"pop %%rax\n\t"
+		"addq $16, %%rsp\n\t"
+		"iretq\n\t"
+		:: "r" (context)
+	);
 }
 
 void syscall_sigaction(struct registers *regs) {
