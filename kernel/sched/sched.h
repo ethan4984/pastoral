@@ -36,6 +36,7 @@ struct sched_thread {
 	struct signal_queue signal_queue;
 
 	struct registers regs;
+	struct registers signal_context;
 };
 
 struct process_group;

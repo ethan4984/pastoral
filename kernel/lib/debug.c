@@ -87,3 +87,26 @@ void panic(const char *str, ...) {
 	for(;;)
 		asm volatile ("cli\nhlt");
 }
+
+void view_registers(struct registers *regs) {
+	print("debug: rax: %x\n", regs->rax);
+	print("debug: rbx: %x\n", regs->rbx);
+	print("debug: rcx: %x\n", regs->rcx);
+	print("debug: rdx: %x\n", regs->rdx);
+	print("debug: rbp: %x\n", regs->rbp);
+	print("debug: rdi: %x\n", regs->rdi);
+	print("debug: rsi: %x\n", regs->rsi);
+	print("debug: r8: %x\n", regs->r8);
+	print("debug: r9: %x\n", regs->r9);
+	print("debug: r10: %x\n", regs->r10);
+	print("debug: r11: %x\n", regs->r11);
+	print("debug: r12: %x\n", regs->r12);
+	print("debug: r13: %x\n", regs->r13);
+	print("debug: r14: %x\n", regs->r14);
+	print("debug: r15: %x\n", regs->r15);
+	print("debug: rip: %x\n", regs->rip);
+	print("debug: cs: %x\n", regs->cs);
+	print("debug: rflags: %x\n", regs->rflags);
+	print("debug: rsp: %x\n", regs->rsp);
+	print("debug: ss: %x\n", regs->ss);
+}

@@ -271,6 +271,9 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 			struct registers *ucontext = (void*)stack;
 			*ucontext = *state;
 
+			thread->signal_context = *state;
+			view_registers(&thread->signal_context);
+
 			stack -= sizeof(uint64_t);
 			*(uint64_t*)stack = (uint64_t)action->sa_restorer;
 
@@ -290,7 +293,6 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 			}
 
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
-
 			spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 
 			break;
@@ -393,20 +395,24 @@ void syscall_sigreturn(struct registers *regs) {
 	print("syscall: [pid %x] sigreturn\n", CORE_LOCAL->pid);
 #endif
 
-	struct registers *context = (void*)regs->rsp;
+	asm volatile ("cli");
+
+	/*struct registers *context = (void*)regs->rsp;
 	regs->rsp += sizeof(struct registers);
 
 	struct siginfo *siginfo = (void*)regs->rsp;
-	regs->rsp += sizeof(struct siginfo);
+	regs->rsp += sizeof(struct siginfo);*/
 
 	struct sched_thread *thread = CURRENT_THREAD;
+
+	view_registers(&thread->signal_context);
 
 	if(thread->blocking) {
 		thread->blocking = false;
 		thread->signal_release_block = true;
 	}
 
-	if(context->cs & 0x3) {
+	if(thread->signal_context.cs & 0x3) {
 		swapgs();
 	}
 
@@ -429,7 +435,7 @@ void syscall_sigreturn(struct registers *regs) {
 		"pop %%rax\n\t"
 		"addq $16, %%rsp\n\t"
 		"iretq\n\t"
-		:: "r" (context)
+		:: "r" (&thread->signal_context)
 	);
 }
 
