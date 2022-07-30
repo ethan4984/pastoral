@@ -118,7 +118,8 @@ void syscall_socket(struct registers *regs) {
 	socket_file_handle->ops = &socket_file_ops;
 	socket_file_handle->private_data = socket;
 	socket_file_handle->stat = alloc(sizeof(struct stat));
-	socket_file_handle->stat->st_mode = S_IFSOCK | O_RDWR;
+	socket_file_handle->stat->st_mode = S_IFSOCK;
+	socket_file_handle->flags |= O_RDWR;
 	
 	ramfs_create_dangle(socket_file_handle->stat);
 
@@ -488,7 +489,7 @@ handle:
 	}
 
 	socket->state = SOCKET_CONNECTED;
-	socket->peer = peer;
+	peer->peer = socket;
 
 	waitq_remove(&socket->waitq, socket->trigger);
 
@@ -516,6 +517,7 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 	}
 
 	target_socket->peer = socket;
+	target_socket->state = SOCKET_CONNECTED;
 
 	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
 		waitq_wake(target_socket->trigger);	
@@ -628,6 +630,7 @@ static ssize_t socket_read(struct file_handle *handle, void *buf, size_t cnt, of
 	struct socket *peer = socket->peer;
 
 	if(socket->state != SOCKET_CONNECTED) {
+		// TODO block until connected
 		set_errno(EDESTADDRREQ);
 		return -1;
 	}
@@ -640,6 +643,7 @@ static ssize_t socket_write(struct file_handle *handle, const void *buf, size_t 
 	struct socket *peer = socket->peer;
 
 	if(socket->state != SOCKET_CONNECTED) {
+		// TODO block until connected
 		set_errno(EDESTADDRREQ);
 		return -1;
 	}
