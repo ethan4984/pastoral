@@ -22,7 +22,9 @@ struct sched_thread {
 
 	size_t sched_status;
 	size_t idle_cnt;
+	size_t signal_user_stack;
 	size_t user_stack;
+	size_t signal_kernel_stack;
 	size_t kernel_stack;
 	size_t user_gs_base;
 	size_t user_fs_base;
@@ -32,6 +34,7 @@ struct sched_thread {
 
 	bool blocking;
 	bool signal_release_block;
+	bool dispatch_ready;
 
 	struct signal_queue signal_queue;
 
@@ -82,6 +85,7 @@ struct sched_task {
 
 	struct spinlock sig_lock;
 	struct sigaction sigactions[SIGNAL_MAX];
+	bool dispatch_ready;
 
 	VECTOR(struct sched_task*) children;
 	VECTOR(struct sched_task*) zombies;

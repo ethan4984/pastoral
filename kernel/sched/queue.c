@@ -21,10 +21,14 @@ int waitq_wait(struct waitq *waitq, int type) {
 	for(;;) {
 		sched_dequeue(task, thread);
 
+		thread->signal_queue.active = true;
+
 		thread->blocking = true;
 		asm volatile ("sti");
 		while(thread->blocking);
 		thread->blocking = false;
+
+		thread->signal_queue.active = false;
 
 		if(thread->signal_release_block) {
 			thread->signal_release_block = false;

@@ -193,6 +193,8 @@ extern void syscall_handler(struct registers *regs) {
 		return;
 	}
 
+	CURRENT_THREAD->signal_queue.active = false;
+
 	if(syscall_list[syscall_number].handler != NULL) {
 		syscall_list[syscall_number].handler(regs);
 	} else {
@@ -206,4 +208,6 @@ extern void syscall_handler(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid, syscall_list[syscall_number].name, regs->rax, get_errno());
 #endif
+
+	CURRENT_THREAD->signal_queue.active = true;
 }

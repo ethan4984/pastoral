@@ -49,7 +49,11 @@ struct sched_thread *find_next_thread(struct sched_task *task) {
 		struct sched_thread *next_thread = task->thread_list.data[i];
 		next_thread->idle_cnt++;
 
-		if(next_thread->sched_status == TASK_WAITING && cnt < next_thread->idle_cnt) {
+		if(next_thread->signal_queue.sigpending && next_thread->blocking) {
+			return next_thread;
+		}
+
+		if((next_thread->sched_status == TASK_WAITING || next_thread->dispatch_ready == true) && cnt < next_thread->idle_cnt) {
 			cnt = next_thread->idle_cnt;
 			ret = next_thread;
 		}
@@ -69,7 +73,7 @@ struct sched_task *find_next_task() {
 		struct sched_task *next_task = task_list.data[i];
 		next_task->idle_cnt++;
 
-		if(next_task->sched_status == TASK_WAITING && cnt < next_task->idle_cnt) {
+		if((next_task->sched_status == TASK_WAITING || next_task->dispatch_ready == true) && cnt < next_task->idle_cnt) {
 			cnt = next_task->idle_cnt;
 			ret = next_task;
 		}
@@ -141,14 +145,15 @@ void reschedule(struct registers *regs, void*) {
 	CORE_LOCAL->pid = next_task->pid;
 	CORE_LOCAL->tid = next_thread->tid;
 	CORE_LOCAL->errno = next_thread->errno;
-	CORE_LOCAL->kernel_stack = next_thread->kernel_stack;
-	CORE_LOCAL->user_stack = next_thread->user_stack;
 
 	CORE_LOCAL->page_table = next_task->page_table;
 
 	vmm_init_page_table(CORE_LOCAL->page_table);
 
 	signal_dispatch(next_thread, &next_thread->regs); 
+
+	CORE_LOCAL->kernel_stack = next_thread->kernel_stack;
+	CORE_LOCAL->user_stack = next_thread->user_stack;
 
 	next_thread->idle_cnt = 0;
 	next_task->idle_cnt = 0;
@@ -162,7 +167,7 @@ void reschedule(struct registers *regs, void*) {
 		swapgs();
 	}
 
-	//print("rescheduling to %x:%x to %x:%x\n", next_thread->regs.cs, next_thread->regs.rip, next_task->pid, next_thread->tid);
+	//print("rescheduling to %x:%x to %x:%x on stack kernel stack %x\n", next_thread->regs.cs, next_thread->regs.rip, next_task->pid, next_thread->tid, next_thread->kernel_stack);
 
 	xapic_write(XAPIC_EOI_OFF, 0);
 	spinrelease_irqsave(&sched_lock);
@@ -308,6 +313,7 @@ struct sched_thread *sched_default_thread(struct sched_task *task) {
 	thread->sched_status = TASK_YIELD;
 
 	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->signal_kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
 
 	hash_table_push(&task->thread_list, &thread->tid, thread, sizeof(thread->tid));
 
@@ -470,6 +476,7 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	task->sched_status = status;
 	thread->sched_status = TASK_WAITING;
+	thread->signal_queue.active = true;
 
 	return task;
 }
@@ -886,6 +893,7 @@ void syscall_fork(struct registers *regs) {
 	};
 
 	spinlock_irqsave(&current_task->fd_lock);
+
 	for(size_t i = 0; i < current_task->fd_list.capacity; i++) {
 		struct fd_handle *handle = current_task->fd_list.data[i];
 		if(handle) {
@@ -895,13 +903,16 @@ void syscall_fork(struct registers *regs) {
 			hash_table_push(&task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 		}
 	}
+
 	bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
+
 	spinrelease_irqsave(&current_task->fd_lock);
 
 	thread->regs = *regs;
 	thread->user_gs_base = current_thread->user_gs_base;
 	thread->user_fs_base = current_thread->user_fs_base;
 	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->signal_kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
 	thread->user_stack = current_thread->user_stack;
 	thread->sched_status = TASK_WAITING;
 	thread->tid = bitmap_alloc(&task->tid_bitmap);
