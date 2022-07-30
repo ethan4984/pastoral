@@ -70,6 +70,7 @@ static struct socket *socket_create(int family, int type, int protocol) {
 
 			socket->addr = alloc(sizeof(struct socketaddr_un));
 			socket->family = AF_UNIX;
+			socket->stream_ops = &ramfs_fops;
 
 			break;
 		case AF_NETLINK:
@@ -588,11 +589,39 @@ static int unix_getpeername(struct socket *socket, struct socketaddr *_ret, sock
 }
 
 static int unix_sendto(struct socket *socket, struct socket *target, const void *buffer, size_t len, int flags) {
-	// trigger
+	struct file_handle *file_handle = socket->file_handle;
+
+	ssize_t ret = socket->stream_ops->write(file_handle, buffer, len, file_handle->stat->st_size);
+
+	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
+		waitq_wake(file_handle->trigger);
+	}
+
+	return ret;
 }
 
 static int unix_recvfrom(struct socket *socket, struct socket *target, void *buffer, size_t len, int flags) {
-	// block 
+	struct file_handle *file_handle = socket->file_handle;
+
+	if((socket->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
+		goto handle;
+	}
+
+	file_handle->trigger = waitq_alloc(&file_handle->waitq, EVENT_WRITE);
+	waitq_add(&socket->waitq, file_handle->trigger);
+
+	ssize_t ret = waitq_wait(&file_handle->waitq, EVENT_WRITE);
+	waitq_release(&file_handle->waitq, EVENT_WRITE);
+
+	if(ret == -1) {
+		return -1;
+	}
+handle:
+	ret = socket->stream_ops->read(file_handle, buffer, len, file_handle->stat->st_size);
+
+	waitq_remove(&file_handle->waitq, file_handle->trigger);
+
+	return ret;
 }
 
 static ssize_t socket_read(struct file_handle *handle, void *buf, size_t cnt, off_t) {
@@ -604,9 +633,7 @@ static ssize_t socket_read(struct file_handle *handle, void *buf, size_t cnt, of
 		return -1;
 	}
 
-	ssize_t ret = socket->recvfrom(socket, peer, buf, cnt, 0); 
-
-	return ret;
+	return socket->recvfrom(socket, peer, buf, cnt, 0); 
 }
 
 static ssize_t socket_write(struct file_handle *handle, const void *buf, size_t cnt, off_t) {
@@ -618,9 +645,7 @@ static ssize_t socket_write(struct file_handle *handle, const void *buf, size_t 
 		return -1;
 	}
 
-	ssize_t ret = socket->sendto(socket, peer, buf, cnt, 0); 
-
-	return ret;
+	return socket->sendto(socket, peer, buf, cnt, 0); 
 }
 
 static int socket_ioctl(struct file_handle*, uint64_t, void*) {

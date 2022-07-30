@@ -82,5 +82,7 @@ struct socket {
 	struct file_handle *file_handle;
 	struct fd_handle *fd_handle;
 
+	struct file_ops *stream_ops;
+
 	struct spinlock lock;
 };
