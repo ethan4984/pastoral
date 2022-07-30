@@ -2,6 +2,7 @@
 #include <cpu.h>
 #include <string.h>
 #include <stdarg.h>
+#include <lock.h>
 
 static void serial_write(uint8_t data) {
 	while((inb(COM1 + 5) & (1 << 5)) == 0);
@@ -63,11 +64,15 @@ static void print_internal(const char *str, va_list arg) {
 	}
 }
 
+static struct spinlock print_lock;
+
 void print(const char *str, ...) {
 	va_list arg;
 	va_start(arg, str);
 
+	spinlock_irqsave(&print_lock);
 	print_internal(str, arg);
+	spinrelease_irqsave(&print_lock);
 
 	va_end(arg);
 }
