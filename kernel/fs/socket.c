@@ -473,7 +473,6 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 		return -1;
 	}
 handle:
-
 	struct socket *peer;
 
 	if(VECTOR_POP(socket->backlog, peer) == -1) {
@@ -588,27 +587,27 @@ static int unix_getpeername(struct socket *socket, struct socketaddr *_ret, sock
 	return 0;
 }
 
-static int unix_sendto(struct socket *socket, struct socket *target, const void *buffer, size_t len, int flags) {
-	struct file_handle *file_handle = socket->file_handle;
+static int unix_sendto(struct socket*, struct socket *target, const void *buffer, size_t len, int) {
+	struct file_handle *file_handle = target->file_handle;
 
-	ssize_t ret = socket->stream_ops->write(file_handle, buffer, len, file_handle->stat->st_size);
+	ssize_t ret = target->stream_ops->write(file_handle, buffer, len, file_handle->stat->st_size);
 
-	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
+	if((target->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
 		waitq_wake(file_handle->trigger);
 	}
 
 	return ret;
 }
 
-static int unix_recvfrom(struct socket *socket, struct socket *target, void *buffer, size_t len, int flags) {
-	struct file_handle *file_handle = socket->file_handle;
+static int unix_recvfrom(struct socket*, struct socket *target, void *buffer, size_t len, int) {
+	struct file_handle *file_handle = target->file_handle;
 
-	if((socket->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
+	if((target->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
 		goto handle;
 	}
 
 	file_handle->trigger = waitq_alloc(&file_handle->waitq, EVENT_WRITE);
-	waitq_add(&socket->waitq, file_handle->trigger);
+	waitq_add(&file_handle->waitq, file_handle->trigger);
 
 	ssize_t ret = waitq_wait(&file_handle->waitq, EVENT_WRITE);
 	waitq_release(&file_handle->waitq, EVENT_WRITE);
@@ -617,7 +616,7 @@ static int unix_recvfrom(struct socket *socket, struct socket *target, void *buf
 		return -1;
 	}
 handle:
-	ret = socket->stream_ops->read(file_handle, buffer, len, file_handle->stat->st_size);
+	ret = target->stream_ops->read(file_handle, buffer, len, file_handle->stat->st_size);
 
 	waitq_remove(&file_handle->waitq, file_handle->trigger);
 
