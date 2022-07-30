@@ -66,7 +66,7 @@ struct socket {
 	int (*bind)(struct socket*, const struct socketaddr*, socklen_t);
 	int (*connect)(struct socket*, const struct socketaddr*, socklen_t);
 	int (*sendto)(struct socket*, struct socket*, const void*, size_t, int);
-	int (*recvform)(struct socket*, struct socket*, void*, size_t, int);
+	int (*recvfrom)(struct socket*, struct socket*, void*, size_t, int);
 	int (*getsockname)(struct socket*, struct socketaddr*, socklen_t*);
 	int (*getpeername)(struct socket*, struct socketaddr*, socklen_t*);
 	int (*accept)(struct socket*, struct socketaddr*, socklen_t*);

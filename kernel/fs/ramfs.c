@@ -27,7 +27,7 @@ struct file_ops ramfs_fops = {
 size_t ramfs_inode_cnt;
 struct spinlock ramfs_lock;
 
-struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, struct stat *stat) {
+void ramfs_create_dangle(struct stat *stat) {
 	stat->st_ino = ramfs_inode_cnt++;
 	stat->st_blksize = 512;
 	stat->st_nlink = 1;
@@ -38,6 +38,10 @@ struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, struct 
 	spinlock_irqsave(&ramfs_lock);
 	hash_table_push(&ramfs_node_list, &ramfs_handle->inode, ramfs_handle, sizeof(ramfs_handle->inode));
 	spinrelease_irqsave(&ramfs_lock);
+}
+
+struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, struct stat *stat) {
+	ramfs_create_dangle(stat);
 
 	struct vfs_node *vfs_node = vfs_create_node(parent, &ramfs_fops, &ramfs_filesystem, stat, name, 0);
 

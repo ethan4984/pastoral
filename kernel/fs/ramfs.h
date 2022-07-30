@@ -4,6 +4,7 @@
 #include <fs/vfs.h>
 #include <hash.h>
 #include <lock.h>
+#include <types.h>
 
 struct ramfs_handle {
 	size_t inode;
@@ -16,3 +17,5 @@ extern struct spinlock ramfs_lock;
 extern struct hash_table ramfs_node_list;
 extern struct filesystem ramfs_filesystem;
 extern struct file_ops ramfs_fops;
+
+void ramfs_create_dangle(struct stat *stat);
