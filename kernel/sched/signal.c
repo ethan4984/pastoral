@@ -28,7 +28,7 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 	if(act) {
 		*current_action = *act;
 		current_action->sa_mask &= ~(SIGMASK(SIGKILL) | SIGMASK(SIGSTOP));
-	
+
 		spinlock_irqsave(&queue->siglock);
 
 		if(act->handler.sa_sigaction == SIG_IGN && queue->sigpending & (1 << sig)) {

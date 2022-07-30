@@ -150,7 +150,7 @@ void reschedule(struct registers *regs, void*) {
 
 	vmm_init_page_table(CORE_LOCAL->page_table);
 
-	signal_dispatch(next_thread, &next_thread->regs); 
+	signal_dispatch(next_thread, &next_thread->regs);
 
 	CORE_LOCAL->kernel_stack = next_thread->kernel_stack;
 	CORE_LOCAL->user_stack = next_thread->user_stack;
@@ -560,11 +560,11 @@ void syscall_waitpid(struct registers *regs) {
 
 		if(pid < -1) {
 			if(zombie->group->pgid != zombie->pid) {
-				continue;	
+				continue;
 			}
 		} else if(pid == 0) {
 			if(zombie->group->pgid != current_task->group->pgid) {
-				continue;	
+				continue;
 			}
 		} else if(pid > 0) {
 			if(zombie->pid != pid) {
@@ -829,6 +829,17 @@ void syscall_execve(struct registers *regs) {
 	task->umask = current_task->umask;
 	task->has_execved = 1;
 
+	for(size_t i = 0; i < SIGNAL_MAX; i++) {
+		struct sigaction *task_act = &task->sigactions[i];
+		struct sigaction *current_act = &current_task->sigactions[i];
+		memset(task_act, 0, sizeof(struct sigaction));
+		if(current_act->handler.sa_sigaction == SIG_IGN) {
+			task_act->handler.sa_sigaction = SIG_IGN;
+		} else {
+			task_act->handler.sa_sigaction = SIG_DFL;
+		}
+	}
+
 	VECTOR_PUSH(parent->children, task);
 
 	CORE_LOCAL->pid = -1;
@@ -1086,7 +1097,7 @@ void syscall_setpgid(struct registers *regs) {
 }
 
 void syscall_getpgid(struct registers *regs) {
-	pid_t pid = regs->rdi;
+	pid_t pid = regs->rdi == 0 ? CORE_LOCAL->pid : regs->rdi;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] getpgid: pid {%x}\n", CORE_LOCAL->pid, pid);
@@ -1095,6 +1106,12 @@ void syscall_getpgid(struct registers *regs) {
 	struct sched_task *task = sched_translate_pid(pid);
 	if(task == NULL) {
 		set_errno(ESRCH);
+		regs->rax = -1;
+		return;
+	}
+
+	if(task->session != CURRENT_TASK->session) {
+		set_errno(EPERM);
 		regs->rax = -1;
 		return;
 	}

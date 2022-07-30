@@ -25,9 +25,17 @@ struct limine_tty {
 	bool shift;
 	bool caps;
 	bool control;
+	bool extended;
 
 	bool graphics;
 	struct vt_mode vt_mode;
+
+	void *fb_addr;
+	size_t fb_pitch;
+	size_t fb_width;
+	size_t fb_height;
+	void *fb_saved;
+	size_t fb_saved_len;
 };
 
 static struct tty *active_tty;
@@ -130,8 +138,41 @@ static void ps2_handler(struct registers *, void *) {
 			case 0x9d:
 				ltty->control = false;
 				break;
+			case 0xe0:
+				ltty->extended = true;
+				break;
 			default:
-				if(keycode <= 128) {
+				if(ltty->extended == true) {
+					ltty->extended = false;
+					char *aux;
+					size_t i = 0;
+
+					switch(keycode) {
+						case 0x48:
+							aux = "\033[A";
+							i = 3;
+							break;
+						case 0x50:
+							aux = "\033[B";
+							i = 3;
+							break;
+						case 0x4b:
+							aux = "\033[D";
+							i = 3;
+							break;
+						case 0x4d:
+							aux = "\033[C";
+							i = 3;
+							break;
+					}
+
+					for(size_t j = 0; j < i; j++) {
+						circular_queue_push(&active_tty->input_queue, aux++);
+					}
+
+					break;
+				}
+				if(keycode <= sizeof(keymap_nocaps)) {
 					char character;
 
 					if(!ltty->shift && !ltty->caps) {
@@ -153,6 +194,10 @@ static void ps2_handler(struct registers *, void *) {
 							}
 						}
 					}
+
+					spinrelease_irqsave(&active_tty->input_lock);
+					tty_handle_signal(active_tty, character);
+					spinlock_irqsave(&active_tty->input_lock);
 
 					if(!circular_queue_push(&active_tty->input_queue, &character)) {
 						break;
@@ -187,14 +232,28 @@ static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {
 			*winsize = (struct winsize) {
 				.ws_row = ltty->terminal->columns,
 				.ws_col = ltty->terminal->rows,
-				.ws_xpixel = ltty->terminal->framebuffer->width,
-				.ws_ypixel = ltty->terminal->framebuffer->height
+				.ws_xpixel = ltty->fb_width,
+				.ws_ypixel = ltty->fb_height
 			};
 
 			break;
 
 		case KDSETMODE:
 			ltty->graphics = (int) arg;
+			if(ltty->graphics) {
+				// Save current framebuffer and disable cursor.
+				if(!ltty->fb_saved) {
+					ltty->fb_saved_len = (ltty->fb_pitch * ltty->fb_height);
+					ltty->fb_saved = (void *)(pmm_alloc(ltty->fb_saved_len / PAGE_SIZE, 1) + HIGH_VMA);
+				}
+				limine_print(ltty, "\e[?25l", 6);
+				memcpy(ltty->fb_saved, ltty->fb_addr, ltty->fb_saved_len);
+			} else {
+				if(ltty->fb_saved) {
+					memcpy(ltty->fb_addr, ltty->fb_saved, ltty->fb_saved_len);
+				}
+				limine_print(ltty, "\e[?25h", 6);
+			}
 			break;
 
 		case KDGETMODE: {
@@ -235,7 +294,7 @@ void limine_terminals_init() {
 		}
 
 		uint64_t fbaddr = (uint64_t)framebuffer->address - HIGH_VMA;
-		uint64_t fbsize = (framebuffer->width * framebuffer->bpp * framebuffer->pitch) / 8;
+		uint64_t fbsize = (framebuffer->pitch * framebuffer->height);
 		for(size_t i = 0; i < DIV_ROUNDUP(fbsize, 0x200000); i++) {
 			ltty->page_table.map_page(&ltty->page_table, fbaddr, fbaddr,
 				VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_PS | VMM_FLAGS_G);
@@ -245,6 +304,10 @@ void limine_terminals_init() {
 		ltty->terminal = limine_terminals[i];
 		ltty->write = limine_terminal_request.response->write;
 		ltty->trigger = waitq_alloc(&ltty->waitq, EVENT_COMMAND);
+		ltty->fb_addr = (void *) framebuffer->address;
+		ltty->fb_pitch = framebuffer->pitch;
+		ltty->fb_width = framebuffer->width;
+		ltty->fb_height = framebuffer->height;
 
 		tty->driver = &limine_terminal_driver;
 		tty->private_data = ltty;

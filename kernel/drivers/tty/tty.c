@@ -138,7 +138,6 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 #endif
 			if(CURRENT_TASK->session != tty->session) {
 				tty_unlock(tty);
-				print("why is this true\n");
 				set_errno(ENOTTY);
 				return -1;
 			}
@@ -153,9 +152,9 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 #ifndef SYSCALL_DEBUG
 			print("syscall: [pid %x] tty_ioctl (TIOCSPGRP)\n", CORE_LOCAL->pid);
 #endif
+
 			if(CURRENT_TASK->session != tty->session) {
 				tty_unlock(tty);
-				print("why is this true\n");
 				set_errno(ENOTTY);
 				return -1;
 			}
@@ -280,4 +279,14 @@ void tty_default_termios(struct termios *attr) {
 
 	attr->c_cc[VTIME] = 0;
 	attr->c_cc[VMIN] = 1;
+}
+
+void tty_handle_signal(struct tty *tty, char ch) {
+	if(tty->termios.c_lflag & ISIG) {
+		if(tty->termios.c_cc[VINTR] == ch) {
+			signal_send_group(NULL, tty->foreground_group, SIGINT);
+		} else if(tty->termios.c_cc[VQUIT] == ch) {
+			signal_send_group(NULL, tty->foreground_group, SIGTERM);
+		}
+	}
 }
