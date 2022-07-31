@@ -33,7 +33,6 @@ kernel:
 	$(MAKE) -C kernel
 
 $(INITRAMFS):
-	sudo cp user/.bashrc user/build/system-root
 	cd user/build/system-root/ && tar -c --format=posix -f ../../../initramfs.tar .
 
 $(DISK_IMAGE): $(INITRAMFS) limine kernel

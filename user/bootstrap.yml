@@ -650,8 +650,8 @@ packages:
       - args: ['make', 'install-strip']
         environ:
           DESTDIR: '@THIS_COLLECT_DIR@'
-      - args: ['mkdir', '-p', '@THIS_COLLECT_DIR@/etc']
-      - args: ['cp', '@SOURCE_ROOT@/nanorc', '@THIS_COLLECT_DIR@/etc/']
+      - args: ['mkdir', '-p', '@BUILD_ROOT@/system-root/usr/share/nano']
+      - args: ['cp', '-r', '@THIS_SOURCE_DIR@/syntax', '@BUILD_ROOT@/system-root/usr/share/nano']
   - name: libintl
     source:
       subdir: 'ports'
