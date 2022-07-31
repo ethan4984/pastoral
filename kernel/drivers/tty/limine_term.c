@@ -57,7 +57,7 @@ static volatile struct limine_terminal_request limine_terminal_request = {
 };
 
 static void limine_print(struct limine_tty *ltty, char *str, size_t length) {
-	/*asm volatile("cli\n");
+	asm volatile("cli");
 
 	uint64_t cr3;
 	asm volatile("mov %%cr3, %0" : "=r"(cr3));
@@ -66,7 +66,7 @@ static void limine_print(struct limine_tty *ltty, char *str, size_t length) {
 	ltty->write(ltty->terminal, str, length);
 
 	asm volatile("mov %0, %%cr3" :: "r"(cr3) : "memory");
-	asm volatile("sti\n");*/
+	asm volatile("sti");
 }
 
 static void limine_tty_flush_output(struct tty *tty) {

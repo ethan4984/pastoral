@@ -1,0 +1,3 @@
+unbind ^J main
+
+include /usr/share/nano/*.nanorc

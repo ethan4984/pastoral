@@ -67,10 +67,11 @@ static char *function_table[] = {
 
 static int ps2_get_character(char *character) {
 	uint8_t scancode = inb(KDB_PS2_DATA);
-	bool release = ((scancode & 0x80) == 0);
+	bool release = scancode & 0x80;
 
-	if(scancode == 0x2a || scancode == 0xaa) {
-		if(release) {
+	if(scancode == 0x2a || scancode == 0xaa
+		|| scancode == 0x36 || scancode == 0xb6) {
+		if(!release) {
 			shift_active = true;
 		} else {
 			shift_active = false;
@@ -80,7 +81,7 @@ static int ps2_get_character(char *character) {
 	}
 
 	if(scancode == 0x1d || scancode == 0x9d) {
-		if(release) {
+		if(!release) {
 			ctrl_active = true;
 		} else {
 			ctrl_active = false;
@@ -94,16 +95,10 @@ static int ps2_get_character(char *character) {
 		return -1;
 	}
 
-	if(release) {
-		return -1;
-	}
-
 	if(scancode == 0xe0) {
 		extended_map = true;
 		return -1;
 	}
-
-	scancode &= 0x7f;
 
 	if(extended_map == false) {
 		goto noextend;
@@ -130,7 +125,11 @@ static int ps2_get_character(char *character) {
 			return -1;
 	}
 noextend:
-	if(scancode < sizeof(keymap_plain) && !release) {
+	if(release) {
+		return -1;
+	}
+
+	if(scancode < sizeof(keymap_plain)) {
 		if(!shift_lock && !shift_active) {
 			*character = keymap_plain[scancode];
 		} else if(shift_lock && !shift_active) {
@@ -138,7 +137,17 @@ noextend:
 		} else if(!shift_lock && shift_active) {
 			*character = keymap_shift_nocaps[scancode];
 		} else if(shift_lock && shift_active) {
-			*character = keymap_shift_caps[scancode];	
+			*character = keymap_shift_caps[scancode];
+		}
+	}
+
+	if(ctrl_active) {
+		if((*character >= 'A' && (*character <= 'z'))) {
+			if(*character >= 'a') {
+				*character = *character - 'a' + 1;
+			} else if(*character <= '^') {
+				*character = *character - 'A' + 1;
+			}
 		}
 	}
 
@@ -178,6 +187,8 @@ void ps2_handler(struct registers*, void*) {
 
 		char *sequence = function_table[function];
 
+		tty_handle_signal(active_tty, character);
+
 		for(size_t i = 0; i < strlen(sequence); i++) {
 			circular_queue_push(&active_tty->input_queue, &sequence[i]);
 		}
@@ -189,7 +200,7 @@ void ps2_handler(struct registers*, void*) {
 static bool ps2_validate() {
 	if(fadt) {
 		if(fadt->iapc_boot_arch & (1 << 1)) {
-			return true;	
+			return true;
 		}
 
 		return false;
