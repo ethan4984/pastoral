@@ -24,6 +24,7 @@
 #include <hash.h>
 #include <drivers/tty/self_tty.h>
 #include <drivers/tty/pty.h>
+#include <drivers/keyboard.h>
 
 static volatile struct limine_stack_size_request limine_stack_size_request = {
 	.id = LIMINE_STACK_SIZE_REQUEST,
@@ -70,67 +71,6 @@ void init_process() {
 		panic("unable to start init process");
 	}
 
-/*
-	struct fd_handle *stdin_fd_handle = alloc(sizeof(struct fd_handle)),
-		*stdout_fd_handle = alloc(sizeof(struct fd_handle)),
-		*stderr_fd_handle = alloc(sizeof(struct fd_handle));
-
-	struct file_handle *stdin_file_handle = alloc(sizeof(struct file_handle)),
-		*stdout_file_handle = alloc(sizeof(struct file_handle)),
-		*stderr_file_handle = alloc(sizeof(struct file_handle));
-
-	struct file_ops *stdin_fops = alloc(sizeof(struct file_ops)),
-		*stdout_fops = alloc(sizeof(struct file_ops)),
-		*stderr_fops = alloc(sizeof(struct file_ops));
-
-	struct stat *stdin_stat = alloc(sizeof(struct stat)),
-		*stdout_stat = alloc(sizeof(struct stat)),
-		*stderr_stat = alloc(sizeof(struct stat));
-
-	fd_init(stdin_fd_handle);
-	fd_init(stdout_fd_handle);
-	fd_init(stderr_fd_handle);
-
-	file_init(stdin_file_handle);
-	file_init(stdout_file_handle);
-	file_init(stderr_file_handle);
-
-	stat_init(stdin_stat);
-	stat_init(stdout_stat);
-	stat_init(stderr_stat);
-
-	stdin_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
-	stdin_fd_handle->file_handle = stdin_file_handle;
-	stdout_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
-	stdout_fd_handle->file_handle = stdout_file_handle;
-	stderr_fd_handle->fd_number = bitmap_alloc(&task->fd_bitmap);
-	stderr_fd_handle->file_handle = stderr_file_handle;
-
-	stdin_file_handle->flags = O_RDONLY;
-	stdin_file_handle->ops = stdin_fops;
-	stdin_file_handle->stat = stdin_stat;
-	stdin_stat->st_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
-	stdin_fops->read = terminal_read;
-	stdin_fops->ioctl = terminal_ioctl;
-
-	stdout_file_handle->flags = O_WRONLY;
-	stdout_file_handle->ops = stdout_fops;
-	stdout_file_handle->stat = stdout_stat;
-	stdout_stat->st_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
-	stdout_fops->write = terminal_write;
-	stdout_fops->ioctl = terminal_ioctl;
-
-	stderr_file_handle->flags = O_WRONLY;
-	stderr_file_handle->ops = stderr_fops;
-	stderr_file_handle->stat = stderr_stat;
-	stderr_stat->st_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
-	stderr_fops->write = terminal_write;
-	stderr_fops->ioctl = terminal_ioctl;
-
-	hash_table_push(&task->fd_list, &stdin_fd_handle->fd_number, stdin_fd_handle, sizeof(stdin_fd_handle->fd_number));
-	hash_table_push(&task->fd_list, &stdout_fd_handle->fd_number, stdout_fd_handle, sizeof(stdout_fd_handle->fd_number));
-	hash_table_push(&task->fd_list, &stderr_fd_handle->fd_number, stderr_fd_handle, sizeof(stderr_fd_handle->fd_number));
-*/
 	struct sched_task *parent = task->parent;
 	if(parent == NULL) {
 		panic("");
@@ -173,6 +113,8 @@ void pastoral_thread() {
 		vfs_create_node_deep(NULL, NULL, NULL, stat, device_path);
 	}
 
+	ps2_init();
+
 	init_process();
 
 	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
@@ -214,6 +156,8 @@ void pastoral_entry(void) {
 		rsdt = (struct rsdt*)(rsdp->rsdt_addr + HIGH_VMA);
 		print("acpi: rsdt found at %x\n", (uintptr_t)rsdt);
 	}
+
+	fadt = acpi_find_sdt("FACP");
 
 	vfs_init();
 

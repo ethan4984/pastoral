@@ -72,3 +72,5 @@ static inline void tty_lock(struct tty *tty) {
 static inline void tty_unlock(struct tty *tty) {
 	spinrelease_irqsave(&tty->lock);
 }
+
+extern struct tty *active_tty;

@@ -21,6 +21,8 @@ struct file_ops tty_cdev_ops = {
 	.ioctl = tty_ioctl
 };
 
+struct tty *active_tty;
+
 void tty_init(struct tty *tty) {
 	circular_queue_init(&tty->input_queue, MAX_LINE, sizeof(char));
 	circular_queue_init(&tty->output_queue, OUTPUT_BUFFER_SIZE, sizeof(char));

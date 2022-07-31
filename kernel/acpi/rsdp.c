@@ -6,6 +6,7 @@
 struct rsdp *rsdp;
 struct rsdt *rsdt;
 struct xsdt *xsdt;
+struct fadt *fadt;
 
 void *acpi_find_sdt(const char *signature) {
 	if(xsdt != NULL) {

@@ -127,6 +127,7 @@ void syscall_socket(struct registers *regs) {
 	socket_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
 
 	socket->fd_handle = socket_fd_handle;
+	socket->file_handle = socket_file_handle;
 
 	stat_update_time(socket_file_handle->stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
@@ -413,12 +414,9 @@ static struct socket *unix_search_address(struct socketaddr_un *addr, socklen_t 
 }
 
 static int unix_bind(struct socket *socket, const struct socketaddr *socketaddr, socklen_t length) {
-	spinlock_irqsave(&socket->lock);
-
 	struct socketaddr_un *socketaddr_un = (void*)socketaddr;
 
 	if(unix_validate_address(socketaddr_un, length) == -1) {
-		spinrelease_irqsave(&socket->lock);
 		return -1;
 	}
 
@@ -435,8 +433,6 @@ static int unix_bind(struct socket *socket, const struct socketaddr *socketaddr,
 	*(struct socketaddr_un*)socket->addr = *socketaddr_un;
 
 	hash_table_push(&unix_addr_table, socket->addr, socket, sizeof(struct socketaddr_un));
-
-	spinrelease_irqsave(&socket->lock);
 
 	return 0;
 }
@@ -470,6 +466,8 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 	int ret = waitq_wait(&socket->waitq, EVENT_SOCKET);
 	waitq_release(&socket->waitq, EVENT_SOCKET);
 
+	waitq_remove(&socket->waitq, socket->trigger);
+
 	if(ret == -1) {
 		return -1;
 	}
@@ -488,17 +486,18 @@ handle:
 		}
 	}
 
-	socket->state = SOCKET_CONNECTED;
-	peer->peer = socket;
+	socket->peer = peer;
 
-	waitq_remove(&socket->waitq, socket->trigger);
+	if((socket->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
+		waitq_wake(peer->trigger);
+	}
+
+	socket->state = SOCKET_CONNECTED;
 
 	return 0; 
 }
 
 static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length) {
-	spinlock_irqsave(&socket->lock);
-
 	struct socketaddr_un *socketaddr_un = (void*)addr;
 
 	if(unix_validate_address(socketaddr_un, length) == -1) {
@@ -516,16 +515,27 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 		return -1;
 	}
 
-	target_socket->peer = socket;
-	target_socket->state = SOCKET_CONNECTED;
-
-	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
-		waitq_wake(target_socket->trigger);	
-	}
-
 	VECTOR_PUSH(target_socket->backlog, socket);
 
-	spinrelease_irqsave(&socket->lock);
+	target_socket->peer = socket;
+
+	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
+		waitq_wake(target_socket->trigger);
+
+		socket->trigger = waitq_alloc(&socket->waitq, EVENT_SOCKET);
+		waitq_add(&socket->waitq, socket->trigger);
+
+		int ret = waitq_wait(&socket->waitq, EVENT_SOCKET);
+		waitq_release(&socket->waitq, EVENT_SOCKET);
+
+		waitq_remove(&socket->waitq, socket->trigger);
+
+		if(ret == -1) {
+			return -1;
+		}
+	}
+
+	target_socket->state = SOCKET_CONNECTED;
 
 	return 0;
 }
@@ -614,13 +624,13 @@ static int unix_recvfrom(struct socket*, struct socket *target, void *buffer, si
 	ssize_t ret = waitq_wait(&file_handle->waitq, EVENT_WRITE);
 	waitq_release(&file_handle->waitq, EVENT_WRITE);
 
+	waitq_remove(&file_handle->waitq, file_handle->trigger);
+
 	if(ret == -1) {
 		return -1;
 	}
 handle:
 	ret = target->stream_ops->read(file_handle, buffer, len, file_handle->stat->st_size);
-
-	waitq_remove(&file_handle->waitq, file_handle->trigger);
 
 	return ret;
 }
@@ -630,7 +640,6 @@ static ssize_t socket_read(struct file_handle *handle, void *buf, size_t cnt, of
 	struct socket *peer = socket->peer;
 
 	if(socket->state != SOCKET_CONNECTED) {
-		// TODO block until connected
 		set_errno(EDESTADDRREQ);
 		return -1;
 	}
@@ -643,7 +652,6 @@ static ssize_t socket_write(struct file_handle *handle, const void *buf, size_t 
 	struct socket *peer = socket->peer;
 
 	if(socket->state != SOCKET_CONNECTED) {
-		// TODO block until connected
 		set_errno(EDESTADDRREQ);
 		return -1;
 	}

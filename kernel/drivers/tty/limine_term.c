@@ -11,6 +11,7 @@
 #include <errno.h>
 
 #define LIMINE_TTY_MAJOR 4
+
 static int limine_tty_minor;
 
 struct limine_tty {
@@ -38,8 +39,6 @@ struct limine_tty {
 	size_t fb_saved_len;
 };
 
-static struct tty *active_tty;
-
 static void limine_tty_flush_output(struct tty *tty);
 static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg);
 
@@ -57,9 +56,8 @@ static volatile struct limine_terminal_request limine_terminal_request = {
 	.revision = 0
 };
 
-
 static void limine_print(struct limine_tty *ltty, char *str, size_t length) {
-	asm volatile("cli\n");
+	/*asm volatile("cli\n");
 
 	uint64_t cr3;
 	asm volatile("mov %%cr3, %0" : "=r"(cr3));
@@ -68,145 +66,7 @@ static void limine_print(struct limine_tty *ltty, char *str, size_t length) {
 	ltty->write(ltty->terminal, str, length);
 
 	asm volatile("mov %0, %%cr3" :: "r"(cr3) : "memory");
-	asm volatile("sti\n");
-}
-
-
-static char keymap_nocaps[] = {
-	'\0', '\0', '1', '2', '3',	'4', '5', '6',	'7', '8', '9', '0',
-	'-', '=', '\b', '\t', 'q',	'w', 'e', 'r',	't', 'y', 'u', 'i',
-	'o', 'p', '[', ']', '\n',  '\0', 'a', 's',	'd', 'f', 'g', 'h',
-	'j', 'k', 'l', ';', '\'', '`', '\0', '\\', 'z', 'x', 'c', 'v',
-	'b', 'n', 'm', ',', '.',  '/', '\0', '\0', 27, ' '
-};
-
-static char keymap_caps[] = {
-	'\0', '\0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
-	'-','=', '\b', '\t', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I',
-	'O', 'P', '[', ']', '\n', '\0', 'A', 'S', 'D', 'F', 'G', 'H',
-	'J', 'K', 'L', ';', '\'', '`', '\0', '\\', 'Z', 'X', 'C', 'V',
-	'B', 'N', 'M', ',', '.', '/', '\0', '\0', 27, ' '
-};
-
-static char keymap_shift_nocaps[] = {
-	'\0', '\0', '!', '@', '#',	'$', '%', '^',	'&', '*', '(', ')',
-	'_', '+', '\b', '\t', 'Q',	'W', 'E', 'R',	'T', 'Y', 'U', 'I',
-	'O', 'P', '{', '}', '\n',  '\0', 'A', 'S',	'D', 'F', 'G', 'H',
-	'J', 'K', 'L', ':', '\"', '~', '\0', '|', 'Z', 'X', 'C', 'V',
-	'B', 'N', 'M', '<', '>',  '?', '\0', '\0', 27, ' '
-};
-
-static char keymap_shift_caps[] = {
-	'\0', '\0', '!', '@', '#',	'$', '%', '^',	'&', '*', '(', ')',
-	'_', '+', '\b', '\t', 'q',	'w', 'e', 'r',	't', 'y', 'u', 'i',
-	'o', 'p', '{', '}', '\n',  '\0', 'a', 's',	'd', 'f', 'g', 'h',
-	'j', 'k', 'l', ':', '\"', '~', '\0', '|', 'z', 'x', 'c', 'v',
-	'b', 'n', 'm', '<', '>',  '?', '\0', '\0', 27, ' '
-};
-
-static void ps2_handler(struct registers *, void *) {
-	if(!active_tty) {
-		while(inb(0x64) & 1)
-			inb(0x60);
-		return;
-	}
-
-	struct limine_tty *ltty = active_tty->private_data;
-	spinlock_irqsave(&active_tty->input_lock);
-	while(inb(0x64) & 1) {
-		uint8_t keycode = inb(0x60);
-
-		switch(keycode) {
-			case 0xaa:
-				ltty->shift = true;
-				break;
-			case 0x2a:
-				ltty->shift = false;
-				break;
-			case 0x36:
-				ltty->shift = true;
-				break;
-			case 0xb6:
-				ltty->shift = false;
-				break;
-			case 0x3a:
-				ltty->caps = !ltty->caps;
-				break;
-			case 0x1d:
-				ltty->control = true;
-				break;
-			case 0x9d:
-				ltty->control = false;
-				break;
-			case 0xe0:
-				ltty->extended = true;
-				break;
-			default:
-				if(ltty->extended == true) {
-					ltty->extended = false;
-					char *aux;
-					size_t i = 0;
-
-					switch(keycode) {
-						case 0x48:
-							aux = "\033[A";
-							i = 3;
-							break;
-						case 0x50:
-							aux = "\033[B";
-							i = 3;
-							break;
-						case 0x4b:
-							aux = "\033[D";
-							i = 3;
-							break;
-						case 0x4d:
-							aux = "\033[C";
-							i = 3;
-							break;
-					}
-
-					for(size_t j = 0; j < i; j++) {
-						circular_queue_push(&active_tty->input_queue, aux++);
-					}
-
-					break;
-				}
-				if(keycode <= sizeof(keymap_nocaps)) {
-					char character;
-
-					if(!ltty->shift && !ltty->caps) {
-						character = keymap_nocaps[keycode];
-					} else if(!ltty->shift && ltty->caps) {
-						character = keymap_caps[keycode];
-					} else if(ltty->shift && !ltty->caps) {
-						character = keymap_shift_nocaps[keycode];
-					} else {
-						character = keymap_shift_caps[keycode];
-					}
-
-					if(ltty->control) {
-						if((character >= 'A') && (character <= 'z')) {
-							if(character >= 'a') {
-								character = character - 'a' + 1;
-							} else if(character <= '^') {
-								character = character - 'A' + 1;
-							}
-						}
-					}
-
-					spinrelease_irqsave(&active_tty->input_lock);
-					tty_handle_signal(active_tty, character);
-					spinlock_irqsave(&active_tty->input_lock);
-
-					if(!circular_queue_push(&active_tty->input_queue, &character)) {
-						break;
-					}
-				}
-		}
-	}
-
-	spinrelease_irqsave(&active_tty->input_lock);
+	asm volatile("sti\n");*/
 }
 
 static void limine_tty_flush_output(struct tty *tty) {
@@ -239,7 +99,7 @@ static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {
 			break;
 
 		case KDSETMODE:
-			ltty->graphics = (int) arg;
+			ltty->graphics = (uintptr_t)arg;
 			if(ltty->graphics) {
 				// Save current framebuffer and disable cursor.
 				if(!ltty->fb_saved) {
@@ -328,8 +188,4 @@ void limine_terminals_init() {
 		if(!active_tty)
 			active_tty = tty;
 	}
-
-	// TODO: make a PS/2 driver and remove this outta here.
-	int ps2_vector = idt_alloc_vector(ps2_handler, NULL);
-	ioapic_set_irq_redirection(xapic_read(XAPIC_ID_REG_OFF), ps2_vector, 1, false);
 }
