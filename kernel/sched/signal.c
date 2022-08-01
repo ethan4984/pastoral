@@ -260,15 +260,13 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 				spinrelease_irqsave(&queue->siglock);
 				return -1;
 			} else if(action->handler.sa_sigaction == SIG_DFL) {
-				signal_default_action(i);
 				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 				spinrelease_irqsave(&queue->siglock);
+				signal_default_action(i);
 				return 0;
 			} else if(action->handler.sa_sigaction == SIG_IGN) {
 				continue;
 			}
-
-			//print("dispatching: signal: %x: to %x:%x\n", signal->signum, thread->task->pid, thread->tid);
 
 			uint64_t stack = (uint64_t)mmap(
 					CORE_LOCAL->page_table,
@@ -396,7 +394,6 @@ int kill(pid_t pid, int sig) {
 	} else if(pid == 0) {
 		signal_send_group(sender, current_task->group, sig);
 	} else if(pid == -1) {
-		// TODO: Send signal to ALL processes in the system.
 		signal_send_group(sender, current_task->group, sig);
 	} else {
 		struct session *session = current_task->session;

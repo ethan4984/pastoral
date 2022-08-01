@@ -369,7 +369,7 @@ void syscall_connect(struct registers *regs) {
 	socklen_t addrlen = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] bind: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
+	print("syscall: [pid %x] connect: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
 #endif
 
 	struct fd_handle *fd_handle = fd_translate(sockfd);
@@ -462,7 +462,7 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 
 	socket->trigger = waitq_alloc(&socket->waitq, EVENT_SOCKET);
 	waitq_add(&socket->waitq, socket->trigger);
-
+	
 	int ret = waitq_wait(&socket->waitq, EVENT_SOCKET);
 	waitq_release(&socket->waitq, EVENT_SOCKET);
 
@@ -488,7 +488,7 @@ handle:
 
 	socket->peer = peer;
 
-	if((socket->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
+	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
 		waitq_wake(peer->trigger);
 	}
 
@@ -517,7 +517,7 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 
 	VECTOR_PUSH(target_socket->backlog, socket);
 
-	target_socket->peer = socket;
+	socket->peer = target_socket;
 
 	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
 		waitq_wake(target_socket->trigger);
@@ -535,7 +535,7 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 		}
 	}
 
-	target_socket->state = SOCKET_CONNECTED;
+	socket->state = SOCKET_CONNECTED;
 
 	return 0;
 }
@@ -599,30 +599,28 @@ static int unix_getpeername(struct socket *socket, struct socketaddr *_ret, sock
 	return 0;
 }
 
-static int unix_sendto(struct socket*, struct socket *target, const void *buffer, size_t len, int) {
-	struct file_handle *file_handle = target->file_handle;
+static int unix_sendto(struct socket *socket, struct socket *target, const void *buffer, size_t len, int) {
+	struct file_handle *file_handle = socket->file_handle;
 
 	ssize_t ret = target->stream_ops->write(file_handle, buffer, len, file_handle->stat->st_size);
-
-	if((target->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
-		waitq_wake(file_handle->trigger);
-	}
 
 	return ret;
 }
 
-static int unix_recvfrom(struct socket*, struct socket *target, void *buffer, size_t len, int) {
+static int unix_recvfrom(struct socket *socket, struct socket *target, void *buffer, size_t len, int) {
 	struct file_handle *file_handle = target->file_handle;
+
+	off_t offset = file_handle->stat->st_size;
 
 	if((target->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
 		goto handle;
 	}
 
-	file_handle->trigger = waitq_alloc(&file_handle->waitq, EVENT_WRITE);
+	file_handle->trigger = waitq_alloc(&file_handle->waitq, EVENT_POLLIN);
 	waitq_add(&file_handle->waitq, file_handle->trigger);
 
-	ssize_t ret = waitq_wait(&file_handle->waitq, EVENT_WRITE);
-	waitq_release(&file_handle->waitq, EVENT_WRITE);
+	ssize_t ret = waitq_wait(&file_handle->waitq, EVENT_POLLIN);
+	waitq_release(&file_handle->waitq, EVENT_POLLIN);
 
 	waitq_remove(&file_handle->waitq, file_handle->trigger);
 
@@ -630,7 +628,7 @@ static int unix_recvfrom(struct socket*, struct socket *target, void *buffer, si
 		return -1;
 	}
 handle:
-	ret = target->stream_ops->read(file_handle, buffer, len, file_handle->stat->st_size);
+	ret = socket->stream_ops->read(file_handle, buffer, len, offset);
 
 	return ret;
 }

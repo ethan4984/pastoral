@@ -175,6 +175,10 @@ void ps2_handler(struct registers*, void*) {
 
 		char character = '\0';
 		int function = ps2_get_character(&character);
+		
+		if(ctrl_active) {
+			tty_handle_signal(active_tty, character);
+		}
 
 		if(character != '\0') {
 			circular_queue_push(&active_tty->input_queue, &character);
@@ -186,8 +190,6 @@ void ps2_handler(struct registers*, void*) {
 		}
 
 		char *sequence = function_table[function];
-
-		tty_handle_signal(active_tty, character);
 
 		for(size_t i = 0; i < strlen(sequence); i++) {
 			circular_queue_push(&active_tty->input_queue, &sequence[i]);
