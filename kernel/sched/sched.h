@@ -10,6 +10,7 @@
 #include <elf.h>
 #include <sched/signal.h>
 #include <drivers/tty/tty.h>
+#include <sched/signal.h>
 #include <lock.h>
 
 struct sched_task;
@@ -39,7 +40,7 @@ struct sched_thread {
 	struct signal_queue signal_queue;
 
 	struct registers regs;
-	struct registers signal_context;
+	struct ucontext signal_context;
 };
 
 struct process_group;

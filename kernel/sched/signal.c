@@ -264,22 +264,30 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 				continue;
 			}
 
+			struct ucontext context;
+
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
-			thread->signal_context = *state;
 			memset8((void*)state, 0, sizeof(*state));
 
 			if(action->handler.sa_sigaction == SIG_DFL) {
-				uint64_t stack = pmm_alloc(4, 1) + HIGH_VMA + 0x4000;
+				struct stack stack = {
+					.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + HIGH_VMA + THREAD_KERNEL_STACK_SIZE,
+					.size = THREAD_KERNEL_STACK_SIZE,
+					.flags = 0
+				};
+
+				context.stack = stack;
+				context.registers = *state;
 
 				state->ss = 0x30;
-				state->rsp = stack;
+				state->rsp = stack.sp;
 				state->rflags = 0x202;
 				state->cs = 0x28;
 				state->rip = (uint64_t)signal_default_action;
 
 				state->rdi = signal->signum;
 
-				thread->signal_queue.sigpending &= ~SIGMASK(i);
+				thread->signal_context = context;
 
 				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 				spinrelease_irqsave(&queue->siglock);
@@ -287,36 +295,41 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 				return 0;
 			}
 
-			uint64_t stack = (uint64_t)mmap(
-					CORE_LOCAL->page_table,
-					NULL,
-					THREAD_USER_STACK_SIZE,
-					MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_USER,
-					MMAP_MAP_ANONYMOUS,
-					0,
-					0
-			) + THREAD_USER_STACK_SIZE;
+			struct stack stack = {
+				.sp = (uint64_t)mmap(CORE_LOCAL->page_table,
+						NULL,
+						THREAD_USER_STACK_SIZE,
+						MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_USER,
+						MMAP_MAP_ANONYMOUS,
+						0,
+						0) + THREAD_USER_STACK_SIZE,
+				.size = THREAD_USER_STACK_SIZE, 
+				.flags = 0
+			};
 
-			stack -= 128;
-			stack &= -16ll;
+			context.stack = stack;
+			context.registers = *state;
 
-			stack -= sizeof(struct siginfo);
-			struct siginfo *siginfo = (void*)stack;
+			stack.sp -= 128;
+			stack.sp &= -16ll;
+
+			stack.sp -= sizeof(struct siginfo);
+			struct siginfo *siginfo = (void*)stack.sp;
 			*siginfo = *signal->siginfo;
 
 			siginfo->si_signo = signal->signum;
 
-			stack -= sizeof(struct registers);
-			struct registers *ucontext = (void*)stack;
-			*ucontext = *state;
+			stack.sp -= sizeof(struct registers);
+			struct ucontext *ucontext = (void*)stack.sp;
+			*ucontext = context;
 
-			stack -= sizeof(uint64_t);
-			*(uint64_t*)stack = (uint64_t)action->sa_restorer;
+			stack.sp -= sizeof(uint64_t);
+			*(uint64_t*)stack.sp = (uint64_t)action->sa_restorer;
 
-			memset8((void*)state, 0, sizeof(*state));
+			thread->signal_context = context;
 
 			state->ss = 0x3b;
-			state->rsp = stack;
+			state->rsp = stack.sp;
 			state->rflags = 0x202;
 			state->cs = 0x43;
 			state->rip = (uint64_t)action->handler.sa_sigaction;
@@ -333,7 +346,7 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 			thread->signal_kernel_stack = tmp;
 
 			tmp = thread->user_stack;
-			thread->user_stack = stack;
+			thread->user_stack = stack.sp;
 			thread->signal_user_stack = tmp;
 
 			/*print("dispatching: kernel stack: %x -> %x\n", thread->signal_kernel_stack, thread->kernel_stack);
@@ -460,7 +473,7 @@ void syscall_sigreturn(struct registers *regs) {
 
 	spinrelease_irqsave(&signal_queue->siglock);
 
-	thread->regs = thread->signal_context;
+	thread->regs = thread->signal_context.registers;
 
 	if(thread->blocking) {
 		thread->blocking = false;
@@ -483,7 +496,7 @@ void syscall_sigreturn(struct registers *regs) {
 
 	//print("sigreturn: %x:%x: rip: %x: stacks: ks {%x} | us {%x} | rsp {%x}\n", thread->task->pid, thread->tid, thread->regs.rip, thread->kernel_stack, thread->user_stack, thread->regs.rsp);
 
-	if(thread->signal_context.cs & 0x3) {
+	if(thread->signal_context.registers.cs & 0x3) {
 		swapgs();
 	}
 

@@ -89,6 +89,20 @@ struct sigaction {
 	void (*sa_restorer);
 };
 
+struct stack {
+	uint64_t sp;
+	size_t size;
+	int flags;
+};
+
+struct ucontext {
+	uint64_t flags;
+	struct ucontext *link;
+	struct stack stack;
+	struct registers registers;
+	sigset_t sigmask;
+};
+
 struct signal_queue;
 struct event_trigger;
 
