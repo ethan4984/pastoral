@@ -84,7 +84,7 @@ int pty_init() {
 	return 0;
 }
 
-static int ptmx_open(struct vfs_node *node, struct file_handle *file) {
+static int ptmx_open(struct vfs_node*, struct file_handle *file) {
 	spinlock_irqsave(&pty_lock);
 
 	int slave_no = bitmap_alloc(&pts_bitmap);

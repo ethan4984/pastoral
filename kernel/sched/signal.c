@@ -480,7 +480,12 @@ static void sigreturn_default(int release_block) {
 
 	spinrelease_irqsave(&signal_queue->siglock);
 
-	thread->regs = thread->signal_context.registers;
+	struct stack *stack = &thread->signal_context.stack;
+	struct registers *context = &thread->signal_context.registers;
+
+	pmm_free(stack->sp - HIGH_VMA - stack->size, DIV_ROUNDUP(stack->size, PAGE_SIZE));
+
+	thread->regs = *context;
 
 	if(release_block) {
 		thread->blocking = false;
@@ -493,9 +498,7 @@ static void sigreturn_default(int release_block) {
 	CORE_LOCAL->user_stack = thread->user_stack;
 	CORE_LOCAL->kernel_stack = thread->kernel_stack;
 
-	//print("sigreturn default: %x:%x: to %x:%x: with %x:%x\n", thread->task->pid, thread->tid, thread->signal_context.registers.cs, thread->signal_context.registers.rip, thread->signal_context.registers.ss, thread->signal_context.registers.rsp);
-
-	if(thread->signal_context.registers.cs & 0x3) {
+	if(context->cs & 0x3) {
 		swapgs();
 	}
 
@@ -518,7 +521,7 @@ static void sigreturn_default(int release_block) {
 		"pop %%rax\n\t"
 		"addq $16, %%rsp\n\t"
 		"iretq\n\t"
-		:: "r" (&thread->signal_context.registers)
+		:: "r" (context)
 	);
 }
 
@@ -540,7 +543,11 @@ void syscall_sigreturn(struct registers*) {
 
 	spinrelease_irqsave(&signal_queue->siglock);
 
-	thread->regs = thread->signal_context.registers;
+	struct stack *stack = &thread->signal_context.stack;
+	struct registers *context = &thread->signal_context.registers;
+
+	thread->regs = *context;
+	munmap(task->page_table, (void*)(stack->sp - stack->size), stack->size);
 
 	thread->blocking = false;
 	thread->signal_release_block = true;
@@ -559,9 +566,7 @@ void syscall_sigreturn(struct registers*) {
 	CORE_LOCAL->user_stack = thread->user_stack;
 	CORE_LOCAL->kernel_stack = thread->kernel_stack;
 
-	//print("sigreturn: %x:%x: to %x:%x: with %x:%x\n", thread->task->pid, thread->tid, thread->signal_context.registers.cs, thread->signal_context.registers.rip, thread->signal_context.registers.ss, thread->signal_context.registers.rsp);
-
-	if(thread->signal_context.registers.cs & 0x3) {
+	if(context->cs & 0x3) {
 		swapgs();
 	}
 
@@ -584,7 +589,7 @@ void syscall_sigreturn(struct registers*) {
 		"pop %%rax\n\t"
 		"addq $16, %%rsp\n\t"
 		"iretq\n\t"
-		:: "r" (&thread->signal_context.registers)
+		:: "r" (context)
 	);
 }
 

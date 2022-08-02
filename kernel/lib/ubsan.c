@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <debug.h>
 
 /*
  * https://github.com/Abb1x/tinyubsan

@@ -29,7 +29,7 @@ int self_tty_init() {
 	return 0;
 }
 
-static int self_tty_open(struct vfs_node *node, struct file_handle *file) {
+static int self_tty_open(struct vfs_node*, struct file_handle *file) {
 	if(!CURRENT_TASK->session->tty) {
 		set_errno(ENODEV);
 		return -1;
