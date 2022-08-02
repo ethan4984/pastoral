@@ -112,7 +112,7 @@ static inline size_t find_last_char(const char *str, char c) {
 		}
 	}
 
-	return 0;
+	return -1;
 }
 
 int strcmp(const char *str0, const char *str1);

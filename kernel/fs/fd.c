@@ -376,16 +376,27 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, symfollow);
 
 	if(flags & O_CREAT && vfs_node == NULL) {
-		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1);
-		strcpy(name, path + find_last_char(path, '/') + 1);
+		int cutoff = find_last_char(path, '/');
 
-		char *dirpath = alloc(find_last_char(path, '/') + 1);
-		strncpy(dirpath, path, find_last_char(path, '/'));
+		struct vfs_node *parent;
+		char *name;
 
-		struct vfs_node *parent = vfs_search_absolute(dir, dirpath, symfollow);
-		if(parent == NULL) {
-			set_errno(ENOTDIR);
-			return -1;
+		if(cutoff == -1) {
+			name = alloc(strlen(path) + 1);
+			strcpy(name, path);
+			parent = dir;
+		} else {
+			name = alloc(strlen(path + cutoff) + 1);
+			strcpy(name, path + cutoff + 1);
+
+			char *dirpath = alloc(cutoff + 1);
+			strncpy(dirpath, path, cutoff);
+
+			parent = vfs_search_absolute(dir, dirpath, symfollow);
+			if(parent == NULL) {
+				set_errno(ENOTDIR);
+				return -1;
+			}
 		}
 
 		if(stat_has_access(parent->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK | X_OK) == -1) {
