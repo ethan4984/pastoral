@@ -27,7 +27,7 @@ static void core_bootstrap(struct cpu_local *cpu_local) {
 	xapic_write(XAPIC_TPR_OFF, 0);
 	xapic_write(XAPIC_SINT_OFF, xapic_read(XAPIC_SINT_OFF) | 0x1ff);
 
-	//apic_timer_init(20);
+	apic_timer_init(20);
 
 	asm volatile ("mov %0, %%cr8\nsti" :: "r"(0ull));
 
@@ -81,12 +81,12 @@ void boot_aps() {
 
 		uint64_t *parameters = (uint64_t*)0x81000;
 
-		parameters[0] = cpu_local->kernel_stack;
-		parameters[1] = (uintptr_t)(kernel_mappings.pml_high - HIGH_VMA);
-		parameters[2] = (uintptr_t)core_bootstrap;
-		parameters[3] = (uintptr_t)cpu_local;
-		parameters[4] = (uintptr_t)&idtr;
-		parameters[5] = 0; // la57
+		*(parameters + 0) = cpu_local->kernel_stack;
+		*(parameters + 1) = (uint64_t)kernel_mappings.pml_high - HIGH_VMA;
+		*(parameters + 2) = (uint64_t)core_bootstrap;
+		*(parameters + 3) = (uint64_t)cpu_local;
+		*(parameters + 4) = (uint64_t)&idtr;
+		*(parameters + 5) = 0; // la57
 
 		struct cpuid_state cpuid_state = cpuid(7, 0);
 		if(cpuid_state.rcx & (1 << 16)) {

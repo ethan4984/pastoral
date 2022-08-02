@@ -196,7 +196,7 @@ void reschedule(struct registers *regs, void*) {
 }
 
 void sched_dequeue(struct sched_task *task, struct sched_thread *thread) {
-	spinlock_irqsave(&sched_lock);
+//	spinlock_irqsave(&sched_lock);
 
 	if(task) {
 		task->sched_status = TASK_YIELD;
@@ -206,9 +206,8 @@ void sched_dequeue(struct sched_task *task, struct sched_thread *thread) {
 		thread->sched_status = TASK_YIELD;
 	}
 
-	spinrelease_irqsave(&sched_lock);
+//	spinrelease_irqsave(&sched_lock);
 }
-
 
 void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *thread) {
 	asm volatile ("cli");

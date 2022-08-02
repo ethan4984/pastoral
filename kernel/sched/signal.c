@@ -1,6 +1,7 @@
 #include <sched/signal.h>
 #include <sched/sched.h>
 #include <mm/mmap.h>
+#include <mm/pmm.h>
 #include <debug.h>
 #include <errno.h>
 
@@ -259,13 +260,31 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 				spinrelease_irqsave(&queue->siglock);
 				return -1;
-			} else if(action->handler.sa_sigaction == SIG_DFL) {
-				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
-				spinrelease_irqsave(&queue->siglock);
-				signal_default_action(i);
-				return 0;
 			} else if(action->handler.sa_sigaction == SIG_IGN) {
 				continue;
+			}
+
+			thread->signal_queue.sigpending &= ~SIGMASK(i);
+			thread->signal_context = *state;
+			memset8((void*)state, 0, sizeof(*state));
+
+			if(action->handler.sa_sigaction == SIG_DFL) {
+				uint64_t stack = pmm_alloc(4, 1) + HIGH_VMA + 0x4000;
+
+				state->ss = 0x30;
+				state->rsp = stack;
+				state->rflags = 0x202;
+				state->cs = 0x28;
+				state->rip = (uint64_t)signal_default_action;
+
+				state->rdi = signal->signum;
+
+				thread->signal_queue.sigpending &= ~SIGMASK(i);
+
+				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
+				spinrelease_irqsave(&queue->siglock);
+
+				return 0;
 			}
 
 			uint64_t stack = (uint64_t)mmap(
@@ -290,8 +309,6 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 			stack -= sizeof(struct registers);
 			struct registers *ucontext = (void*)stack;
 			*ucontext = *state;
-
-			thread->signal_context = *state;
 
 			stack -= sizeof(uint64_t);
 			*(uint64_t*)stack = (uint64_t)action->sa_restorer;
@@ -324,7 +341,6 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 			print("dispatching: cs: %x: rip: %x: rsp: %x\n", state->cs, state->rip, state->rsp);
 			print("dispatching: sa_restorer: %x\n", action->sa_restorer);*/
 
-			thread->signal_queue.sigpending &= ~SIGMASK(i);
 			spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 
 			break;

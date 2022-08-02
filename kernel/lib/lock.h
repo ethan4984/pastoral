@@ -1,5 +1,7 @@
 #pragma once
 
+struct sched_thread;
+
 struct spinlock {
 	char lock;
 	bool interrupts;
