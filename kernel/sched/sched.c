@@ -73,6 +73,8 @@ struct sched_task *find_next_task() {
 		struct sched_task *next_task = task_list.data[i];
 		next_task->idle_cnt++;
 
+		//print("pid: %x: status: %x: dispatch: %x\n", next_task->pid, next_task->sched_status, next_task->dispatch_ready);
+
 		if((next_task->sched_status == TASK_WAITING || next_task->dispatch_ready == true) && cnt < next_task->idle_cnt) {
 			cnt = next_task->idle_cnt;
 			ret = next_task;
@@ -167,7 +169,7 @@ void reschedule(struct registers *regs, void*) {
 		swapgs();
 	}
 
-	//print("rescheduling to %x:%x to %x:%x on stack kernel stack %x\n", next_thread->regs.cs, next_thread->regs.rip, next_task->pid, next_thread->tid, next_thread->kernel_stack);
+	//print("rescheduling to %x:%x to %x:%x\n", next_thread->regs.cs, next_thread->regs.rip, next_task->pid, next_thread->tid);
 
 	xapic_write(XAPIC_EOI_OFF, 0);
 	spinrelease_irqsave(&sched_lock);
@@ -196,7 +198,7 @@ void reschedule(struct registers *regs, void*) {
 }
 
 void sched_dequeue(struct sched_task *task, struct sched_thread *thread) {
-//	spinlock_irqsave(&sched_lock);
+	spinlock_irqsave(&sched_lock);
 
 	if(task) {
 		task->sched_status = TASK_YIELD;
@@ -206,7 +208,7 @@ void sched_dequeue(struct sched_task *task, struct sched_thread *thread) {
 		thread->sched_status = TASK_YIELD;
 	}
 
-//	spinrelease_irqsave(&sched_lock);
+	spinrelease_irqsave(&sched_lock);
 }
 
 void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *thread) {

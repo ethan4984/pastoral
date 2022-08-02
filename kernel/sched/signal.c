@@ -5,6 +5,8 @@
 #include <debug.h>
 #include <errno.h>
 
+static void sigreturn_default(int release_block);
+
 int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 	struct sched_task *task = CURRENT_TASK;
 	if(task == NULL) {
@@ -215,11 +217,11 @@ static void signal_default_action(int signo) {
 		case SIGTTIN:
 		case SIGTTOU:
 		case SIGTSTP:
-			return;
 		case SIGCHLD:
 		case SIGWINCH:
-			return;
 	}
+
+	sigreturn_default(false);
 }
 
 int signal_dispatch(struct sched_thread *thread, struct registers *state) {
@@ -267,7 +269,6 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 			struct ucontext context;
 
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
-			memset8((void*)state, 0, sizeof(*state));
 
 			if(action->handler.sa_sigaction == SIG_DFL) {
 				struct stack stack = {
@@ -276,8 +277,13 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 					.flags = 0
 				};
 
+				//print("dispatching: default action %d to %x rescheduling to %x\n", signal->signum, state->rsp, stack.sp);
+
 				context.stack = stack;
 				context.registers = *state;
+				context.signum = signal->signum;
+
+				memset8((void*)state, 0, sizeof(*state));
 
 				state->ss = 0x30;
 				state->rsp = stack.sp;
@@ -288,6 +294,13 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 				state->rdi = signal->signum;
 
 				thread->signal_context = context;
+
+				uint64_t tmp = thread->kernel_stack;
+				thread->kernel_stack = thread->signal_kernel_stack;
+				thread->signal_kernel_stack = tmp;
+
+				tmp = thread->user_stack;
+				thread->signal_user_stack = tmp;
 
 				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 				spinrelease_irqsave(&queue->siglock);
@@ -309,6 +322,9 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 
 			context.stack = stack;
 			context.registers = *state;
+			context.signum = signal->signum;
+
+			memset8((void*)state, 0, sizeof(*state));
 
 			stack.sp -= 128;
 			stack.sp &= -16ll;
@@ -449,33 +465,24 @@ int kill(pid_t pid, int sig) {
 	return 0;
 }
 
-void syscall_sigreturn(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] sigreturn\n", CORE_LOCAL->pid);
-#endif
+static void sigreturn_default(int release_block) {
 	asm volatile ("cli");
 
-	struct registers *context = (void*)regs->rsp;
-	regs->rsp += sizeof(struct registers);
-
-	struct siginfo *siginfo = (void*)regs->rsp;
-	regs->rsp += sizeof(struct siginfo);
-
-	struct sched_thread *task = CURRENT_THREAD;
+	struct sched_task *task = CURRENT_TASK;
 	struct sched_thread *thread = CURRENT_THREAD;
 
 	struct signal_queue *signal_queue = &thread->signal_queue;
 
 	spinlock_irqsave(&signal_queue->siglock);
 
-	struct signal *signal = &signal_queue->queue[siginfo->si_signo - 1];
+	struct signal *signal = &signal_queue->queue[thread->signal_context.signum - 1];
 	waitq_wake(signal->trigger);
 
 	spinrelease_irqsave(&signal_queue->siglock);
 
 	thread->regs = thread->signal_context.registers;
 
-	if(thread->blocking) {
+	if(release_block) {
 		thread->blocking = false;
 		thread->signal_release_block = true;
 	}
@@ -483,18 +490,10 @@ void syscall_sigreturn(struct registers *regs) {
 	task->dispatch_ready = false;
 	thread->dispatch_ready = false;
 
-	uint64_t tmp = thread->kernel_stack;
-	thread->kernel_stack = thread->signal_kernel_stack;
-	thread->signal_kernel_stack = tmp;
-
-	tmp = thread->user_stack;
-	thread->user_stack = thread->signal_user_stack;
-	thread->signal_user_stack = tmp;
-
 	CORE_LOCAL->user_stack = thread->user_stack;
 	CORE_LOCAL->kernel_stack = thread->kernel_stack;
 
-	//print("sigreturn: %x:%x: rip: %x: stacks: ks {%x} | us {%x} | rsp {%x}\n", thread->task->pid, thread->tid, thread->regs.rip, thread->kernel_stack, thread->user_stack, thread->regs.rsp);
+	//print("sigreturn default: %x:%x: to %x:%x: with %x:%x\n", thread->task->pid, thread->tid, thread->signal_context.registers.cs, thread->signal_context.registers.rip, thread->signal_context.registers.ss, thread->signal_context.registers.rsp);
 
 	if(thread->signal_context.registers.cs & 0x3) {
 		swapgs();
@@ -519,7 +518,73 @@ void syscall_sigreturn(struct registers *regs) {
 		"pop %%rax\n\t"
 		"addq $16, %%rsp\n\t"
 		"iretq\n\t"
-		:: "r" (&thread->signal_context)
+		:: "r" (&thread->signal_context.registers)
+	);
+}
+
+void syscall_sigreturn(struct registers*) {
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] sigreturn\n", CORE_LOCAL->pid);
+#endif
+	asm volatile ("cli");
+
+	struct sched_task *task = CURRENT_TASK;
+	struct sched_thread *thread = CURRENT_THREAD;
+
+	struct signal_queue *signal_queue = &thread->signal_queue;
+
+	spinlock_irqsave(&signal_queue->siglock);
+
+	struct signal *signal = &signal_queue->queue[thread->signal_context.signum - 1];
+	waitq_wake(signal->trigger);
+
+	spinrelease_irqsave(&signal_queue->siglock);
+
+	thread->regs = thread->signal_context.registers;
+
+	thread->blocking = false;
+	thread->signal_release_block = true;
+
+	task->dispatch_ready = false;
+	thread->dispatch_ready = false;
+
+	uint64_t tmp = thread->kernel_stack;
+	thread->kernel_stack = thread->signal_kernel_stack;
+	thread->signal_kernel_stack = tmp;
+
+	tmp = thread->user_stack;
+	thread->user_stack = thread->signal_user_stack;
+	thread->signal_user_stack = tmp;
+
+	CORE_LOCAL->user_stack = thread->user_stack;
+	CORE_LOCAL->kernel_stack = thread->kernel_stack;
+
+	//print("sigreturn: %x:%x: to %x:%x: with %x:%x\n", thread->task->pid, thread->tid, thread->signal_context.registers.cs, thread->signal_context.registers.rip, thread->signal_context.registers.ss, thread->signal_context.registers.rsp);
+
+	if(thread->signal_context.registers.cs & 0x3) {
+		swapgs();
+	}
+
+	asm volatile (
+		"mov %0, %%rsp\n\t"
+		"pop %%r15\n\t"
+		"pop %%r14\n\t"
+		"pop %%r13\n\t"
+		"pop %%r12\n\t"
+		"pop %%r11\n\t"
+		"pop %%r10\n\t"
+		"pop %%r9\n\t"
+		"pop %%r8\n\t"
+		"pop %%rsi\n\t"
+		"pop %%rdi\n\t"
+		"pop %%rbp\n\t"
+		"pop %%rdx\n\t"
+		"pop %%rcx\n\t"
+		"pop %%rbx\n\t"
+		"pop %%rax\n\t"
+		"addq $16, %%rsp\n\t"
+		"iretq\n\t"
+		:: "r" (&thread->signal_context.registers)
 	);
 }
 

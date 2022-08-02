@@ -100,7 +100,7 @@ struct ucontext {
 	struct ucontext *link;
 	struct stack stack;
 	struct registers registers;
-	sigset_t sigmask;
+	sigset_t signum;
 };
 
 struct signal_queue;
