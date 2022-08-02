@@ -2,6 +2,7 @@
 #include <lib/termios.h>
 #include <lib/circular_queue.h>
 #include <drivers/tty/tty.h>
+#include <errno.h>
 
 static bool ignore_char(struct termios *attr, char ch) {
 	if(ch == '\r' && (attr->c_iflag & IGNCR)) {
@@ -55,7 +56,7 @@ static bool pass_to_canon_buf(struct termios *attr, char ch) {
 
 ssize_t tty_handle_canon(struct tty *tty, void *buf, size_t count) {
 	char *c_buf = buf;
-	ssize_t ret;
+	ssize_t ret = 0;
 
 	spinlock_irqsave(&tty->canon_lock);
 
@@ -89,7 +90,14 @@ out:
 
 	while (1) {
 		asm volatile ("sti");
-		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) == 0);
+
+		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) == 0) {
+			if(SIGPENDING) {
+				set_errno(EINTR);
+				return -1;	
+			}
+		}
+
 		spinlock_irqsave(&tty->input_lock);
 
 		while(circular_queue_pop(&tty->input_queue, &ch)) {
@@ -139,7 +147,7 @@ ssize_t tty_handle_raw(struct tty *tty, void *buf, size_t count) {
 	cc_t min = tty->termios.c_cc[VMIN];
 	cc_t time = tty->termios.c_cc[VTIME];
 	char *c_buf = buf;
-	ssize_t ret;
+	ssize_t ret = 0;
 
 	if(min == 0 && time == 0) {
 		if(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) == 0) {
@@ -167,7 +175,14 @@ ssize_t tty_handle_raw(struct tty *tty, void *buf, size_t count) {
 		return ret;
 	} else if(min > 0 && time == 0) {
 		asm volatile ("sti");
-		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) < min);
+
+		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) < min) {
+			if(SIGPENDING) {
+				set_errno(EINTR);
+				return -1;	
+			}
+		}
+
 		spinlock_irqsave(&tty->input_lock);
 		spinlock_irqsave(&tty->output_lock);
 		for(ret = 0; ret < (ssize_t) count; ret++) {

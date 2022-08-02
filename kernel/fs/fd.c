@@ -366,22 +366,32 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		return -1;
 	}
 
+	bool symfollow = flags & AT_SYMLINK_NOFOLLOW ? false : true;
+
 	struct vfs_node *dir;
 	if(user_dir_lookup(dirfd, path, &dir) == -1) {
 		return -1;
 	}
 
-	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, true);
+	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, symfollow);
 
 	if(flags & O_CREAT && vfs_node == NULL) {
-		struct vfs_node *parent = dir;
+		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1);
+		strcpy(name, path + find_last_char(path, '/') + 1);
+
+		char *dirpath = alloc(find_last_char(path, '/') + 1);
+		strncpy(dirpath, path, find_last_char(path, '/'));
+
+		struct vfs_node *parent = vfs_search_absolute(dir, dirpath, symfollow);
+		if(parent == NULL) {
+			set_errno(ENOTDIR);
+			return -1;
+		}
+
 		if(stat_has_access(parent->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK | X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
 		}
-
-		char *name = alloc(strlen(path + find_last_char(path, '/')) + 1);
-		strcpy(name, path + find_last_char(path, '/'));
 
 		struct stat *stat = alloc(sizeof(struct stat));
 		stat_init(stat);

@@ -106,9 +106,9 @@ static inline uint64_t octal_to_decimal(const char *str) {
 }
 
 static inline size_t find_last_char(const char *str, char c) {
-	for(size_t i = 0; i < strlen(str); i++) {
+	for(size_t i = strlen(str); i > 0; i--) {
 		if(str[i] == c) {
-			return i + i;
+			return i;
 		}
 	}
 

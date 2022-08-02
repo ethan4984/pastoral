@@ -258,11 +258,14 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 
 			thread->signal_queue.sigpending &= ~SIGMASK(i);
 
+			print("dispatching signal %d with action %x\n", i, action->handler.sa_sigaction);
+
 			if(action->handler.sa_sigaction == SIG_ERR) {
 				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 				spinrelease_irqsave(&queue->siglock);
 				return -1;
 			} else if(action->handler.sa_sigaction == SIG_IGN) {
+				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 				continue;
 			}
 
@@ -276,8 +279,6 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 					.size = THREAD_KERNEL_STACK_SIZE,
 					.flags = 0
 				};
-
-				//print("dispatching: default action %d to %x rescheduling to %x\n", signal->signum, state->rsp, stack.sp);
 
 				context.stack = stack;
 				context.registers = *state;
@@ -364,11 +365,6 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 			tmp = thread->user_stack;
 			thread->user_stack = stack.sp;
 			thread->signal_user_stack = tmp;
-
-			/*print("dispatching: kernel stack: %x -> %x\n", thread->signal_kernel_stack, thread->kernel_stack);
-			print("dispatching: user stack: %x -> %x\n", thread->signal_user_stack, thread->user_stack);
-			print("dispatching: cs: %x: rip: %x: rsp: %x\n", state->cs, state->rip, state->rsp);
-			print("dispatching: sa_restorer: %x\n", action->sa_restorer);*/
 
 			spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 

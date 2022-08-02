@@ -151,6 +151,10 @@ extern struct spinlock sched_lock;
 	sched_translate_tid(CORE_LOCAL->pid, CORE_LOCAL->tid); \
 })
 
+#define SIGPENDING ({ \
+	CURRENT_THREAD->signal_queue.sigpending; \
+})
+
 #define TASK_RUNNING 0
 #define TASK_WAITING 1
 #define TASK_YIELD 2
