@@ -74,6 +74,21 @@ static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t
 	struct tty *tty = file->private_data;
 	ssize_t ret;
 
+	// TODO: add check for orphaned process groups.
+	if(CURRENT_TASK->session == tty->session) {
+		if(CURRENT_TASK->group != tty->foreground_group) {
+			if(signal_is_ignored(CURRENT_TASK, SIGTTIN)
+				|| signal_is_blocked(CURRENT_THREAD, SIGTTIN)) {
+				set_errno(EIO);
+				return -1;
+			}
+
+			signal_send_group(NULL, CURRENT_TASK->group, SIGTTIN);
+			set_errno(EINTR);
+			return -1;
+		}
+	}
+
 	if(tty->termios.c_lflag & ICANON) {
 		ret = tty_handle_canon(tty, buf, count);
 	} else {
@@ -87,6 +102,23 @@ static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count
 	struct tty *tty = file->private_data;
 	ssize_t ret;
 	const char *b = buf;
+
+	// TODO: add check for orphaned process groups.
+	if(CURRENT_TASK->session == tty->session) {
+		if(CURRENT_TASK->group != tty->foreground_group
+			&& (tty->termios.c_lflag & TOSTOP)) {
+
+			if(signal_is_ignored(CURRENT_TASK, SIGTTOU)
+				|| signal_is_blocked(CURRENT_THREAD, SIGTTOU)) {
+				set_errno(EIO);
+				return -1;
+			}
+
+			signal_send_group(NULL, CURRENT_TASK->group, SIGTTOU);
+			set_errno(EINTR);
+			return -1;
+		}
+	}
 
 	// Can we at least satisfy a partial write?
 	if(file->flags & O_NONBLOCK) {
@@ -266,7 +298,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 }
 
 void tty_default_termios(struct termios *attr) {
-	attr->c_lflag = ECHO | ECHOCTL | ECHOE | ISIG | ICANON;
+	attr->c_lflag = ECHO | ECHOCTL | ECHOE | ISIG | ICANON | TOSTOP;
 	attr->c_iflag = 0;
 
 	attr->c_cc[VEOF] = 4;		// ^D
@@ -289,6 +321,8 @@ void tty_handle_signal(struct tty *tty, char ch) {
 			signal_send_group(NULL, tty->foreground_group, SIGINT);
 		} else if(tty->termios.c_cc[VQUIT] == ch) {
 			signal_send_group(NULL, tty->foreground_group, SIGTERM);
+		} else if(tty->termios.c_cc[VSUSP] == ch) {
+			signal_send_group(NULL, tty->foreground_group, SIGTSTP);
 		}
 	}
 }

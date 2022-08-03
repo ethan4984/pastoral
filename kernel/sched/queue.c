@@ -43,7 +43,7 @@ int waitq_wait(struct waitq *waitq, int type) {
 
 		if(type == EVENT_ANY) {
 			return trigger->type;
-		} else if((trigger->type & type) == type) {
+		} else if((trigger->type & type)) {
 			return trigger->type;
 		}
 	}

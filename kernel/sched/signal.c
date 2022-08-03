@@ -94,6 +94,7 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 		}
 	}
 
+	queue->sigmask &= ~(SIGMASK(SIGSTOP) | SIGMASK(SIGKILL));
 	spinrelease_irqsave(&queue->siglock);
 
 	return 0;
@@ -217,11 +218,15 @@ static void signal_default_action(int signo) {
 		case SIGPROF:
 		case SIGSYS:
 			return task_terminate(CURRENT_TASK, status);
-		case SIGCONT:
 		case SIGSTOP:
 		case SIGTTIN:
 		case SIGTTOU:
 		case SIGTSTP:
+			task_stop(CURRENT_TASK, signo);
+			break;
+		case SIGCONT:
+			task_continue(CURRENT_TASK);
+			break;
 		case SIGCHLD:
 		case SIGWINCH:
 	}
@@ -242,16 +247,6 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 	if(queue->sigpending == 0) {
 		spinrelease_irqsave(&queue->siglock);
 		return -1;
-	}
-
-	if(((thread->signal_queue.sigpending & SIGMASK(SIGKILL)))) {
-		signal_default_action(SIGKILL);
-		panic("");
-	}
-
-	if((thread->signal_queue.sigpending & SIGMASK(SIGSTOP))) {
-		signal_default_action(SIGSTOP);
-		panic("");
 	}
 
 	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
@@ -322,7 +317,7 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 						MMAP_MAP_ANONYMOUS,
 						0,
 						0) + THREAD_USER_STACK_SIZE,
-				.size = THREAD_USER_STACK_SIZE, 
+				.size = THREAD_USER_STACK_SIZE,
 				.flags = 0
 			};
 
@@ -592,6 +587,37 @@ void syscall_sigreturn(struct registers*) {
 		"iretq\n\t"
 		:: "r" (context)
 	);
+}
+
+int signal_is_blocked(struct sched_thread *thread, int sig) {
+	if(signal_is_valid(sig) == -1) {
+		return -1;
+	}
+
+	spinlock_irqsave(&thread->signal_queue.siglock);
+	if(thread->signal_queue.sigmask & SIGMASK(sig)) {
+		spinrelease_irqsave(&thread->signal_queue.siglock);
+		return 0;
+	}
+
+	spinrelease_irqsave(&thread->signal_queue.siglock);
+	return -1;
+}
+
+int signal_is_ignored(struct sched_task *task, int sig) {
+	if(signal_is_valid(sig) == -1) {
+		return -1;
+	}
+
+	spinlock_irqsave(&task->sig_lock);
+	struct sigaction *act = &task->sigactions[sig - 1];
+	if(act->handler.sa_handler == SIG_IGN) {
+		spinrelease_irqsave(&task->sig_lock);
+		return 0;
+	}
+
+	spinrelease_irqsave(&task->sig_lock);
+	return -1;
 }
 
 void syscall_sigaction(struct registers *regs) {

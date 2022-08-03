@@ -59,6 +59,8 @@ struct sched_task {
 
 	struct waitq_trigger *exit_trigger;
 	struct waitq_trigger *last_trigger;
+	struct waitq_trigger *job_stop_trigger;
+	struct waitq_trigger *job_continue_trigger;
 
 	struct vfs_node *cwd;
 
@@ -73,6 +75,7 @@ struct sched_task {
 	size_t idle_cnt;
 	int sched_status;
 	int exit_status;
+	int job_status;
 
 	uid_t real_uid;
 	uid_t effective_uid;
@@ -139,6 +142,8 @@ void sched_requeue(struct sched_task *task, struct sched_thread *thread);
 void sched_requeue_and_yield(struct sched_task *task, struct sched_thread *thread);
 void sched_yield();
 void task_terminate(struct sched_task *task, int status);
+void task_stop(struct sched_task *task, int sig);
+void task_continue(struct sched_task *task);
 int task_create_session(struct sched_task *task, bool force);
 
 extern struct spinlock sched_lock;
@@ -206,4 +211,6 @@ static inline void thread_unlock(struct sched_thread *thread) {
 #define WTERMSIG(x) (((x) & 0xff000000) >> 24)
 
 #define WEXITED_CONSTRUCT(status) ((status & 0xff) | 0x200)
-#define WSIGNALED_CONSTRUCT(status) ((((status & 0xff) << 16) | 0x400))
+#define WSIGNALED_CONSTRUCT(status) (((int) (status & 0xff) << 24) | 0x400)
+#define WSTOPPED_CONSTRUCT(sig) (((int) (sig & 0xff) << 16) | 0x800)
+#define WCONTINUED_CONSTRUCT 0x100
