@@ -93,8 +93,9 @@ out:
 
 		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) == 0) {
 			if(SIGPENDING) {
+				spinrelease_irqsave(&tty->canon_lock);
 				set_errno(EINTR);
-				return -1;	
+				return -1;
 			}
 		}
 
@@ -179,7 +180,7 @@ ssize_t tty_handle_raw(struct tty *tty, void *buf, size_t count) {
 		while(__atomic_load_n(&tty->input_queue.items, __ATOMIC_RELAXED) < min) {
 			if(SIGPENDING) {
 				set_errno(EINTR);
-				return -1;	
+				return -1;
 			}
 		}
 

@@ -833,13 +833,8 @@ void syscall_execve(struct registers *regs) {
 
 	for(size_t i = 0; i < SIGNAL_MAX; i++) {
 		struct sigaction *task_act = &task->sigactions[i];
-		struct sigaction *current_act = &current_task->sigactions[i];
 		memset(task_act, 0, sizeof(struct sigaction));
-		if(current_act->handler.sa_sigaction == SIG_IGN) {
-			task_act->handler.sa_sigaction = SIG_IGN;
-		} else {
-			task_act->handler.sa_sigaction = SIG_DFL;
-		}
+		task_act->handler.sa_handler = SIG_DFL;
 	}
 
 	VECTOR_PUSH(parent->children, task);
