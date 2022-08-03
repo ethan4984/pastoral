@@ -36,7 +36,6 @@ static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 	return 0;
 }
 
-
 static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
 	if(*path == '/' && *(path + 1) == '\0') {
 		*ret = vfs_root;

@@ -7,6 +7,7 @@
 static ssize_t socket_read(struct file_handle *file, void *buf, size_t cnt, off_t offset);
 static ssize_t socket_write(struct file_handle *file, const void *buf, size_t cnt, off_t offset);
 static int socket_ioctl(struct file_handle *file, uint64_t req, void *arg);
+static int socket_close(struct vfs_node*, struct file_handle *handle);
 
 static int unix_bind(struct socket *socket, const struct socketaddr *addr, socklen_t length);
 static int unix_getsockname(struct socket *socket, struct socketaddr *addr, socklen_t *length);
@@ -20,7 +21,8 @@ static int unix_sendto(struct socket *socket, struct socket *target, const void 
 static struct file_ops socket_file_ops = {
 	.read = socket_read,
 	.write = socket_write,
-	.ioctl = socket_ioctl
+	.ioctl = socket_ioctl,
+	.close = socket_close
 };
 
 static bool socket_validate_family(int family) {
@@ -655,6 +657,27 @@ static ssize_t socket_write(struct file_handle *handle, const void *buf, size_t 
 	}
 
 	return socket->sendto(socket, peer, buf, cnt, 0); 
+}
+
+static int socket_close(struct vfs_node*, struct file_handle *handle) {
+	struct socket *socket = handle->private_data;
+	struct socket *peer = socket->peer;
+
+	if(peer == NULL || socket->state == SOCKET_UNCONNECTED) {
+		return -1;
+	}
+
+	socket->state = SOCKET_UNCONNECTED;
+	socket->peer = NULL;
+
+	peer->state = SOCKET_UNCONNECTED;
+	peer->peer = NULL;
+
+	if(socket->addr) {
+		hash_table_delete(&unix_addr_table, socket->addr, sizeof(struct socketaddr_un));
+	}
+
+	return 0;
 }
 
 static int socket_ioctl(struct file_handle*, uint64_t, void*) {
