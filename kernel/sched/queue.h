@@ -14,6 +14,8 @@
 #define EVENT_POLLIN (1 << 7)
 #define EVENT_POLLOUT (1 << 8)
 #define EVENT_SOCKET (1 << 9)
+#define EVENT_JOB_STOP (1 << 10)
+#define EVENT_JOB_CONTINUE (1 << 11)
 
 struct sched_task;
 struct sched_thread;

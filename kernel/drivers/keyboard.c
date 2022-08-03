@@ -69,8 +69,8 @@ static int ps2_get_character(char *character) {
 	uint8_t scancode = inb(KDB_PS2_DATA);
 	bool release = scancode & 0x80;
 
-	if(scancode == 0x2a || scancode == 0xaa
-		|| scancode == 0x36 || scancode == 0xb6) {
+	if(scancode == 0x2a || scancode == 0x36
+		|| scancode == 0xaa || scancode == 0xb6) {
 		if(!release) {
 			shift_active = true;
 		} else {
@@ -175,10 +175,7 @@ void ps2_handler(struct registers*, void*) {
 
 		char character = '\0';
 		int function = ps2_get_character(&character);
-		
-		if(ctrl_active) {
-			tty_handle_signal(active_tty, character);
-		}
+		tty_handle_signal(active_tty, character);
 
 		if(character != '\0') {
 			circular_queue_push(&active_tty->input_queue, &character);

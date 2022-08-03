@@ -144,3 +144,6 @@ int signal_send_group(struct sched_thread *sender, struct process_group *target,
 int signal_check_permissions(struct sched_task *sender, struct sched_task *target);
 int signal_is_valid(int sig);
 int signal_dispatch(struct sched_thread *thread, struct registers *state);
+
+int signal_is_blocked(struct sched_thread *thread, int sig);
+int signal_is_ignored(struct sched_task *task, int sig);
