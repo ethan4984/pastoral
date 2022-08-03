@@ -779,6 +779,7 @@ void syscall_execve(struct registers *regs) {
 
 	struct sched_task *parent = current_task->parent;
 	VECTOR_REMOVE_BY_VALUE(parent->children, current_task);
+	VECTOR_REMOVE_BY_VALUE(parent->group->process_list, current_task);
 
 	if(stat_has_access(vfs_node->stat, current_task->effective_uid,
 		current_task->effective_gid, X_OK) == -1) {
@@ -842,6 +843,7 @@ void syscall_execve(struct registers *regs) {
 	}
 
 	VECTOR_PUSH(parent->children, task);
+	VECTOR_PUSH(task->group->process_list, task);
 
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;

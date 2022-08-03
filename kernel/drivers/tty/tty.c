@@ -286,7 +286,6 @@ void tty_default_termios(struct termios *attr) {
 void tty_handle_signal(struct tty *tty, char ch) {
 	if(tty->termios.c_lflag & ISIG) {
 		if(tty->termios.c_cc[VINTR] == ch) {
-			print("Sending signal\n");
 			signal_send_group(NULL, tty->foreground_group, SIGINT);
 		} else if(tty->termios.c_cc[VQUIT] == ch) {
 			signal_send_group(NULL, tty->foreground_group, SIGTERM);

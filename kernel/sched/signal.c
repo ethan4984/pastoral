@@ -32,6 +32,8 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 		*current_action = *act;
 		current_action->sa_mask &= ~(SIGMASK(SIGKILL) | SIGMASK(SIGSTOP));
 
+		print("sigaction: signum %x: handler %x\n", sig, act->handler);
+
 		spinlock_irqsave(&queue->siglock);
 
 		if(act->handler.sa_sigaction == SIG_IGN && queue->sigpending & (1 << sig)) {
@@ -177,7 +179,10 @@ int signal_send_group(struct sched_thread *sender, struct process_group *target,
 	for(size_t i = 0; i < target->process_list.length; i++) {
 		pid_t pid = target->process_list.data[i]->pid;
 
+
 		struct sched_thread *thread = sched_translate_tid(pid, 0);
+		//print("sending signal to %x:%x\n", pid, thread->tid);
+
 		if(!thread) {
 			set_errno(ESRCH);
 			return -1;
