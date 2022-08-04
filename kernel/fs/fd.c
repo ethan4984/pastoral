@@ -229,7 +229,9 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	ssize_t ret;
 	off_t off = fd_handle->file_handle->position;
 
+	file_unlock(fd_handle->file_handle);
 	ret = fd_handle->file_handle->ops->write(fd_handle->file_handle, buf, count, off);
+	file_lock(fd_handle->file_handle);
 	if(ret != -1) {
 		stat_update_time(stat, STAT_MOD | STAT_STATUS);
 
@@ -273,7 +275,9 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 
 	ssize_t ret;
 	off_t off = fd_handle->file_handle->position;
+	file_unlock(fd_handle->file_handle);
 	ret = fd_handle->file_handle->ops->read(fd_handle->file_handle, buf, count, off);
+	file_lock(fd_handle->file_handle);
 	if(ret != -1) {
 		fd_handle->file_handle->position += ret;
 	}

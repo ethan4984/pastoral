@@ -9,9 +9,12 @@ int waitq_wait(struct waitq *waitq, int type) {
 
 	spinlock_irqsave(&waitq->lock);
 
-	if((waitq->status & type) == type) {
+	if((waitq->status & type)) {
+		// One of the types are available. Return the leftmost one.
+		int ret;
+		bsfl((waitq->status & type), &ret);
 		spinrelease_irqsave(&waitq->lock);
-		return type;
+		return ret;
 	}
 
 	VECTOR_PUSH(waitq->threads, thread);

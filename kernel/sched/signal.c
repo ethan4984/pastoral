@@ -32,7 +32,7 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 		*current_action = *act;
 		current_action->sa_mask &= ~(SIGMASK(SIGKILL) | SIGMASK(SIGSTOP));
 
-		print("sigaction: signum %x: handler %x\n", sig, act->handler);
+		//print("sigaction: signum %x: handler %x\n", sig, act->handler);
 
 		spinlock_irqsave(&queue->siglock);
 

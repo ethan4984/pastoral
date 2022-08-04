@@ -151,3 +151,9 @@ static inline uint64_t get_errno() {
 struct cpuid_state cpuid(size_t leaf, size_t subleaf);
 bool get_interrupt_state();
 void init_cpu_features();
+
+static inline bool bsfl(int data, int *position) {
+	bool ret;
+	asm volatile("bsf %1, %2" : "=@ccnz"(ret) : "r"(data), "r"(*position));
+	return ret;
+}

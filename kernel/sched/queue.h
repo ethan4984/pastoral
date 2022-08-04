@@ -5,17 +5,15 @@
 #include <lock.h>
 
 #define EVENT_ANY (1 << 0)
-#define EVENT_EXIT (1 << 1)
-#define EVENT_READ (1 << 2)
-#define EVENT_WRITE (1 << 3)
-#define EVENT_TIMER (1 << 4)
-#define EVENT_SIGNAL (1 << 5)
-#define EVENT_COMMAND (1 << 6)
-#define EVENT_POLLIN (1 << 7)
-#define EVENT_POLLOUT (1 << 8)
-#define EVENT_SOCKET (1 << 9)
-#define EVENT_JOB_STOP (1 << 10)
-#define EVENT_JOB_CONTINUE (1 << 11)
+#define EVENT_READ (1 << 1)
+#define EVENT_WRITE (1 << 2)
+#define EVENT_TIMER (1 << 3)
+#define EVENT_SIGNAL (1 << 4)
+#define EVENT_COMMAND (1 << 5)
+#define EVENT_POLLIN (1 << 6)
+#define EVENT_POLLOUT (1 << 7)
+#define EVENT_SOCKET (1 << 8)
+#define EVENT_PROCESS_STATUS (1 << 9)
 
 struct sched_task;
 struct sched_thread;

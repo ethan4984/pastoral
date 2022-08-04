@@ -56,11 +56,8 @@ struct sched_task {
 	struct bitmap tid_bitmap;
 
 	struct waitq *waitq;
-
-	struct waitq_trigger *exit_trigger;
+	struct waitq_trigger *status_trigger;
 	struct waitq_trigger *last_trigger;
-	struct waitq_trigger *job_stop_trigger;
-	struct waitq_trigger *job_continue_trigger;
 
 	struct vfs_node *cwd;
 
@@ -74,8 +71,7 @@ struct sched_task {
 
 	size_t idle_cnt;
 	int sched_status;
-	int exit_status;
-	int job_status;
+	int process_status;
 
 	uid_t real_uid;
 	uid_t effective_uid;
