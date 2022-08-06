@@ -264,9 +264,7 @@ struct sched_task *sched_default_task() {
 	task->fd_bitmap.resizable = true;
 
 	task->waitq = alloc(sizeof(struct waitq));
-	task->exit_trigger = waitq_alloc(task->waitq, EVENT_EXIT);
-	task->job_stop_trigger = waitq_alloc(task->waitq, EVENT_JOB_STOP);
-	task->job_continue_trigger = waitq_alloc(task->waitq, EVENT_JOB_CONTINUE);
+	task->status_trigger = waitq_alloc(task->waitq, EVENT_PROCESS_STATUS);
 
 	task->real_uid = 0;
 	task->effective_uid = 0;
@@ -464,12 +462,8 @@ struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_a
 
 	vmm_init_page_table(current_task->page_table);
 
-	waitq_trigger_calibrate(task->exit_trigger, task, thread, EVENT_EXIT);
-	waitq_trigger_calibrate(task->job_stop_trigger, task, thread, EVENT_JOB_STOP);
-	waitq_trigger_calibrate(task->job_continue_trigger, task, thread, EVENT_JOB_CONTINUE);
-	waitq_add(current_task->waitq, task->exit_trigger);
-	waitq_add(current_task->waitq, task->job_stop_trigger);
-	waitq_add(current_task->waitq, task->job_continue_trigger);
+	waitq_trigger_calibrate(task->status_trigger, task, thread, EVENT_PROCESS_STATUS);
+	waitq_add(current_task->waitq, task->status_trigger);
 
 	spinrelease_irqsave(&sched_lock);
 
@@ -545,13 +539,6 @@ void syscall_waitpid(struct registers *regs) {
 	int pid = regs->rdi;
 	int *status = (int*)regs->rsi;
 	int options = regs->rdx;
-	int wait_type = EVENT_EXIT;
-	if(options & WUNTRACED) {
-		wait_type |= EVENT_JOB_STOP;
-	}
-	if(options & WCONTINUED) {
-		wait_type |= EVENT_JOB_CONTINUE;
-	}
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] waitpid: pid {%x}, status {%x}, options {%x}\n", CURRENT_TASK->pid, pid, (uintptr_t)status, options);
@@ -579,7 +566,7 @@ void syscall_waitpid(struct registers *regs) {
 		}
 
 		if(status) {
-			*status = zombie->exit_status;
+			*status = zombie->process_status;
 		}
 
 		VECTOR_REMOVE_BY_VALUE(current_task->zombies, zombie);
@@ -608,18 +595,11 @@ void syscall_waitpid(struct registers *regs) {
 	}
 
 	for(size_t i = 0; i < process_list.length; i++) {
-		waitq_add(current_task->waitq, process_list.data[i]->exit_trigger);
-		if(options & WUNTRACED) {
-			waitq_add(current_task->waitq, process_list.data[i]->job_stop_trigger);
-		}
-		if(options & WCONTINUED) {
-			waitq_add(current_task->waitq, process_list.data[i]->job_continue_trigger);
-		}
+		waitq_add(current_task->waitq, process_list.data[i]->status_trigger);
 	}
 
-	int ret = waitq_wait(current_task->waitq, wait_type);
-	waitq_release(current_task->waitq, wait_type);
-
+do_wait:
+	int ret = waitq_wait(current_task->waitq, EVENT_PROCESS_STATUS);
 	if(ret == -1) {
 		regs->rax = -1;
 		return;
@@ -628,12 +608,17 @@ void syscall_waitpid(struct registers *regs) {
 	struct waitq_trigger *trigger = current_task->last_trigger;
 	struct sched_task *agent = trigger->agent_task;
 
+	if(!(options & WUNTRACED) && WIFSTOPPED(agent->process_status)) {
+		goto do_wait;
+	}
+	if(!(options & WCONTINUED) && WIFCONTINUED(agent->process_status)) {
+		goto do_wait;
+	}
+
+	waitq_release(current_task->waitq, ret);
+
 	if(status != NULL) {
-		if(ret & (EVENT_JOB_STOP | EVENT_JOB_CONTINUE)) {
-			*status = agent->job_status;
-		} else {
-			*status = agent->exit_status;
-		}
+		*status = agent->process_status;
 	}
 
 	regs->rax = agent->pid;
@@ -682,9 +667,7 @@ void task_terminate(struct sched_task *task, int status) {
 	for(size_t i = 0; i < task->children.length; i++) {
 		struct sched_task *child = task->children.data[i];
 
-		child->exit_trigger->waitq = parent->waitq;
-		child->job_stop_trigger->waitq = parent->waitq;
-		child->job_continue_trigger->waitq = parent->waitq;
+		child->status_trigger->waitq = parent->waitq;
 		child->parent = parent;
 
 		VECTOR_PUSH(parent->children, child);
@@ -693,9 +676,7 @@ void task_terminate(struct sched_task *task, int status) {
 	for(size_t i = 0; i < task->zombies.length; i++) {
 		struct sched_task *zombie = task->zombies.data[i];
 
-		zombie->exit_trigger->waitq = parent->waitq;
-		zombie->job_stop_trigger->waitq = parent->waitq;
-		zombie->job_continue_trigger->waitq = parent->waitq;
+		zombie->status_trigger->waitq = parent->waitq;
 		zombie->parent = parent;
 
 		VECTOR_PUSH(parent->zombies, zombie);
@@ -704,8 +685,10 @@ void task_terminate(struct sched_task *task, int status) {
 	VECTOR_REMOVE_BY_VALUE(task->parent->children, task);
 	VECTOR_PUSH(task->parent->zombies, task);
 
-	task->exit_status = status;
-	waitq_wake(task->exit_trigger);
+	// TODO: figure out why this doesn't work.
+	//task->process_status = status;
+	task->status_trigger->agent_task->process_status = status;
+	waitq_wake(task->status_trigger);
 
 	task->sched_status = TASK_YIELD;
 
@@ -721,21 +704,21 @@ void task_terminate(struct sched_task *task, int status) {
 
 
 void task_stop(struct sched_task *task, int sig) {
-	// TODO: why does this not work?
-	//task->job_status = WSTOPPED_CONSTRUCT(sig);
-	task->job_stop_trigger->agent_task->job_status = WSTOPPED_CONSTRUCT(sig);
+	// TODO: figure out why this doesn't work.
+	//task->process_status = WSTOPPED_CONSTRUCT(sig);
+	task->status_trigger->agent_task->process_status = WSTOPPED_CONSTRUCT(sig);
 	signal_send_thread(NULL, sched_translate_tid(task->parent->pid, 0), SIGCHLD);
-	waitq_wake(task->job_stop_trigger);
-	sched_dequeue_and_yield(task, sched_translate_tid(task->pid, 0));
+	waitq_wake(task->status_trigger);
+	sched_dequeue_and_yield(CURRENT_TASK, CURRENT_THREAD);
 }
 
 void task_continue(struct sched_task *task) {
-	// TODO: why does this not work?
-	//task->job_status = WCONTINUED_CONSTRUCT;
-	task->job_continue_trigger->agent_task->job_status = WCONTINUED_CONSTRUCT;
+	// TODO: figure out why this doesn't work.
+	//task->process_status = WCONTINUED_CONSTRUCT;
+	task->status_trigger->agent_task->process_status = WCONTINUED_CONSTRUCT;
 	signal_send_thread(NULL, sched_translate_tid(task->parent->pid, 0), SIGCHLD);
-	waitq_wake(task->job_continue_trigger);
-	sched_requeue_and_yield(task, sched_translate_tid(task->pid, 0));
+	waitq_wake(task->status_trigger);
+	sched_requeue_and_yield(CURRENT_TASK, CURRENT_THREAD);
 }
 
 void syscall_exit(struct registers *regs) {
@@ -808,6 +791,8 @@ void syscall_execve(struct registers *regs) {
 	print("\b\b}\n");
 #endif
 	struct sched_task *current_task = CURRENT_TASK;
+	struct sched_thread *current_thread = CURRENT_THREAD;
+
 	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path, true);
 	if(vfs_node == NULL) {
 		set_errno(ENOENT);
@@ -851,9 +836,7 @@ void syscall_execve(struct registers *regs) {
 	task->cwd = current_task->cwd;
 	task->pid = current_task->pid;
 	task->parent = current_task->parent;
-	task->exit_trigger = current_task->exit_trigger;
-	task->job_stop_trigger = current_task->job_stop_trigger;
-	task->job_continue_trigger = current_task->job_continue_trigger;
+	task->status_trigger = current_task->status_trigger;
 
 	thread->task = task;
 
@@ -873,9 +856,18 @@ void syscall_execve(struct registers *regs) {
 
 	for(size_t i = 0; i < SIGNAL_MAX; i++) {
 		struct sigaction *task_act = &task->sigactions[i];
+		struct sigaction *current_act = &current_task->sigactions[i];
 		memset(task_act, 0, sizeof(struct sigaction));
-		task_act->handler.sa_handler = SIG_DFL;
+		if(current_act->handler.sa_handler == SIG_IGN) {
+			task_act->handler.sa_handler = SIG_IGN;
+		} else {
+			task_act->handler.sa_handler = SIG_DFL;
+		}
 	}
+
+	thread->signal_queue.sigmask = current_thread->signal_queue.sigmask;
+	thread->signal_queue.sigpending = current_thread->signal_queue.sigpending;
+	memcpy(&thread->signal_queue.queue, &current_thread->signal_queue.queue, SIGNAL_MAX * sizeof(struct signal));
 
 	VECTOR_PUSH(parent->children, task);
 	VECTOR_PUSH(task->group->process_list, task);
@@ -931,13 +923,8 @@ void syscall_fork(struct registers *regs) {
 	memcpy(&task->sigactions, &current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
 
 	task->waitq = alloc(sizeof(struct waitq));
-
-	task->exit_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_EXIT);
-	task->job_stop_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_JOB_STOP);
-	task->job_continue_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_JOB_CONTINUE);
-	waitq_trigger_calibrate(task->exit_trigger, task, thread, EVENT_EXIT);
-	waitq_trigger_calibrate(task->job_stop_trigger, task, thread, EVENT_JOB_STOP);
-	waitq_trigger_calibrate(task->job_continue_trigger, task, thread, EVENT_JOB_CONTINUE);
+	task->status_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_PROCESS_STATUS);
+	waitq_trigger_calibrate(task->status_trigger, task, thread, EVENT_PROCESS_STATUS);
 
 	task->tid_bitmap = (struct bitmap) {
 		.data = NULL,
@@ -970,6 +957,7 @@ void syscall_fork(struct registers *regs) {
 	thread->sched_status = TASK_WAITING;
 	thread->tid = bitmap_alloc(&task->tid_bitmap);
 	thread->task = task;
+	thread->signal_queue.sigmask = current_thread->signal_queue.sigmask;
 
 	hash_table_push(&task_list, &task->pid, task, sizeof(task->pid));
 	hash_table_push(&task->thread_list, &thread->tid, thread, sizeof(thread->tid));
