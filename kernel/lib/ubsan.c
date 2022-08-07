@@ -71,7 +71,7 @@ struct tu_invalid_builtin_data {
 void print(const char *fmt, ...);
 
 static void tu_print_location(const char *message, struct tu_source_location loc) {
-	panic("tinyubsan: %s at file %s, line %d, column %d\n", message, loc.file, loc.line, loc.column);
+	panic("tinyubsan: %s at file %s, line %d, column %d", message, loc.file, loc.line, loc.column);
 }
 
 void __ubsan_handle_add_overflow(struct tu_overflow_data *data) {

@@ -605,17 +605,13 @@ do_wait:
 		return;
 	}
 
+	waitq_release(current_task->waitq, ret);
+
 	struct waitq_trigger *trigger = current_task->last_trigger;
 	struct sched_task *agent = trigger->agent_task;
 
-	if(!(options & WUNTRACED) && WIFSTOPPED(agent->process_status)) {
-		goto do_wait;
-	}
-	if(!(options & WCONTINUED) && WIFCONTINUED(agent->process_status)) {
-		goto do_wait;
-	}
-
-	waitq_release(current_task->waitq, ret);
+	if(!(options & WUNTRACED) && WIFSTOPPED(agent->process_status)) goto do_wait;
+	if(!(options & WCONTINUED) && WIFCONTINUED(agent->process_status)) goto do_wait;
 
 	if(status != NULL) {
 		*status = agent->process_status;

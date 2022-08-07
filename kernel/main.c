@@ -161,6 +161,8 @@ void pastoral_entry(void) {
 
 	vfs_init();
 
+	kernel_symtable_init();
+
 	hpet_init();
 	apic_init();
 	boot_aps();

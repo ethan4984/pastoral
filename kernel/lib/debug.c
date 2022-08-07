@@ -4,6 +4,8 @@
 #include <stdarg.h>
 #include <lock.h>
 
+struct symbol_list kernel_symbol_list;
+
 static void serial_write(uint8_t data) {
 	while((inb(COM1 + 5) & (1 << 5)) == 0);
 	outb(COM1, data);

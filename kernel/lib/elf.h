@@ -1,6 +1,6 @@
 #pragma once
 
-#include <mm/vmm.h>
+#include <types.h>
 
 #define ELF_SIGNATURE 0x464C457F
 #define ELF_ELF64 0x2
@@ -33,6 +33,13 @@
 #define ELF_PT_HOIS 0x6fffffff
 #define ELF_PT_LOPROC 0x70000000
 #define ELF_PT_HIPROC 0x7fffffff
+
+#define SHT_SYMTAB 0x2
+#define SHT_STRTAB 0x3
+
+#define SHF_ALLOC 0x2
+
+#define STT_FUNC 0x2
 
 struct aux {
 	uint64_t at_entry;
@@ -82,4 +89,27 @@ struct elf64_shdr {
 	uint64_t sh_entsize;
 };
 
+struct elf64_symtab {
+	uint32_t st_name;
+	unsigned char st_info;
+	unsigned char st_other;
+	uint16_t st_shndx;
+	uint64_t st_value;
+	uint64_t st_size;
+};
+
+struct symbol {
+	const char *name;
+	uintptr_t address;
+	size_t size;
+};
+
+struct symbol_list {
+	struct symbol *data;
+	size_t cnt;
+};
+
+extern struct symbol_list kernel_symbol_list;
+
+struct page_table;
 int elf_load(struct page_table *page_table, struct aux *aux, int fd, uint64_t base, char **ld);
