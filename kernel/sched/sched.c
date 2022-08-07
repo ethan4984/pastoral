@@ -583,13 +583,25 @@ void syscall_waitpid(struct registers *regs) {
 	VECTOR(struct sched_task*) process_list = { 0 };
 
 	if(pid < -1) {
-		panic("waiting for groups\n");
+		for(size_t i = 0; i < current_task->children.length; i++) {
+			struct sched_task *task = current_task->children.data[i];
+
+			if(task->group->pgid == abs(pid)) {
+				VECTOR_PUSH(process_list, task);
+			}
+		}
 	} else if(pid == -1) {
 		for(size_t i = 0; i < current_task->children.length; i++) {
 			VECTOR_PUSH(process_list, current_task->children.data[i]);
 		}
 	} else if(pid == 0) {
-		panic("waiting for groups\n");
+		for(size_t i = 0; i < current_task->children.length; i++) {
+			struct sched_task *task = current_task->children.data[i];
+
+			if(task->group->pgid == current_task->group->pgid) {
+				VECTOR_PUSH(process_list, task);
+			}
+		}
 	} else if(pid > 0) {
 		VECTOR_PUSH(process_list, sched_translate_pid(pid));
 	}

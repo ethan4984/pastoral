@@ -115,6 +115,10 @@ static inline size_t find_last_char(const char *str, char c) {
 	return -1;
 }
 
+static inline size_t abs(ssize_t n) {
+	return (n < 0) ? -n : n;
+}
+
 int strcmp(const char *str0, const char *str1);
 int strncmp(const char *str0, const char *str1, size_t n);
 int sprint(char *str, const char *format, ...);
