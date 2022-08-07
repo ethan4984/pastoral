@@ -281,6 +281,10 @@ void *realloc(void *obj, size_t size) {
 	}
 
 	void *ret = alloc(size);
+	if(ret == NULL) {
+		print("realloc size %d\n", size);
+	}
+
 	memcpy8(ret, obj, object_size);
 	free(obj);
 

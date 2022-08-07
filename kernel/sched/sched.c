@@ -540,9 +540,9 @@ void syscall_waitpid(struct registers *regs) {
 	int *status = (int*)regs->rsi;
 	int options = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+//#ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] waitpid: pid {%x}, status {%x}, options {%x}\n", CURRENT_TASK->pid, pid, (uintptr_t)status, options);
-#endif
+//#endif
 
 	asm volatile ("cli");
 
@@ -599,13 +599,12 @@ void syscall_waitpid(struct registers *regs) {
 	}
 
 do_wait:
-	int ret = waitq_wait(current_task->waitq, EVENT_PROCESS_STATUS);
-	if(ret == -1) {
-		regs->rax = -1;
-		return;
-	}
+	uint64_t ret = waitq_wait(current_task->waitq, EVENT_PROCESS_STATUS);
+	waitq_release(current_task->waitq, EVENT_PROCESS_STATUS);
 
-	waitq_release(current_task->waitq, ret);
+	if(ret == -1) {
+		goto finish;
+	}
 
 	struct waitq_trigger *trigger = current_task->last_trigger;
 	struct sched_task *agent = trigger->agent_task;
@@ -617,7 +616,13 @@ do_wait:
 		*status = agent->process_status;
 	}
 
-	regs->rax = agent->pid;
+	ret = agent->pid;
+finish:
+	for(size_t i = 0; i < process_list.length; i++) {
+		waitq_remove(current_task->waitq, process_list.data[i]->status_trigger);
+	}
+
+	regs->rax = ret;
 }
 
 void task_terminate(struct sched_task *task, int status) {
