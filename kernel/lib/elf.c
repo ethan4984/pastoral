@@ -5,6 +5,7 @@
 #include <mm/mmap.h>
 #include <limine.h>
 #include <debug.h>
+#include <mm/pmm.h>
 
 static volatile struct limine_kernel_file_request limine_kernel_file_request = {
 	.id = LIMINE_KERNEL_FILE_REQUEST,
@@ -81,7 +82,7 @@ int kernel_symtable_init() {
 	uint64_t entcnt = symtable->sh_size / symtable->sh_entsize;
 	struct elf64_symtab *symtab = (void*)((uintptr_t)hdr + symtable->sh_offset);
 
-	kernel_symbol_list.data = alloc(sizeof(struct symbol) * entcnt);
+	kernel_symbol_list.data = (void*)(pmm_alloc(DIV_ROUNDUP(sizeof(struct symbol) * entcnt, PAGE_SIZE), 1) + HIGH_VMA);
 	kernel_symbol_list.cnt = 0;
 
 	for(size_t i = 0; i < entcnt; i++) {
@@ -99,6 +100,18 @@ int kernel_symtable_init() {
 	}
 	
 	return 0;
+}
+
+struct symbol *search_symtable(struct symbol_list *table, uintptr_t addr) {
+	for(size_t i = 0; i < table->cnt; i++) {
+		struct symbol *symbol = &table->data[i];
+
+		if(symbol->address <= addr && (symbol->address + symbol->size) >= addr) {
+			return symbol;
+		}
+	}
+
+	return NULL;
 }
 
 int elf_load(struct page_table *page_table, struct aux *aux, int fd, uint64_t base, char **ld) {

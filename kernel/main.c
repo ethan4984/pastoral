@@ -147,6 +147,8 @@ void pastoral_entry(void) {
 	gdt_init();
 	idt_init();
 
+	kernel_symtable_init();
+
 	rsdp = limine_rsdp_request.response->address;
 
 	if(rsdp->xsdt_addr) {
@@ -160,8 +162,6 @@ void pastoral_entry(void) {
 	fadt = acpi_find_sdt("FACP");
 
 	vfs_init();
-
-	kernel_symtable_init();
 
 	hpet_init();
 	apic_init();

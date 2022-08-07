@@ -6,6 +6,32 @@
 
 struct symbol_list kernel_symbol_list;
 
+void stacktrace(uint64_t *rbp) {
+	for(;;) {
+		if(rbp == NULL) {
+			return;
+		}
+
+		uint64_t previous_rbp = *rbp;
+		rbp++;
+		uint64_t return_address = *rbp;
+
+		if(return_address == 0) {
+			return;
+		}
+
+		struct symbol *symbol = search_symtable(&kernel_symbol_list, return_address);
+
+		if(symbol) { 
+			print("trace: [%x] <%s+%x>\n", return_address, symbol->name, return_address - symbol->address);
+		} else {
+			print("trace: [%x]\n", return_address);
+		}
+
+		rbp = (void*)previous_rbp;
+	}
+}
+
 static void serial_write(uint8_t data) {
 	while((inb(COM1 + 5) & (1 << 5)) == 0);
 	outb(COM1, data);
@@ -90,6 +116,10 @@ void panic(const char *str, ...) {
 	va_end(arg);
 
 	print(" > HALTING\n");
+
+	uint64_t rbp;
+	asm volatile ("mov %%rbp, %0" : "=r"(rbp));
+	stacktrace((void*)rbp);
 
 	for(;;)
 		asm volatile ("cli\nhlt");

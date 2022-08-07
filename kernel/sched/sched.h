@@ -145,11 +145,19 @@ int task_create_session(struct sched_task *task, bool force);
 extern struct spinlock sched_lock;
 
 #define CURRENT_TASK ({ \
-	sched_translate_pid(CORE_LOCAL->pid); \
+	struct sched_task *ret = NULL; \
+	if(CORE_LOCAL) { \
+		ret = sched_translate_pid(CORE_LOCAL->pid); \
+	} \
+	ret; \
 })
 
 #define CURRENT_THREAD ({ \
-	sched_translate_tid(CORE_LOCAL->pid, CORE_LOCAL->tid); \
+	struct sched_thread *ret = NULL; \
+	if(CORE_LOCAL) { \
+		ret = sched_translate_tid(CORE_LOCAL->pid, CORE_LOCAL->tid); \
+	} \
+	ret; \
 })
 
 #define SIGPENDING ({ \

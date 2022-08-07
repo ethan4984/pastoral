@@ -109,7 +109,8 @@ struct symbol_list {
 	size_t cnt;
 };
 
-extern struct symbol_list kernel_symbol_list;
+struct symbol *search_symtable(struct symbol_list *table, uintptr_t addr);
 
 struct page_table;
 int elf_load(struct page_table *page_table, struct aux *aux, int fd, uint64_t base, char **ld);
+int kernel_symtable_init();
