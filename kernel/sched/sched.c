@@ -540,9 +540,9 @@ void syscall_waitpid(struct registers *regs) {
 	int *status = (int*)regs->rsi;
 	int options = regs->rdx;
 
-//#ifndef SYSCALL_DEBUG
+#ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] waitpid: pid {%x}, status {%x}, options {%x}\n", CURRENT_TASK->pid, pid, (uintptr_t)status, options);
-//#endif
+#endif
 
 	asm volatile ("cli");
 

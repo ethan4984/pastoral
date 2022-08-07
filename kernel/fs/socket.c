@@ -97,6 +97,42 @@ static struct socket *socket_create(int family, int type, int protocol) {
 	return socket;
 }
 
+static struct fd_handle *search_socket(int sockfd) {
+	struct fd_handle *fd_handle = fd_translate(sockfd);
+	if(fd_handle == NULL) {
+		set_errno(EBADF);
+		return NULL;
+	}
+
+	struct stat *stat = fd_handle->file_handle->stat;
+	if(!S_ISSOCK(stat->st_mode)) {
+		set_errno(ENOTSOCK);
+		return NULL;
+	}
+
+	return fd_handle;
+}
+
+static struct fd_handle *create_sockfd(struct socket *socket, struct file_handle *file_handle) {
+	struct fd_handle *socket_fd_handle = alloc(sizeof(struct fd_handle));
+	struct file_handle *socket_file_handle = file_handle;
+	fd_init(socket_fd_handle);
+
+	socket_fd_handle->file_handle = socket_file_handle;
+	socket_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
+
+	socket->fd_handle = socket_fd_handle;
+	socket->file_handle = socket_file_handle;
+
+	stat_update_time(socket_file_handle->stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
+
+	spinlock_irqsave(&CURRENT_TASK->fd_lock);
+	hash_table_push(&CURRENT_TASK->fd_list, &socket_fd_handle->fd_number, socket_fd_handle, sizeof(socket_fd_handle->fd_number));
+	spinrelease_irqsave(&CURRENT_TASK->fd_lock);
+
+	return socket_fd_handle;
+}
+
 void syscall_socket(struct registers *regs) {
 	int family = regs->rdi;
 	int type = regs->rsi;
@@ -112,9 +148,7 @@ void syscall_socket(struct registers *regs) {
 		return;
 	}
 
-	struct fd_handle *socket_fd_handle = alloc(sizeof(struct fd_handle));
 	struct file_handle *socket_file_handle = alloc(sizeof(struct file_handle));
-	fd_init(socket_fd_handle);
 	file_init(socket_file_handle);
 
 	socket_file_handle->ops = &socket_file_ops;
@@ -122,20 +156,10 @@ void syscall_socket(struct registers *regs) {
 	socket_file_handle->stat = alloc(sizeof(struct stat));
 	socket_file_handle->stat->st_mode = S_IFSOCK;
 	socket_file_handle->flags |= O_RDWR;
-	
+
 	ramfs_create_dangle(socket_file_handle->stat);
-
-	socket_fd_handle->file_handle = socket_file_handle;
-	socket_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
-
-	socket->fd_handle = socket_fd_handle;
-	socket->file_handle = socket_file_handle;
-
-	stat_update_time(socket_file_handle->stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
-
-	spinlock_irqsave(&CURRENT_TASK->fd_lock);
-	hash_table_push(&CURRENT_TASK->fd_list, &socket_fd_handle->fd_number, socket_fd_handle, sizeof(socket_fd_handle->fd_number));
-	spinrelease_irqsave(&CURRENT_TASK->fd_lock);
+	
+	struct fd_handle *socket_fd_handle = create_sockfd(socket, socket_file_handle);
 
 	regs->rax = socket_fd_handle->fd_number;
 }
@@ -149,16 +173,8 @@ void syscall_getsockname(struct registers *regs) {
 	print("syscall: [pid %x] getsockname: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(sockfd);
+	struct fd_handle *fd_handle = search_socket(sockfd);
 	if(fd_handle == NULL) {
-		set_errno(EBADF);
-		regs->rax = -1;
-		return;
-	}
-
-	struct stat *stat = fd_handle->file_handle->stat;
-	if(!S_ISSOCK(stat->st_mode)) {
-		set_errno(ENOTSOCK);
 		regs->rax = -1;
 		return;
 	}
@@ -176,16 +192,8 @@ void syscall_getpeername(struct registers *regs) {
 	print("syscall: [pid %x] getpeername: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(sockfd);
+	struct fd_handle *fd_handle = search_socket(sockfd);
 	if(fd_handle == NULL) {
-		set_errno(EBADF);
-		regs->rax = -1;
-		return;
-	}
-
-	struct stat *stat = fd_handle->file_handle->stat;
-	if(!S_ISSOCK(stat->st_mode)) {
-		set_errno(ENOTSOCK);
 		regs->rax = -1;
 		return;
 	}
@@ -202,16 +210,8 @@ void syscall_listen(struct registers *regs) {
 	print("syscall: [pid %x] backlog: sockfd {%x}, backlog {%x}\n", CORE_LOCAL->pid, sockfd, backlog);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(sockfd);
+	struct fd_handle *fd_handle = search_socket(sockfd);
 	if(fd_handle == NULL) {
-		set_errno(EBADF);
-		regs->rax = -1;
-		return;
-	}
-
-	struct stat *stat = fd_handle->file_handle->stat;
-	if(!S_ISSOCK(stat->st_mode)) {
-		set_errno(ENOTSOCK);
 		regs->rax = -1;
 		return;
 	}
@@ -229,16 +229,8 @@ void syscall_accept(struct registers *regs) {
 	print("syscall: [pid %x] accept: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(sockfd);
+	struct fd_handle *fd_handle = search_socket(sockfd);
 	if(fd_handle == NULL) {
-		set_errno(EBADF);
-		regs->rax = -1;
-		return;
-	}
-
-	struct stat *stat = fd_handle->file_handle->stat;
-	if(!S_ISSOCK(stat->st_mode)) {
-		set_errno(ENOTSOCK);
 		regs->rax = -1;
 		return;
 	}
@@ -256,16 +248,8 @@ void syscall_bind(struct registers *regs) {
 	print("syscall: [pid %x] bind: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(sockfd);
+	struct fd_handle *fd_handle = search_socket(sockfd);
 	if(fd_handle == NULL) {
-		set_errno(EBADF);
-		regs->rax = -1;
-		return;
-	}
-
-	struct stat *stat = fd_handle->file_handle->stat;
-	if(!S_ISSOCK(stat->st_mode)) {
-		set_errno(ENOTSOCK);
 		regs->rax = -1;
 		return;
 	}
@@ -286,16 +270,8 @@ void syscall_sendto(struct registers *regs) {
 	print("syscall: [pid %x] sendto: sockfd {%x}, buf {%x}, len {%x}, flags {%x}, dest {%x}, addrlen {%x}\n", sockfd, buf, len, flags, dest, addrlen);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(sockfd);
+	struct fd_handle *fd_handle = search_socket(sockfd);
 	if(fd_handle == NULL) {
-		set_errno(EBADF);
-		regs->rax = -1;
-		return;
-	}
-
-	struct stat *stat = fd_handle->file_handle->stat;
-	if(!S_ISSOCK(stat->st_mode)) {
-		set_errno(ENOTSOCK);
 		regs->rax = -1;
 		return;
 	}
@@ -332,16 +308,8 @@ void syscall_recvfrom(struct registers *regs) {
 	print("syscall: [pid %x] recvfrom: sockfd {%x}, buf {%x}, len {%x}, flags {%x}, src {%x}, addrlen {%x}\n", sockfd, buf, len, flags, src, addrlen);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(sockfd);
+	struct fd_handle *fd_handle = search_socket(sockfd);
 	if(fd_handle == NULL) {
-		set_errno(EBADF);
-		regs->rax = -1;
-		return;
-	}
-
-	struct stat *stat = fd_handle->file_handle->stat;
-	if(!S_ISSOCK(stat->st_mode)) {
-		set_errno(ENOTSOCK);
 		regs->rax = -1;
 		return;
 	}
@@ -374,16 +342,8 @@ void syscall_connect(struct registers *regs) {
 	print("syscall: [pid %x] connect: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
 #endif
 
-	struct fd_handle *fd_handle = fd_translate(sockfd);
+	struct fd_handle *fd_handle = search_socket(sockfd);
 	if(fd_handle == NULL) {
-		set_errno(EBADF);
-		regs->rax = -1;
-		return;
-	}
-
-	struct stat *stat = fd_handle->file_handle->stat;
-	if(!S_ISSOCK(stat->st_mode)) {
-		set_errno(ENOTSOCK);
 		regs->rax = -1;
 		return;
 	}
@@ -496,7 +456,9 @@ handle:
 
 	socket->state = SOCKET_CONNECTED;
 
-	return 0; 
+	struct fd_handle *socket_fd_handle = create_sockfd(peer, peer->file_handle);
+
+	return socket_fd_handle->fd_number;
 }
 
 static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length) {
