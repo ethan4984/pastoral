@@ -4,7 +4,7 @@
 #include <stdarg.h>
 #include <lock.h>
 
-struct symbol_list kernel_symbol_list;
+struct elf_file kernel_file; 
 
 void stacktrace(uint64_t *rbp) {
 	for(;;) {
@@ -20,7 +20,7 @@ void stacktrace(uint64_t *rbp) {
 			return;
 		}
 
-		struct symbol *symbol = search_symtable(&kernel_symbol_list, return_address);
+		struct symbol *symbol = elf64_search_symtable(&kernel_file, return_address);
 
 		if(symbol) { 
 			print("trace: [%x] <%s+%x>\n", return_address, symbol->name, return_address - symbol->address);

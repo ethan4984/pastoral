@@ -90,6 +90,8 @@ struct sched_task {
 	VECTOR(struct sched_task*) children;
 	VECTOR(struct sched_task*) zombies;
 
+	struct elf_file elf_file;
+
 	struct page_table *page_table;
 };
 

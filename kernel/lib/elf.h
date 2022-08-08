@@ -48,7 +48,7 @@ struct aux {
 	uint64_t at_phnum;
 };
 
-struct elf_hdr {
+struct elf64_hdr {
 	uint8_t ident[16];
 	uint16_t type;
 	uint16_t machine;
@@ -109,8 +109,35 @@ struct symbol_list {
 	size_t cnt;
 };
 
-struct symbol *search_symtable(struct symbol_list *table, uintptr_t addr);
-
 struct page_table;
+
+struct elf_file {
+	struct page_table *page_table;
+	uintptr_t load_offset;
+
+	struct elf64_hdr header;
+
+	struct elf64_phdr *phdr;
+	struct elf64_shdr *shdr;
+	struct elf64_shdr *shstrtab_hdr;
+	struct elf64_shdr *strtab_hdr;
+	struct elf64_shdr *symtab_hdr;
+
+	void *shstrtab;
+	void *strtab;
+	void *symtab;
+
+	struct symbol_list symbol_list;
+
+	ssize_t (*read)(struct elf_file*, void*, off_t, size_t);
+	int fd;
+};
+
+struct symbol *elf64_search_symtable(struct elf_file *file, uintptr_t addr);
+
+int elf64_file_init(struct elf_file *file);
+int elf64_file_load(struct elf_file *file);
+int elf64_file_runtime(struct elf_file *file, char **runtime_path);
+int elf64_file_aux(struct elf_file *file, struct aux *aux);
+
 int elf_load(struct page_table *page_table, struct aux *aux, int fd, uint64_t base, char **ld);
-int kernel_symtable_init();

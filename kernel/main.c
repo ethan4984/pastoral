@@ -47,6 +47,19 @@ static volatile struct limine_framebuffer_request limine_framebuffer_request = {
 	.revision = 0
 };
 
+static volatile struct limine_kernel_file_request limine_kernel_file_request = {
+	.id = LIMINE_KERNEL_FILE_REQUEST,
+	.revision = 0
+};
+
+static ssize_t kernel_file_read(struct elf_file*, void *buffer, off_t offset, size_t cnt) {
+	struct limine_file *file = limine_kernel_file_request.response->kernel_file;
+
+	memcpy8(buffer, file->address + offset, cnt);
+
+	return cnt;
+}
+
 void init_process() {
 	char *argv[] = { "/init", NULL };
 	char *envp[] = {
@@ -147,7 +160,10 @@ void pastoral_entry(void) {
 	gdt_init();
 	idt_init();
 
-	kernel_symtable_init();
+	kernel_file.read = kernel_file_read;
+	if(elf64_file_init(&kernel_file) == -1) {
+		panic("could not parse kernel file");
+	}
 
 	rsdp = limine_rsdp_request.response->address;
 
