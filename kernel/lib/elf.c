@@ -7,7 +7,7 @@
 #include <debug.h>
 #include <mm/pmm.h>
 
-static int elf_validate(struct elf64_hdr *hdr) {
+static int elf64_validate(struct elf64_hdr *hdr) {
 	uint32_t signature = *(uint32_t*)hdr;
 	if(signature != ELF_SIGNATURE) {
 		return -1;
@@ -41,18 +41,6 @@ static struct elf64_shdr *elf64_find_section(struct elf_file *file, uint32_t typ
 	}
 
 	return NULL;
-}
-
-static struct elf64_phdr *elf64_find_phdr(struct elf_file *file, struct elf64_phdr *phdr, uint32_t type) {
-	size_t offset = (uintptr_t)phdr - (uintptr_t)file->phdr;
-
-	for(size_t i = offset; i < file->header.ph_num; i++) {
-		if(phdr[i].p_type == type) {
-			return &phdr[i];
-		}
-	}
-
-	return NULL; 
 }
 
 static int elf64_symtab_init(struct elf_file *file) {
@@ -97,6 +85,11 @@ int elf64_file_init(struct elf_file *file) {
 		return -1;
 	}
 
+	ret = elf64_validate(&file->header);
+	if(ret == -1) {
+		return -1;
+	}
+
 	ret = file->read(file, file->phdr, file->header.phoff, sizeof(struct elf64_phdr) * file->header.ph_num);
 	if(ret == -1) {
 		return -1;
@@ -111,7 +104,7 @@ int elf64_file_init(struct elf_file *file) {
 
 	file->strtab_hdr = elf64_find_section(file, SHT_STRTAB, ".strtab");
 	if(file->strtab_hdr == NULL) {
-		return -1;	
+		return 0;	
 	}
 
 	file->strtab = (void*)(pmm_alloc(DIV_ROUNDUP(file->strtab_hdr->sh_size, PAGE_SIZE), 1) + HIGH_VMA);
@@ -122,7 +115,7 @@ int elf64_file_init(struct elf_file *file) {
 
 	file->symtab_hdr = elf64_find_section(file, SHT_SYMTAB, ".symtab");
 	if(file->symtab_hdr == NULL) {
-		return -1;
+		return 0;
 	}
 
 	file->symtab = (void*)(pmm_alloc(DIV_ROUNDUP(file->symtab_hdr->sh_size, PAGE_SIZE), 1) + HIGH_VMA);
@@ -140,13 +133,12 @@ int elf64_file_init(struct elf_file *file) {
 }
 
 int elf64_file_load(struct elf_file *file) {
-	struct elf64_phdr *phdr = file->phdr;
-
-	for(;;) {
-		phdr = elf64_find_phdr(file, phdr, ELF_PT_LOAD);
-		if(phdr == NULL) {
-			break;
+	for(size_t i = 0; i < file->header.ph_num; i++) {
+		if(file->phdr[i].p_type != ELF_PT_LOAD) {
+			continue;
 		}
+
+		struct elf64_phdr *phdr = &file->phdr[i];
 
 		size_t misalignment = phdr->p_vaddr & (PAGE_SIZE - 1);
 		size_t page_cnt = DIV_ROUNDUP(misalignment + phdr->p_memsz, PAGE_SIZE);
@@ -172,7 +164,15 @@ int elf64_file_load(struct elf_file *file) {
 }
 
 int elf64_file_runtime(struct elf_file *file, char **runtime_path) {
-	struct elf64_phdr *phdr = elf64_find_phdr(file, file->phdr, ELF_PT_INTERP);
+	struct elf64_phdr *phdr = NULL;
+
+	for(size_t i = 0; i < file->header.ph_num; i++) {
+		if(file->phdr[i].p_type == ELF_PT_INTERP) {
+			phdr = &file->phdr[i];
+			break;		
+		}
+	}
+
 	if(phdr == NULL) {
 		return -1;
 	}
@@ -189,12 +189,11 @@ int elf64_file_aux(struct elf_file *file, struct aux *aux) {
 	aux->at_phnum = file->header.ph_num;
 	aux->at_entry = file->load_offset + file->header.entry;
 
-	struct elf64_phdr *phdr = elf64_find_phdr(file, file->phdr, ELF_PT_PHDR);
-	if(phdr == NULL) {
-		return 0;
+	for(size_t i = 0; i < file->header.ph_num; i++) {
+		if(file->phdr[i].p_type == ELF_PT_PHDR) {
+			aux->at_phdr = file->load_offset + file->phdr[i].p_vaddr;
+		}
 	}
-
-	aux->at_phdr = file->load_offset + phdr->p_vaddr;
 
 	return 0;
 }
@@ -211,63 +210,12 @@ struct symbol *elf64_search_symtable(struct elf_file *file, uintptr_t addr) {
 	return NULL;
 }
 
-int elf_load(struct page_table *page_table, struct aux *aux, int fd, uint64_t base, char **ld) {
-	struct elf64_hdr hdr;
-	fd_read(fd, &hdr, sizeof(hdr));
-
-	if(elf_validate(&hdr) == -1) {
+ssize_t elf_read_fd(struct elf_file *file, void *buffer, off_t offset, size_t cnt) {
+	ssize_t ret = fd_seek(file->fd, offset, SEEK_SET);
+	if(ret == -1) {
 		return -1;
 	}
 
-	struct elf64_phdr *phdr = alloc(sizeof(struct elf64_phdr) * hdr.ph_num);
-
-	fd_seek(fd, hdr.phoff, SEEK_SET);
-	fd_read(fd, phdr, sizeof(struct elf64_phdr) * hdr.ph_num);
-
-	aux->at_phdr = 0;
-	aux->at_phent = sizeof(struct elf64_phdr);
-	aux->at_phnum = hdr.ph_num;
-
-	for(size_t i = 0; i < hdr.ph_num; i++) {
-		if(phdr[i].p_type == ELF_PT_INTERP) {
-			if(ld == NULL) {
-				continue;
-			}
-
-			*ld = alloc(phdr[i].p_filesz + 1);
-
-			fd_seek(fd, phdr[i].p_offset, SEEK_SET);
-			fd_read(fd, *ld, phdr[i].p_filesz);
-
-			continue;
-		} else if(phdr[i].p_type == ELF_PT_PHDR) {
-			aux->at_phdr = base + phdr[i].p_vaddr;
-			continue;
-		} else if(phdr[i].p_type != ELF_PT_LOAD) {
-			continue;
-		}
-
-		size_t misalignment = phdr[i].p_vaddr & (PAGE_SIZE - 1);
-		size_t page_cnt = DIV_ROUNDUP(misalignment + phdr[i].p_memsz, PAGE_SIZE);
-
-		if((misalignment + phdr[i].p_memsz) > PAGE_SIZE) {
-			page_cnt++;
-		}
-
-		mmap(	page_table,
-				(void*)(phdr[i].p_vaddr + base - misalignment),
-				page_cnt * PAGE_SIZE,
-				MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_EXEC | MMAP_PROT_USER,
-				MMAP_MAP_FIXED | MMAP_MAP_ANONYMOUS,
-				-1,
-				-1
-			);
-
-		fd_seek(fd, phdr[i].p_offset, SEEK_SET);
-		fd_read(fd, (void*)(phdr[i].p_vaddr + base), phdr[i].p_filesz);
-	}
-
-	aux->at_entry = base + hdr.entry;
-
-	return 0;
-}
+	ret = fd_read(file->fd, buffer, cnt);
+	return ret;
+} 

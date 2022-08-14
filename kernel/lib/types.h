@@ -184,3 +184,8 @@ struct dirent {
 	char d_name[1024];
 };
 
+struct stack {
+	uint64_t sp;
+	size_t size;
+	int flags;
+};

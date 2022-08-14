@@ -141,7 +141,7 @@ void reschedule(struct registers *regs, void*) {
 		last_thread->regs = *regs;
 		last_thread->user_fs_base = get_user_fs();
 		last_thread->user_gs_base = get_user_gs();
-		last_thread->user_stack = CORE_LOCAL->user_stack;
+		last_thread->user_stack.sp = CORE_LOCAL->user_stack;
 	}
 
 	CORE_LOCAL->pid = next_task->pid;
@@ -154,8 +154,8 @@ void reschedule(struct registers *regs, void*) {
 
 	signal_dispatch(next_thread, &next_thread->regs);
 
-	CORE_LOCAL->kernel_stack = next_thread->kernel_stack;
-	CORE_LOCAL->user_stack = next_thread->user_stack;
+	CORE_LOCAL->kernel_stack = next_thread->kernel_stack.sp;
+	CORE_LOCAL->user_stack = next_thread->user_stack.sp;
 
 	next_thread->idle_cnt = 0;
 	next_task->idle_cnt = 0;
@@ -169,7 +169,7 @@ void reschedule(struct registers *regs, void*) {
 		swapgs();
 	}
 
-	//print("rescheduling to %x:%x to %x:%x\n", next_thread->regs.cs, next_thread->regs.rip, next_task->pid, next_thread->tid);
+	//print("rescheduling to %x:%x to %x:%x [stack] %x:%x\n", next_thread->regs.cs, next_thread->regs.rip, next_task->pid, next_thread->tid, next_thread->regs.ss, next_thread->regs.rsp);
 
 	xapic_write(XAPIC_EOI_OFF, 0);
 	spinrelease_irqsave(&sched_lock);
@@ -274,6 +274,9 @@ struct sched_task *sched_default_task() {
 	task->effective_gid = 0;
 	task->saved_gid = 0;
 
+	task->page_table = alloc(sizeof(struct page_table));
+	vmm_default_table(task->page_table);
+
 	task->umask = 022;
 
 	for(int i = 0; i < SIGNAL_MAX; i++) {
@@ -305,173 +308,105 @@ struct sched_thread *sched_default_thread(struct sched_task *task) {
 	thread->task = task;
 	thread->sched_status = TASK_YIELD;
 
-	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
-	thread->signal_kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+
+	thread->signal_kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->signal_kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
 
 	hash_table_push(&task->thread_list, &thread->tid, thread, sizeof(thread->tid));
 
 	return thread;
 }
 
-static uint64_t sched_arg_placement(struct sched_arguments *arguments, uint64_t *ptr, struct aux *aux) {
-	uint64_t rsp = (uint64_t)ptr;
-
-	for(size_t i = 0; i < arguments->envp_cnt; i++) {
-		char *element = arguments->envp[i];
-		ptr = (uint64_t*)((void*)ptr - (strlen(element) + 1));
-		strcpy((void*)ptr, element);
-	}
-
-	for(size_t i = 0; i < arguments->argv_cnt; i++) {
-		char *element = arguments->argv[i];
-		ptr = (uint64_t*)((void*)ptr - (strlen(element) + 1));
-		strcpy((void*)ptr, element);
-	}
-
-	ptr = (uint64_t*)((uintptr_t)ptr - ((uintptr_t)ptr & 0xf)); // align 16
-
-	if((arguments->argv_cnt + arguments->envp_cnt + 1) & 1) {
-		ptr--;
-	}
-
-	ptr -= 10;
-
-	ptr[0] = ELF_AT_PHNUM; ptr[1] = aux->at_phnum;
-	ptr[2] = ELF_AT_PHENT; ptr[3] = aux->at_phent;
-	ptr[4] = ELF_AT_PHDR;  ptr[5] = aux->at_phdr;
-	ptr[6] = ELF_AT_ENTRY; ptr[7] = aux->at_entry;
-	ptr[8] = 0; ptr[9] = 0;
-
-	*(--ptr) = 0;
-	ptr -= arguments->envp_cnt;
-
-	for(size_t i = 0; i < arguments->envp_cnt; i++) {
-		rsp -= strlen(arguments->envp[i]) + 1;
-		ptr[i] = rsp;
-	}
-
-	*(--ptr) = 0;
-	ptr -= arguments->argv_cnt;
-
-	for(size_t i = 0; i < arguments->argv_cnt; i++) {
-		rsp -= strlen(arguments->argv[i]) + 1;
-		ptr[i] = rsp;
-	}
-
-	*(--ptr) = arguments->argv_cnt;
-
-	return (uint64_t)ptr;
-}
-
-struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, uint16_t cs, struct aux *aux, struct sched_arguments *arguments) {
-	struct sched_thread *thread = sched_default_thread(task);
-
-	thread->regs.rip = rip;
-	thread->regs.cs = cs;
-	thread->regs.rflags = 0x202;
-
-	thread->user_gs_base = 0;
-	thread->user_fs_base = 0;
-
-	if(cs & 0x3) {
-		thread->regs.ss = cs - 8;
-		thread->user_stack = (uint64_t)mmap(	task->page_table,
-												NULL,
-												THREAD_USER_STACK_SIZE,
-												MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_USER,
-												MMAP_MAP_ANONYMOUS,
-												0,
-												0
-										   ) + THREAD_USER_STACK_SIZE;
-		thread->regs.rsp = sched_arg_placement(arguments, (void*)thread->user_stack, aux);
-	} else {
-		thread->regs.ss = cs + 8;
-		thread->regs.rsp = thread->kernel_stack;
-	}
-
-	return thread;
-}
-
-struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status) {
+int sched_thread_init(struct sched_thread *thread, char **envp, char **argv) {
 	spinlock_irqsave(&sched_lock);
 
-	struct sched_task *task = sched_default_task();
-
-	task->page_table = alloc(sizeof(struct page_table));
-	vmm_default_table(task->page_table);
-
-	vmm_init_page_table(task->page_table);
-
 	struct sched_task *current_task = CURRENT_TASK;
+	if(current_task == NULL) {
+		panic("");
+	}
+
+	struct sched_task *task = thread->task;
+	if(task == NULL) {
+		panic("");
+	}
+
+	if(task->program.loaded == false) {
+		panic("");
+	}
 
 	CORE_LOCAL->pid = task->pid;
+	vmm_init_page_table(task->page_table);
 
-	int fd = fd_openat(AT_FDCWD, path, O_RDONLY, 0);
-	if(fd == -1) {
-		fd_close(fd);
-		CORE_LOCAL->pid = current_task->pid;
-		spinrelease_irqsave(&sched_lock);
-		return NULL;
-	}
+	thread->regs.rip = task->program.entry;
+	thread->regs.cs = 0x43;
+	thread->regs.rflags = 0x202;
+	thread->regs.ss = 0x3b;
 
-	char *ld_path = NULL;
+	thread->user_stack.sp = (uint64_t)mmap(
+			task->page_table,
+			NULL,
+			THREAD_USER_STACK_SIZE,
+			MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_USER,
+			MMAP_MAP_ANONYMOUS,
+			0,
+			0
+	) + THREAD_USER_STACK_SIZE;
+	thread->user_stack.size = THREAD_USER_STACK_SIZE;
 
-	struct aux aux;
-	if(elf_load(task->page_table, &aux, fd, 0, &ld_path) == -1) {
-		fd_close(fd);
-		CORE_LOCAL->pid = current_task->pid;
-		spinrelease_irqsave(&sched_lock);
-		return NULL;
-	}
-
-	fd_close(fd);
-
-	uint64_t entry_point = aux.at_entry;
-
-	if(ld_path) {
-		int ld_fd = fd_openat(AT_FDCWD, ld_path, O_RDONLY, 0);
-		if(ld_fd == -1) {
-			fd_close(ld_fd);
-			CORE_LOCAL->pid = current_task->pid;
-			spinrelease_irqsave(&sched_lock);
-			return NULL;
-		}
-
-		struct aux ld_aux;
-		if(elf_load(task->page_table, &ld_aux, ld_fd, 0x40000000, NULL) == -1) {
-			fd_close(ld_fd);
-			CORE_LOCAL->pid = current_task->pid;
-			spinrelease_irqsave(&sched_lock);
-			return NULL;
-		}
-
-		fd_close(ld_fd);
-
-		entry_point = ld_aux.at_entry;
-	}
-
-	struct sched_thread *thread = sched_thread_exec(task, entry_point, cs, &aux, arguments);
-
-	if(thread == NULL) {
-		CORE_LOCAL->pid = current_task->pid;
-		spinrelease_irqsave(&sched_lock);
-		return NULL;
-	}
+	int ret = program_place_parameters(&task->program, envp, argv);
 
 	CORE_LOCAL->pid = current_task->pid;
-
 	vmm_init_page_table(current_task->page_table);
-
-	waitq_trigger_calibrate(task->status_trigger, task, thread, EVENT_PROCESS_STATUS);
-	waitq_add(current_task->waitq, task->status_trigger);
 
 	spinrelease_irqsave(&sched_lock);
 
-	task->sched_status = status;
-	thread->sched_status = TASK_WAITING;
-	thread->signal_queue.active = true;
+	if(ret == -1) {
+		return -1;
+	}
 
-	return task;
+	return 0;
+}
+
+// task pipeline
+// sched_default_task
+// sched_default_thread
+// sched_load_program
+// sched_task_init
+// sched_thread_init
+// good to go
+
+int sched_load_program(struct sched_thread *thread, const char *path) {
+	spinlock_irqsave(&sched_lock);
+
+	struct sched_task *current_task = CURRENT_TASK;
+	if(current_task == NULL) {
+		panic("");
+	}
+
+	struct sched_task *task = thread->task;
+	if(task == NULL) {
+		panic("");
+	}
+
+	task->program.thread = thread;
+
+	vmm_init_page_table(task->page_table);
+	CORE_LOCAL->pid = task->pid;
+
+	int ret = program_load(&task->program, path);
+	if(ret == -1) {
+		spinrelease_irqsave(&sched_lock);
+		return -1;
+	}
+
+	vmm_init_page_table(current_task->page_table);
+	CORE_LOCAL->pid = current_task->pid;
+
+	spinrelease_irqsave(&sched_lock);
+
+	return 0;
 }
 
 int task_create_session(struct sched_task *task, bool force) {
@@ -781,13 +716,6 @@ void syscall_execve(struct registers *regs) {
 		strcpy(argv[i], _argv[i]);
 	}
 
-	struct sched_arguments arguments = {
-		.envp_cnt = envp_cnt,
-		.argv_cnt = argv_cnt,
-		.argv = argv,
-		.envp = envp
-	};
-
 #ifndef SYSCALL_DEBUG
 	print("syscall: execve: path {%s}, argv {", path);
 
@@ -827,8 +755,26 @@ void syscall_execve(struct registers *regs) {
 	bool is_suid = vfs_node->stat->st_mode & S_ISUID ? true : false;
 	bool is_sgid = vfs_node->stat->st_mode & S_ISGID ? true : false;
 
-	struct sched_task *task = sched_task_exec(path, 0x43, &arguments, TASK_WAITING);
-	struct sched_thread *thread = sched_translate_tid(task->pid, 0);
+	struct sched_task *task = sched_default_task();
+	if(task == NULL) panic("");
+
+	struct sched_thread *thread = sched_default_thread(task);
+	if(thread == NULL) panic("");
+
+	int ret = sched_load_program(thread, path);
+	if(ret == -1) {
+		regs->rax = -1;
+		return;
+	}
+
+	ret = sched_thread_init(thread, envp, argv);
+	if(ret == -1) {
+		regs->rax = -1;
+		return;
+	}
+
+	waitq_trigger_calibrate(task->status_trigger, task, thread, EVENT_PROCESS_STATUS);
+	waitq_add(current_task->waitq, task->status_trigger);
 
 	bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
 	for(size_t i = 0; i < task->fd_bitmap.size; i++) {
@@ -889,6 +835,9 @@ void syscall_execve(struct registers *regs) {
 	CORE_LOCAL->tid = -1;
 
 	hash_table_push(&task_list, &task->pid, task, sizeof(task->pid));
+
+	task->sched_status = TASK_WAITING;
+	thread->sched_status = TASK_WAITING;
 
 	sched_yield();
 }
@@ -964,9 +913,15 @@ void syscall_fork(struct registers *regs) {
 	thread->regs = *regs;
 	thread->user_gs_base = current_thread->user_gs_base;
 	thread->user_fs_base = current_thread->user_fs_base;
-	thread->kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
-	thread->signal_kernel_stack = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+
+	thread->kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+
+	thread->signal_kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->signal_kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+
 	thread->user_stack = current_thread->user_stack;
+
 	thread->sched_status = TASK_WAITING;
 	thread->tid = bitmap_alloc(&task->tid_bitmap);
 	thread->task = task;

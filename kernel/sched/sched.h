@@ -11,6 +11,7 @@
 #include <sched/signal.h>
 #include <drivers/tty/tty.h>
 #include <sched/signal.h>
+#include <sched/program.h>
 #include <lock.h>
 
 struct sched_task;
@@ -23,14 +24,15 @@ struct sched_thread {
 
 	size_t sched_status;
 	size_t idle_cnt;
-	size_t signal_user_stack;
-	size_t user_stack;
-	size_t signal_kernel_stack;
-	size_t kernel_stack;
 	size_t user_gs_base;
 	size_t user_fs_base;
-	size_t kernel_stack_size;
-	size_t user_stack_size;
+
+	struct stack signal_user_stack;
+	struct stack signal_kernel_stack;
+
+	struct stack kernel_stack;
+	struct stack user_stack;
+
 	size_t errno;
 
 	bool blocking;
@@ -61,8 +63,8 @@ struct sched_task {
 
 	struct vfs_node *cwd;
 
-	struct spinlock lock;
 	pid_t pid;
+
 	struct sched_task *parent;
 	struct process_group *group;
 	struct session *session;
@@ -90,9 +92,10 @@ struct sched_task {
 	VECTOR(struct sched_task*) children;
 	VECTOR(struct sched_task*) zombies;
 
-	struct elf_file elf_file;
-
+	struct program program;
 	struct page_table *page_table;
+
+	struct spinlock lock;
 };
 
 struct process_group {
@@ -130,8 +133,8 @@ struct sched_task *sched_translate_pid(pid_t pid);
 struct sched_thread *sched_translate_tid(pid_t pid, tid_t tid);
 struct sched_task *sched_default_task();
 struct sched_thread *sched_default_thread(struct sched_task *task);
-struct sched_task *sched_task_exec(const char *path, uint16_t cs, struct sched_arguments *arguments, int status);
-struct sched_thread *sched_thread_exec(struct sched_task *task, uint64_t rip, uint16_t cs, struct aux *aux, struct sched_arguments *arguments);
+int sched_thread_init(struct sched_thread *thread, char **envp, char **argv);
+int sched_load_program(struct sched_thread *thread, const char *path);
 
 void reschedule(struct registers *regs, void *ptr);
 void sched_dequeue(struct sched_task *task, struct sched_thread *thread);

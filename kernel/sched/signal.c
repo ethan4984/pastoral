@@ -296,7 +296,7 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 
 				thread->signal_context = context;
 
-				uint64_t tmp = thread->kernel_stack;
+				struct stack tmp = thread->kernel_stack;
 				thread->kernel_stack = thread->signal_kernel_stack;
 				thread->signal_kernel_stack = tmp;
 
@@ -358,12 +358,12 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 				state->rdx = (uint64_t)ucontext;
 			}
 
-			uint64_t tmp = thread->kernel_stack;
+			struct stack tmp = thread->kernel_stack;
 			thread->kernel_stack = thread->signal_kernel_stack;
 			thread->signal_kernel_stack = tmp;
 
 			tmp = thread->user_stack;
-			thread->user_stack = stack.sp;
+			thread->user_stack = stack;
 			thread->signal_user_stack = tmp;
 
 			spinrelease_irqsave(&CURRENT_TASK->sig_lock);
@@ -491,8 +491,8 @@ static void sigreturn_default(int release_block) {
 	task->dispatch_ready = false;
 	thread->dispatch_ready = false;
 
-	CORE_LOCAL->user_stack = thread->user_stack;
-	CORE_LOCAL->kernel_stack = thread->kernel_stack;
+	CORE_LOCAL->user_stack = thread->user_stack.sp;
+	CORE_LOCAL->kernel_stack = thread->kernel_stack.sp;
 
 	if(context->cs & 0x3) {
 		swapgs();
@@ -551,7 +551,7 @@ void syscall_sigreturn(struct registers*) {
 	task->dispatch_ready = false;
 	thread->dispatch_ready = false;
 
-	uint64_t tmp = thread->kernel_stack;
+	struct stack tmp = thread->kernel_stack;
 	thread->kernel_stack = thread->signal_kernel_stack;
 	thread->signal_kernel_stack = tmp;
 
@@ -559,8 +559,8 @@ void syscall_sigreturn(struct registers*) {
 	thread->user_stack = thread->signal_user_stack;
 	thread->signal_user_stack = tmp;
 
-	CORE_LOCAL->user_stack = thread->user_stack;
-	CORE_LOCAL->kernel_stack = thread->kernel_stack;
+	CORE_LOCAL->user_stack = thread->user_stack.sp;
+	CORE_LOCAL->kernel_stack = thread->kernel_stack.sp;
 
 	if(context->cs & 0x3) {
 		swapgs();

@@ -79,15 +79,23 @@ void init_process() {
 		.argv_cnt = 1
 	};
 
-	struct sched_task *task = sched_task_exec("/usr/sbin/init", 0x43, arguments, TASK_YIELD);
-	if(task == NULL) {
-		panic("unable to start init process");
-	}
+	struct sched_task *task = sched_default_task();
+	if(task == NULL) panic("unable to start init process");
+
+	struct sched_thread *thread = sched_default_thread(task);
+	if(thread == NULL) panic("unable to start init process");
+
+	int ret = sched_load_program(thread, "/usr/sbin/init");
+	if(ret == -1) panic("unable to start init process");
+
+	ret = sched_thread_init(thread, envp, argv);
+	if(ret == -1) panic("unable to start init process");
+
+	waitq_trigger_calibrate(task->status_trigger, task, thread, EVENT_PROCESS_STATUS);
+	waitq_add(CURRENT_TASK->waitq, task->status_trigger);
 
 	struct sched_task *parent = task->parent;
-	if(parent == NULL) {
-		panic("");
-	}
+	if(parent == NULL) panic("unable to start init process");
 
 	task->session = parent->session;
 	task->group = parent->group;
@@ -95,8 +103,13 @@ void init_process() {
 	VECTOR_PUSH(task->group->process_list, task);
 
 	task->sched_status = TASK_WAITING;
+	thread->sched_status = TASK_WAITING;
+	thread->signal_queue.active = true;
 
 	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
+
+	for(;;)
+		asm ("hlt");
 }
 
 void pastoral_thread() {
@@ -194,7 +207,7 @@ void pastoral_entry(void) {
 	kernel_thread->regs.ss = 0x30;
 	kernel_thread->regs.rip = (uintptr_t)pastoral_thread;
 	kernel_thread->regs.rflags = 0x202;
-	kernel_thread->regs.rsp = kernel_thread->kernel_stack;
+	kernel_thread->regs.rsp = kernel_thread->kernel_stack.sp;
 	kernel_task->cwd = NULL;
 
 	kernel_task->page_table = alloc(sizeof(struct page_table));

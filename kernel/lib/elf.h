@@ -42,10 +42,10 @@
 #define STT_FUNC 0x2
 
 struct aux {
-	uint64_t at_entry;
-	uint64_t at_phdr;
-	uint64_t at_phent;
 	uint64_t at_phnum;
+	uint64_t at_phent;
+	uint64_t at_phdr;
+	uint64_t at_entry;
 };
 
 struct elf64_hdr {
@@ -116,6 +116,7 @@ struct elf_file {
 	uintptr_t load_offset;
 
 	struct elf64_hdr header;
+	struct aux aux;
 
 	struct elf64_phdr *phdr;
 	struct elf64_shdr *shdr;
@@ -134,6 +135,7 @@ struct elf_file {
 };
 
 struct symbol *elf64_search_symtable(struct elf_file *file, uintptr_t addr);
+ssize_t elf_read_fd(struct elf_file*, void*, off_t, size_t);
 
 int elf64_file_init(struct elf_file *file);
 int elf64_file_load(struct elf_file *file);
