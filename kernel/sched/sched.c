@@ -369,14 +369,6 @@ int sched_thread_init(struct sched_thread *thread, char **envp, char **argv) {
 	return 0;
 }
 
-// task pipeline
-// sched_default_task
-// sched_default_thread
-// sched_load_program
-// sched_task_init
-// sched_thread_init
-// good to go
-
 int sched_load_program(struct sched_thread *thread, const char *path) {
 	spinlock_irqsave(&sched_lock);
 

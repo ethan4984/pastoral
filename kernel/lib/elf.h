@@ -141,5 +141,3 @@ int elf64_file_init(struct elf_file *file);
 int elf64_file_load(struct elf_file *file);
 int elf64_file_runtime(struct elf_file *file, char **runtime_path);
 int elf64_file_aux(struct elf_file *file, struct aux *aux);
-
-int elf_load(struct page_table *page_table, struct aux *aux, int fd, uint64_t base, char **ld);
