@@ -162,7 +162,7 @@ int signal_send_thread(struct sched_thread *sender, struct sched_thread *target,
 	signal->refcnt = 1;
 	signal->signum = sig;
 	signal->siginfo = alloc(sizeof(struct siginfo));
-	signal->sigaction = &target_task->sigactions[sig - 1];
+	//signal->sigaction = &target_task->sigactions[sig - 1];
 	signal->trigger = waitq_alloc(&queue->waitq, EVENT_SIGNAL);
 	signal->queue = signal_queue;
 	signal_queue->sigpending |= SIGMASK(sig);
@@ -252,7 +252,8 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
 		if(((thread->signal_queue.sigpending & SIGMASK(i)) && !(thread->signal_queue.sigmask & SIGMASK(i)))) {
 			struct signal *signal = &thread->signal_queue.queue[i - 1];
-			struct sigaction *action = signal->sigaction;
+			//struct sigaction *action = signal->sigaction;
+			struct sigaction *action = &thread->task->sigactions[signal->signum - 1];
 
 			spinlock_irqsave(&CURRENT_TASK->sig_lock);
 

@@ -105,7 +105,7 @@ struct signal {
 	int signum;
 
 	struct siginfo *siginfo;
-	struct sigaction *sigaction;
+	//struct sigaction *sigaction;
 
 	struct waitq_trigger *trigger;
 

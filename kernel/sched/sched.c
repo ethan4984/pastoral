@@ -893,7 +893,7 @@ void syscall_clone(struct registers *regs) {
 		task->sigactions = current_task->sigactions;
 	} else {
 		task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
-		memcpy(&task->sigactions, &current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
+		memcpy(task->sigactions, current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
 	}
 
 	if((flags & CLONE_THREAD) == CLONE_THREAD) {
@@ -965,7 +965,7 @@ void syscall_fork(struct registers *regs) {
 	task->session = current_task->session;
 
 	task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
-	memcpy(&task->sigactions, &current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
+	memcpy(task->sigactions, current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
 
 	task->waitq = alloc(sizeof(struct waitq));
 	task->status_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_PROCESS_STATUS);
