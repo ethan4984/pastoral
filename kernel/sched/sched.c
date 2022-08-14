@@ -279,6 +279,8 @@ struct sched_task *sched_default_task() {
 
 	task->umask = 022;
 
+	task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
+
 	for(int i = 0; i < SIGNAL_MAX; i++) {
 		struct sigaction *sa = &task->sigactions[i];
 		sa->handler.sa_sigaction = SIG_DFL;
@@ -834,6 +836,94 @@ void syscall_execve(struct registers *regs) {
 	sched_yield();
 }
 
+void syscall_clone(struct registers *regs) {
+	spinlock_irqsave(&sched_lock);
+
+	void *function = (void*)regs->rdi;
+	void *stack = (void*)regs->rsi;
+	int flags = regs->rdx;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] clone\n", CORE_LOCAL->pid);
+#endif
+
+	struct sched_task *current_task = CURRENT_TASK;
+	if(current_task == NULL) {
+		panic("");
+	}
+
+	struct sched_thread *current_thread = CURRENT_THREAD;
+	if(current_thread == NULL) {
+		panic("");
+	}
+
+	struct sched_task *task = alloc(sizeof(struct sched_task));
+	struct sched_thread *thread = alloc(sizeof(struct sched_thread));
+
+	if((flags & CLONE_FILES) == CLONE_FILES) {
+		spinlock_irqsave(&current_task->fd_lock);
+
+		for(size_t i = 0; i < current_task->fd_list.capacity; i++) {
+			struct fd_handle *handle = current_task->fd_list.data[i];
+			if(handle) {
+				struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
+				*new_handle = *handle;
+				file_get(new_handle->file_handle);
+				hash_table_push(&task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+			}
+		}
+
+		bitmap_dup(&current_task->fd_bitmap, &task->fd_bitmap);
+
+		spinrelease_irqsave(&current_task->fd_lock);
+	}
+
+	if((flags & CLONE_FS) == CLONE_FS) {
+		task->cwd = current_task->cwd;
+		task->umask = current_task->umask;
+	}
+
+	if((flags & CLONE_PARENT) == CLONE_PARENT) {
+		task->parent = current_task->parent;
+	} else {
+		task->parent = current_task;
+	}
+
+	if((flags & CLONE_SIGHAND) == CLONE_SIGHAND) {
+		task->sigactions = current_task->sigactions;
+	} else {
+		task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
+		memcpy(&task->sigactions, &current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
+	}
+
+	if((flags & CLONE_THREAD) == CLONE_THREAD) {
+		
+	}
+
+	if((flags & CLONE_VM) == CLONE_VM) {
+		task->page_table = current_task->page_table;
+	} else {
+		task->page_table = vmm_fork_page_table(current_task->page_table);
+	}
+
+	task->sched_status = TASK_WAITING;
+	thread->sched_status = TASK_WAITING;
+
+	task->real_uid = current_task->real_uid;
+	task->effective_uid = current_task->effective_uid;
+	task->saved_uid = current_task->saved_uid;
+
+	task->real_gid = current_task->real_gid;
+	task->effective_gid = current_task->effective_gid;
+	task->saved_gid = current_task->saved_gid;
+
+	thread->kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+
+	thread->signal_kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	thread->signal_kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+}
+
 void syscall_fork(struct registers *regs) {
 	spinlock_irqsave(&sched_lock);
 
@@ -874,6 +964,7 @@ void syscall_fork(struct registers *regs) {
 	task->group = current_task->group;
 	task->session = current_task->session;
 
+	task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
 	memcpy(&task->sigactions, &current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
 
 	task->waitq = alloc(sizeof(struct waitq));

@@ -157,7 +157,6 @@ void pastoral_entry(void) {
 	init_cpu_features();
 
 	pmm_init();
-	vmm_init();
 
 	slab_cache_create(NULL, 32);
 	slab_cache_create(NULL, 64);
@@ -169,6 +168,8 @@ void pastoral_entry(void) {
 	slab_cache_create(NULL, 4096);
 	slab_cache_create(NULL, 8192);
 	slab_cache_create(NULL, 16384);
+
+	vmm_init();
 
 	gdt_init();
 	idt_init();

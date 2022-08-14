@@ -97,7 +97,7 @@ static void *slab_alloc(struct slab *slab) {
 		}
 	}
 
-	panic("slab: returning a null pointer for some reason");
+	panic("slab: returning a null pointer");
 
 	return NULL;
 }
@@ -244,6 +244,8 @@ void *alloc(size_t size) {
 		cache = cache->next;
 	}
 
+	panic("slab: returning null");
+
 	return NULL;
 }
 
@@ -281,9 +283,6 @@ void *realloc(void *obj, size_t size) {
 	}
 
 	void *ret = alloc(size);
-	if(ret == NULL) {
-		print("realloc size %d\n", size);
-	}
 
 	memcpy8(ret, obj, object_size);
 	free(obj);
