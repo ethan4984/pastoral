@@ -778,6 +778,9 @@ void syscall_clone(struct registers *regs) {
 	void *function = (void*)regs->rdi;
 	void *stack = (void*)regs->rsi;
 	int flags = regs->rdx;
+	pid_t *ptid = (void*)regs->r10;
+	void *newtls = (void*)regs->r8;
+	pid_t *ctid = (void*)regs->r9;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] clone\n", CORE_LOCAL->pid);
@@ -792,10 +795,13 @@ void syscall_clone(struct registers *regs) {
 
 	if((flags & CLONE_FILES) == CLONE_FILES) {
 		spinlock_irqsave(&current_task->fd_table->fd_lock);
-
+		task->fd_table = current_task->fd_table;
 		spinrelease_irqsave(&current_task->fd_table->fd_lock);
 	} else {
 		spinlock_irqsave(&current_task->fd_table->fd_lock);
+
+		task->fd_table = alloc(sizeof(struct fd_table));
+		task->fd_table->fd_bitmap.resizable = true;
 
 		for(size_t i = 0; i < current_task->fd_table->fd_list.capacity; i++) {
 			struct fd_handle *handle = current_task->fd_table->fd_list.data[i];
@@ -830,8 +836,26 @@ void syscall_clone(struct registers *regs) {
 		memcpy(task->sigactions, current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
 	}
 
+	task->user_gs_base = CURRENT_TASK->user_gs_base;
+
+	if((flags & CLONE_SETTLS) == CLONE_SETTLS) {
+		task->user_fs_base = (uint64_t)newtls;
+	} else {
+		task->user_fs_base = CURRENT_TASK->user_fs_base;
+	}
+
+	if((flags & CLONE_NEWPID) == CLONE_NEWPID) {
+		task->namespace = sched_default_namespace();
+	} else {
+		task->namespace = current_task->namespace;
+	}
+
+	task->pid = bitmap_alloc(&task->namespace->pid_bitmap);
+	hash_table_push(&task->namespace->process_list, &task->pid, task, sizeof(task->pid));
+
 	if((flags & CLONE_THREAD) == CLONE_THREAD) {
-		
+		task->tid = bitmap_alloc(&current_task->thread_group->pid_bitmap);
+		hash_table_push(&task->thread_group->process_list, &task->tid, task, sizeof(task->tid));
 	}
 
 	if((flags & CLONE_VM) == CLONE_VM) {
@@ -840,8 +864,15 @@ void syscall_clone(struct registers *regs) {
 		task->page_table = vmm_fork_page_table(current_task->page_table);
 	}
 
+	if((flags & CLONE_PARENT_SETTID) == CLONE_PARENT_SETTID && ptid != NULL) {
+		*ptid = task->tid;
+	}
+
 	task->sched_status = TASK_WAITING;
 	task->sched_status = TASK_WAITING;
+
+	task->group = current_task->group;
+	task->session = current_task->session;
 
 	task->real_uid = current_task->real_uid;
 	task->effective_uid = current_task->effective_uid;

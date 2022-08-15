@@ -84,7 +84,7 @@ struct task {
 	VECTOR(struct task*) children;
 	VECTOR(struct task*) zombies;
 
-	struct pid_namespace *thread_namespace;
+	struct pid_namespace *thread_group;
 
 	struct program program;
 	struct page_table *page_table;
