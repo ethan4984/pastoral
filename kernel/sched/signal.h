@@ -112,8 +112,7 @@ struct signal {
 	struct signal_queue *queue;
 };
 
-struct sched_thread;
-struct sched_task;
+struct task;
 
 struct signal_queue {
 	struct spinlock siglock;
@@ -125,7 +124,7 @@ struct signal_queue {
 
 	struct waitq waitq;
 
-	struct sched_thread *thread;
+	struct task *task;
 };
 
 struct process_group;
@@ -133,11 +132,11 @@ struct process_group;
 int sigaction(int sig, const struct sigaction *act, struct sigaction *old);
 int sigpending(sigset_t *set);
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
-int signal_send_thread(struct sched_thread *sender, struct sched_thread *target, int sig);
-int signal_send_group(struct sched_thread *sender, struct process_group *target, int sig);
-int signal_check_permissions(struct sched_task *sender, struct sched_task *target);
+int signal_send_task(struct task *sender, struct task *target, int sig);
+int signal_send_group(struct task *sender, struct process_group *target, int sig);
+int signal_check_permissions(struct task *sender, struct task *target);
 int signal_is_valid(int sig);
-int signal_dispatch(struct sched_thread *thread, struct registers *state);
+int signal_dispatch(struct task *task, struct registers *state);
 
-int signal_is_blocked(struct sched_thread *thread, int sig);
-int signal_is_ignored(struct sched_task *task, int sig);
+int signal_is_blocked(struct task *task, int sig);
+int signal_is_ignored(struct task *task, int sig);

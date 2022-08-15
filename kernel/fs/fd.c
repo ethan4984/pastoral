@@ -147,19 +147,19 @@ int stat_update_time(struct stat *stat, int flags) {
 }
 
 static struct fd_handle *fd_translate_unlocked(int index) {
-	struct sched_task *current_task = CURRENT_TASK;
-	return hash_table_search(&current_task->fd_list, &index, sizeof(index));
+	struct task *current_task = CURRENT_TASK;
+	return hash_table_search(&current_task->fd_table->fd_list, &index, sizeof(index));
 }
 
 struct fd_handle *fd_translate(int index) {
-	struct sched_task *current_task = CURRENT_TASK;
+	struct task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
 		return NULL;
 	}
 
-	spinlock_irqsave(&current_task->fd_lock);
+	spinlock_irqsave(&current_task->fd_table->fd_lock);
 	struct fd_handle *handle = fd_translate_unlocked(index);
-	spinrelease_irqsave(&current_task->fd_lock);
+	spinrelease_irqsave(&current_task->fd_table->fd_lock);
 
 	return handle;
 }
@@ -235,7 +235,7 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	if(ret != -1) {
 		stat_update_time(stat, STAT_MOD | STAT_STATUS);
 
-		waitq_trigger_calibrate(fd_handle->file_handle->trigger, CURRENT_TASK, CURRENT_THREAD, EVENT_POLLIN);
+		waitq_trigger_calibrate(fd_handle->file_handle->trigger, CURRENT_TASK, EVENT_POLLIN);
 		waitq_wake(fd_handle->file_handle->trigger);
 
 		fd_handle->file_handle->position += ret;
@@ -327,7 +327,7 @@ ssize_t pipe_write(struct file_handle *file, const void *buf, size_t cnt, off_t 
 	}
 
 	if(offset > stat->st_size) {
-		waitq_trigger_calibrate(file->trigger, CURRENT_TASK, CURRENT_THREAD, EVENT_WRITE);
+		waitq_trigger_calibrate(file->trigger, CURRENT_TASK, EVENT_WRITE);
 		waitq_wake(file->trigger);
 	}
 
@@ -470,54 +470,54 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 	struct fd_handle *new_fd_handle = alloc(sizeof(struct fd_handle));
 	fd_init(new_fd_handle);
-	new_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
+	new_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
 	new_fd_handle->file_handle = new_file_handle;
 	new_fd_handle->flags = (flags & O_CLOEXEC) ? FD_CLOEXEC : 0;
 
-	struct sched_task *current_task = CURRENT_TASK;
+	struct task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
 		set_errno(ENOENT);
 		return -1;
 	}
 
-	hash_table_push(&current_task->fd_list, &new_fd_handle->fd_number, new_fd_handle, sizeof(new_fd_handle->fd_number));
+	hash_table_push(&current_task->fd_table->fd_list, &new_fd_handle->fd_number, new_fd_handle, sizeof(new_fd_handle->fd_number));
 
 	return new_fd_handle->fd_number;
 }
 
 
 static void fd_close_unlocked(struct fd_handle *handle) {
-	struct sched_task *current_task = CURRENT_TASK;
+	struct task *current_task = CURRENT_TASK;
 
 	if(handle->file_handle->ops->close)
 		handle->file_handle->ops->close(handle->file_handle->vfs_node, handle->file_handle);
 
 	file_put(handle->file_handle);
-	hash_table_delete(&current_task->fd_list, &handle->fd_number, sizeof(handle->fd_number));
-	bitmap_free(&current_task->fd_bitmap, handle->fd_number);
+	hash_table_delete(&current_task->fd_table->fd_list, &handle->fd_number, sizeof(handle->fd_number));
+	bitmap_free(&current_task->fd_table->fd_bitmap, handle->fd_number);
 	free(handle);
 }
 
 
 int fd_close(int fd) {
-	struct sched_task *current_task = CURRENT_TASK;
+	struct task *current_task = CURRENT_TASK;
 
-	spinlock_irqsave(&current_task->fd_lock);
+	spinlock_irqsave(&current_task->fd_table->fd_lock);
 	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_table->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
 	if(current_task == NULL) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_table->fd_lock);
 		set_errno(ENOENT);
 		return -1;
 	}
 
 	fd_close_unlocked(fd_handle);
-	spinrelease_irqsave(&current_task->fd_lock);
+	spinrelease_irqsave(&current_task->fd_table->fd_lock);
 
 	return 0;
 }
@@ -590,19 +590,19 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 }
 
 int fd_dup(int fd, bool clear_cloexec) {
-	struct sched_task *current_task = CURRENT_TASK;
-	spinlock_irqsave(&current_task->fd_lock);
+	struct task *current_task = CURRENT_TASK;
+	spinlock_irqsave(&current_task->fd_table->fd_lock);
 
 	struct fd_handle *fd_handle = fd_translate_unlocked(fd);
 	if(fd_handle == NULL) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_table->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
 	struct fd_handle *handle = alloc(sizeof(struct fd_handle));
 	*handle = *fd_handle;
-	handle->fd_number = bitmap_alloc(&current_task->fd_bitmap);
+	handle->fd_number = bitmap_alloc(&current_task->fd_table->fd_bitmap);
 
 	if (clear_cloexec)
 		handle->flags &= ~FD_CLOEXEC;
@@ -610,25 +610,25 @@ int fd_dup(int fd, bool clear_cloexec) {
 		handle->flags |= FD_CLOEXEC;
 
 	file_get(handle->file_handle);
-	hash_table_push(&current_task->fd_list, &handle->fd_number, handle, sizeof(handle->fd_number));
-	spinrelease_irqsave(&current_task->fd_lock);
+	hash_table_push(&current_task->fd_table->fd_list, &handle->fd_number, handle, sizeof(handle->fd_number));
+	spinrelease_irqsave(&current_task->fd_table->fd_lock);
 
 	return handle->fd_number;
 }
 
 int fd_dup2(int oldfd, int newfd) {
-	struct sched_task *current_task = CURRENT_TASK;
-	spinlock_irqsave(&current_task->fd_lock);
+	struct task *current_task = CURRENT_TASK;
+	spinlock_irqsave(&current_task->fd_table->fd_lock);
 
 	struct fd_handle *oldfd_handle = fd_translate_unlocked(oldfd), *new_handle;;
 	if(oldfd_handle == NULL) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_table->fd_lock);
 		set_errno(EBADF);
 		return -1;
 	}
 
 	if(oldfd == newfd) {
-		spinrelease_irqsave(&current_task->fd_lock);
+		spinrelease_irqsave(&current_task->fd_table->fd_lock);
 		return newfd;
 	}
 
@@ -638,15 +638,15 @@ int fd_dup2(int oldfd, int newfd) {
 	new_handle->flags &= ~FD_CLOEXEC;
 	file_get(new_handle->file_handle);
 
-	if(BIT_TEST(current_task->fd_bitmap.data, newfd)) {
+	if(BIT_TEST(current_task->fd_table->fd_bitmap.data, newfd)) {
 		fd_close_unlocked(fd_translate_unlocked(newfd));
 	}
 
-	BIT_SET(current_task->fd_bitmap.data, newfd);
+	BIT_SET(current_task->fd_table->fd_bitmap.data, newfd);
 
-	hash_table_push(&current_task->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+	hash_table_push(&current_task->fd_table->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
 
-	spinrelease_irqsave(&current_task->fd_lock);
+	spinrelease_irqsave(&current_task->fd_table->fd_lock);
 
 	return new_handle->fd_number;
 }
@@ -1052,8 +1052,8 @@ void syscall_pipe(struct registers *regs) {
 	print("syscall: [pid %x] pipe: fd pair {%x}\n", CORE_LOCAL->pid, fd_pair);
 #endif
 
-	fd_pair[0] = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
-	fd_pair[1] = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
+	fd_pair[0] = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
+	fd_pair[1] = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
 
 	struct fd_handle *read_fd_handle = alloc(sizeof(struct fd_handle));
 	struct fd_handle *write_fd_handle = alloc(sizeof(struct fd_handle));
@@ -1100,10 +1100,10 @@ void syscall_pipe(struct registers *regs) {
 
 	stat_update_time(pipe_stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
-	spinlock_irqsave(&CURRENT_TASK->fd_lock);
-	hash_table_push(&CURRENT_TASK->fd_list, &read_fd_handle->fd_number, read_fd_handle, sizeof(read_fd_handle->fd_number));
-	hash_table_push(&CURRENT_TASK->fd_list, &write_fd_handle->fd_number, write_fd_handle, sizeof(write_fd_handle->fd_number));
-	spinrelease_irqsave(&CURRENT_TASK->fd_lock);
+	spinlock_irqsave(&CURRENT_TASK->fd_table->fd_lock);
+	hash_table_push(&CURRENT_TASK->fd_table->fd_list, &read_fd_handle->fd_number, read_fd_handle, sizeof(read_fd_handle->fd_number));
+	hash_table_push(&CURRENT_TASK->fd_table->fd_list, &write_fd_handle->fd_number, write_fd_handle, sizeof(write_fd_handle->fd_number));
+	spinrelease_irqsave(&CURRENT_TASK->fd_table->fd_lock);
 
 	regs->rax = 0;
 }

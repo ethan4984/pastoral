@@ -4,8 +4,7 @@
 #include <cpu.h>
 
 int waitq_wait(struct waitq *waitq, int type) {
-	struct sched_task *task = CURRENT_TASK;
-	struct sched_thread *thread = CURRENT_THREAD;
+	struct task *task = CURRENT_TASK;
 
 	spinlock_irqsave(&waitq->lock);
 
@@ -17,24 +16,24 @@ int waitq_wait(struct waitq *waitq, int type) {
 		return waitq->status & type;
 	}
 
-	VECTOR_PUSH(waitq->threads, thread);
+	VECTOR_PUSH(waitq->tasks, task);
 
 	spinrelease_irqsave(&waitq->lock);
 
 	for(;;) {
-		sched_dequeue(task, thread);
+		sched_dequeue(task);
 
-		thread->signal_queue.active = true;
+		task->signal_queue.active = true;
 
-		thread->blocking = true;
+		task->blocking = true;
 		asm volatile ("sti");
-		while(thread->blocking);
-		thread->blocking = false;
+		while(task->blocking);
+		task->blocking = false;
 
-		thread->signal_queue.active = false;
+		task->signal_queue.active = false;
 
-		if(thread->signal_release_block) {
-			thread->signal_release_block = false;
+		if(task->signal_release_block) {
+			task->signal_release_block = false;
 			set_errno(EINTR);
 			return -1;
 		}
@@ -116,24 +115,23 @@ int waitq_wake(struct waitq_trigger *trigger) {
 
 	waitq_obtain(waitq, trigger->type);
 
-	for(size_t i = 0; i < waitq->threads.length; i++) {
-		struct sched_thread *thread = waitq->threads.data[i];
-		struct sched_task *task = thread->task;
+	for(size_t i = 0; i < waitq->tasks.length; i++) {
+		struct task *task = waitq->tasks.data[i];
 
 		task->last_trigger = trigger;
-		thread->blocking = false;
+		task->blocking = false;
 
-		sched_requeue(task, thread);
+		sched_requeue(task);
 	}
 
-	VECTOR_CLEAR(waitq->threads);
+	VECTOR_CLEAR(waitq->tasks);
 
 	spinrelease_irqsave(&waitq->lock);
 
 	return 0;
 }
 
-int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct sched_task *task, struct sched_thread *thread, int type) {
+int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct task *task, int type) {
 	if(trigger == NULL) {
 		return -1;
 	}
@@ -141,7 +139,6 @@ int waitq_trigger_calibrate(struct waitq_trigger *trigger, struct sched_task *ta
 	spinlock_irqsave(&trigger->lock);
 
 	trigger->agent_task = task;
-	trigger->agent_thread = thread;
 	trigger->type = type;
 
 	spinrelease_irqsave(&trigger->lock);

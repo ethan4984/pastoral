@@ -7,6 +7,7 @@ struct cpu_local {
 	uintptr_t kernel_stack;
 	uintptr_t user_stack;
 	uint64_t errno;
+	pid_t nid;
 	pid_t pid;
 	tid_t tid;
 	int apic_id;

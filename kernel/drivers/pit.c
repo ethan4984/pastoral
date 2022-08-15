@@ -74,7 +74,7 @@ void pit_handler(struct registers*, void*) {
 		if(timer->timespec.tv_nsec == 0 && timer->timespec.tv_sec == 0) {
 			for(size_t j = 0; j < timer->triggers.length; j++) {
 				struct waitq_trigger *trigger = timer->triggers.data[j];
-				waitq_trigger_calibrate(trigger, CURRENT_TASK, CURRENT_THREAD, EVENT_TIMER);
+				waitq_trigger_calibrate(trigger, CURRENT_TASK, EVENT_TIMER);
 				waitq_wake(trigger);
 			}
 			

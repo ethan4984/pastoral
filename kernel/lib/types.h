@@ -9,6 +9,7 @@ typedef int64_t ssize_t;
 
 typedef int pid_t;
 typedef int tid_t;
+typedef int nid_t;
 
 typedef uint64_t dev_t;
 typedef uint64_t ino_t;

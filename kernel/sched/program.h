@@ -2,7 +2,7 @@
 
 #include <elf.h>
 
-struct sched_thread;
+struct task;
 
 struct program {
 	struct elf_file file;
@@ -12,7 +12,7 @@ struct program {
 	char *interp_path;
 	bool interp_present;
 
-	struct sched_thread *thread;
+	struct task *task;
 
 	struct {
 		int envp_cnt;

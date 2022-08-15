@@ -63,12 +63,12 @@ int program_place_parameters(struct program *program, char **envp, char **argv) 
 	int ret = program_load_parameters(program, argv, envp);
 	if(ret == -1) return -1;
 
-	struct sched_thread *thread = program->thread;
-	if(thread == NULL) {
+	struct task *task = program->task;
+	if(task == NULL) {
 		panic("");
 	}
 
-	uint64_t *location = (void*)thread->user_stack.sp;
+	uint64_t *location = (void*)task->user_stack.sp;
 	uint64_t argument_location = (uint64_t)location;
 
 	location = program_place_args(program, location);
@@ -92,7 +92,7 @@ int program_place_parameters(struct program *program, char **envp, char **argv) 
 
 	*(--location) = program->parameters.argv_cnt;
 
-	thread->regs.rsp = (uint64_t)location;
+	task->regs.rsp = (uint64_t)location;
 
 	return 0;
 }

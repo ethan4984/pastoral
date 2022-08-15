@@ -21,7 +21,7 @@ struct pml_indices {
 };
 
 struct vmm_cow_page {
-	VECTOR(struct sched_task*) task_list;
+	VECTOR(struct task*) task_list;
 };
 
 static struct pml_indices compute_table_indices(uintptr_t vaddr) {
@@ -504,7 +504,7 @@ int vmm_anon_map(struct page_table *page_table, uintptr_t address) {
 }
 
 int vmm_pf_handler(struct registers *regs) {
-	struct sched_task *task = CURRENT_TASK;
+	struct task *task = CURRENT_TASK;
 	if(task == NULL) {
 		return -1;
 	}

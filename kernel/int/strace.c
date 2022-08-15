@@ -73,7 +73,7 @@ extern void syscall_recvfrom(struct registers*);
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
 
-	CURRENT_THREAD->user_fs_base = addr;
+	CURRENT_TASK->user_fs_base = addr;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] set_fs_base: addr {%x}\n", CORE_LOCAL->pid, addr);
@@ -95,7 +95,7 @@ static void syscall_get_fs_base(struct registers *regs) {
 static void syscall_set_gs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
 
-	CURRENT_THREAD->user_gs_base = addr;
+	CURRENT_TASK->user_gs_base = addr;
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] set_gs_base: addr {%x}\n", CORE_LOCAL->pid, addr);
@@ -197,7 +197,7 @@ extern void syscall_handler(struct registers *regs) {
 		return;
 	}
 
-	CURRENT_THREAD->signal_queue.active = false;
+	CURRENT_TASK->signal_queue.active = false;
 
 	if(syscall_list[syscall_number].handler != NULL) {
 		syscall_list[syscall_number].handler(regs);
@@ -213,5 +213,5 @@ extern void syscall_handler(struct registers *regs) {
 	print("syscall: [pid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid, syscall_list[syscall_number].name, regs->rax, get_errno());
 #endif
 
-	CURRENT_THREAD->signal_queue.active = true;
+	CURRENT_TASK->signal_queue.active = true;
 }

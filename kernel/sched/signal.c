@@ -8,7 +8,7 @@
 static void sigreturn_default(int release_block);
 
 int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
-	struct sched_task *task = CURRENT_TASK;
+	struct task *task = CURRENT_TASK;
 	if(task == NULL) {
 		panic("");
 	}
@@ -18,7 +18,7 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 		return -1;
 	}
 
-	struct signal_queue *queue = &CURRENT_THREAD->signal_queue;
+	struct signal_queue *queue = &CURRENT_TASK->signal_queue;
 
 	spinlock_irqsave(&task->sig_lock);
 
@@ -48,12 +48,12 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 }
 
 int sigpending(sigset_t *set) {
-	struct sched_thread *thread = CURRENT_THREAD;
-	if(thread == NULL) {
+	struct task *task = CURRENT_TASK;
+	if(task == NULL) {
 		panic("");
 	}
 
-	struct signal_queue *queue = &thread->signal_queue;
+	struct signal_queue *queue = &task->signal_queue;
 
 	spinlock_irqsave(&queue->siglock);
 	*set = queue->sigpending;
@@ -63,12 +63,12 @@ int sigpending(sigset_t *set) {
 }
 
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
-	struct sched_thread *thread = CURRENT_THREAD;
-	if(thread == NULL) {
+	struct task *task = CURRENT_TASK;
+	if(task == NULL) {
 		panic("");
 	}
 
-	struct signal_queue *queue = &thread->signal_queue;
+	struct signal_queue *queue = &task->signal_queue;
 
 	spinlock_irqsave(&queue->siglock);
 
@@ -100,7 +100,7 @@ int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
 	return 0;
 }
 
-int signal_check_permissions(struct sched_task *sender, struct sched_task *target) {
+int signal_check_permissions(struct task *sender, struct task *target) {
 	if(sender->real_uid == 0 || sender->effective_uid == 0) {
 		return 0;
 	}
@@ -124,34 +124,28 @@ int signal_is_valid(int sig) {
 	return 0;
 }
 
-int signal_send_thread(struct sched_thread *sender, struct sched_thread *target, int sig) {
+int signal_send_task(struct task *sender, struct task *target, int sig) {
 	if(signal_is_valid(sig) == -1 && sig != 0) {
 		set_errno(EINVAL);
 		return -1;
 	}
 
-	struct sched_task *sender_task = NULL;
-	if(sender) {
-		sender_task = target->task;
-	}
-	struct sched_task *target_task = target->task;
-
 	struct signal_queue *queue = &target->signal_queue;
 
-	spinlock_irqsave(&target_task->sig_lock);
+	spinlock_irqsave(&target->sig_lock);
 	spinlock_irqsave(&queue->siglock);
 
-	if(sender != NULL && signal_check_permissions(sender_task, target_task) == -1) {
+	if(sender != NULL && signal_check_permissions(sender, target) == -1) {
 		set_errno(EPERM);
 		spinrelease_irqsave(&queue->siglock);
-		spinrelease_irqsave(&target_task->sig_lock);
+		spinrelease_irqsave(&target->sig_lock);
 		return -1;
 	}
 
 	if(sig != SIGSTOP && sig != SIGKILL) {
-		if(target_task->sigactions[sig - 1].handler.sa_sigaction == SIG_IGN) {
+		if(target->sigactions[sig - 1].handler.sa_sigaction == SIG_IGN) {
 			spinrelease_irqsave(&queue->siglock);
-			spinrelease_irqsave(&target_task->sig_lock);
+			spinrelease_irqsave(&target->sig_lock);
 			return 0;
 		}
 	}
@@ -162,34 +156,31 @@ int signal_send_thread(struct sched_thread *sender, struct sched_thread *target,
 	signal->refcnt = 1;
 	signal->signum = sig;
 	signal->siginfo = alloc(sizeof(struct siginfo));
-	//signal->sigaction = &target_task->sigactions[sig - 1];
 	signal->trigger = waitq_alloc(&queue->waitq, EVENT_SIGNAL);
 	signal->queue = signal_queue;
 	signal_queue->sigpending |= SIGMASK(sig);
 
-	target_task->dispatch_ready = true;
+	target->dispatch_ready = true;
 	target->dispatch_ready = true;
 
 	spinrelease_irqsave(&queue->siglock);
-	spinrelease_irqsave(&target_task->sig_lock);
+	spinrelease_irqsave(&target->sig_lock);
 
 	return 0;
 }
 
-int signal_send_group(struct sched_thread *sender, struct process_group *target, int sig) {
+int signal_send_group(struct task *sender, struct process_group *target, int sig) {
 	for(size_t i = 0; i < target->process_list.length; i++) {
 		pid_t pid = target->process_list.data[i]->pid;
 
+		struct task *task = sched_translate_pid(CORE_LOCAL->nid, pid);
 
-		struct sched_thread *thread = sched_translate_tid(pid, 0);
-		//print("sending signal to %x:%x\n", pid, thread->tid);
-
-		if(!thread) {
+		if(!task) {
 			set_errno(ESRCH);
 			return -1;
 		}
 
-		signal_send_thread(sender, thread, sig);
+		signal_send_task(sender, task, sig);
 	}
 
 	return 0;
@@ -234,8 +225,8 @@ static void signal_default_action(int signo) {
 	sigreturn_default(false);
 }
 
-int signal_dispatch(struct sched_thread *thread, struct registers *state) {
-	struct signal_queue *queue = &thread->signal_queue;
+int signal_dispatch(struct task *task, struct registers *state) {
+	struct signal_queue *queue = &task->signal_queue;
 
 	spinlock_irqsave(&queue->siglock);
 
@@ -250,14 +241,13 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 	}
 
 	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
-		if(((thread->signal_queue.sigpending & SIGMASK(i)) && !(thread->signal_queue.sigmask & SIGMASK(i)))) {
-			struct signal *signal = &thread->signal_queue.queue[i - 1];
-			//struct sigaction *action = signal->sigaction;
-			struct sigaction *action = &thread->task->sigactions[signal->signum - 1];
+		if(((task->signal_queue.sigpending & SIGMASK(i)) && !(task->signal_queue.sigmask & SIGMASK(i)))) {
+			struct signal *signal = &task->signal_queue.queue[i - 1];
+			struct sigaction *action = &task->sigactions[signal->signum - 1];
 
 			spinlock_irqsave(&CURRENT_TASK->sig_lock);
 
-			thread->signal_queue.sigpending &= ~SIGMASK(i);
+			task->signal_queue.sigpending &= ~SIGMASK(i);
 
 			print("dispatching signal %d with action %x\n", i, action->handler.sa_sigaction);
 
@@ -272,7 +262,7 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 
 			struct ucontext context;
 
-			thread->signal_queue.sigpending &= ~SIGMASK(i);
+			task->signal_queue.sigpending &= ~SIGMASK(i);
 
 			if(action->handler.sa_sigaction == SIG_DFL) {
 				struct stack stack = {
@@ -295,14 +285,14 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 
 				state->rdi = signal->signum;
 
-				thread->signal_context = context;
+				task->signal_context = context;
 
-				struct stack tmp = thread->kernel_stack;
-				thread->kernel_stack = thread->signal_kernel_stack;
-				thread->signal_kernel_stack = tmp;
+				struct stack tmp = task->kernel_stack;
+				task->kernel_stack = task->signal_kernel_stack;
+				task->signal_kernel_stack = tmp;
 
-				tmp = thread->user_stack;
-				thread->signal_user_stack = tmp;
+				tmp = task->user_stack;
+				task->signal_user_stack = tmp;
 
 				spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 				spinrelease_irqsave(&queue->siglock);
@@ -344,7 +334,7 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 			stack.sp -= sizeof(uint64_t);
 			*(uint64_t*)stack.sp = (uint64_t)action->sa_restorer;
 
-			thread->signal_context = context;
+			task->signal_context = context;
 
 			state->ss = 0x3b;
 			state->rsp = stack.sp;
@@ -359,13 +349,13 @@ int signal_dispatch(struct sched_thread *thread, struct registers *state) {
 				state->rdx = (uint64_t)ucontext;
 			}
 
-			struct stack tmp = thread->kernel_stack;
-			thread->kernel_stack = thread->signal_kernel_stack;
-			thread->signal_kernel_stack = tmp;
+			struct stack tmp = task->kernel_stack;
+			task->kernel_stack = task->signal_kernel_stack;
+			task->signal_kernel_stack = tmp;
 
-			tmp = thread->user_stack;
-			thread->user_stack = stack;
-			thread->signal_user_stack = tmp;
+			tmp = task->user_stack;
+			task->user_stack = stack;
+			task->signal_user_stack = tmp;
 
 			spinrelease_irqsave(&CURRENT_TASK->sig_lock);
 
@@ -415,24 +405,24 @@ int kill(pid_t pid, int sig) {
 		return -1;
 	}
 
-	struct sched_thread *sender = CURRENT_THREAD;
+	struct task *sender = CURRENT_TASK;
 	if(sender == NULL) {
 		panic("");
 	}
 
-	struct sched_task *current_task = CURRENT_TASK;
+	struct task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
 		panic("");
 	}
 
 	if(pid > 0) {
-		struct sched_thread *target = sched_translate_tid(pid, 0);
+		struct task *target = sched_translate_pid(CORE_LOCAL->nid, pid);
 		if(target == NULL) {
 			set_errno(ESRCH);
 			return -1;
 		}
 
-		signal_send_thread(sender, target, sig);
+		signal_send_task(sender, target, sig);
 	} else if(pid == 0) {
 		signal_send_group(sender, current_task->group, sig);
 	} else if(pid == -1) {
@@ -449,13 +439,13 @@ int kill(pid_t pid, int sig) {
 		for(size_t i = 0; i < group->process_list.length; i++) {
 			pid_t pid = group->process_list.data[i]->pid;
 
-			struct sched_thread *target = sched_translate_tid(pid, 0);
+			struct task *target = sched_translate_pid(CORE_LOCAL->nid, pid);
 			if(target == NULL) {
 				set_errno(ESRCH);
 				return -1;
 			}
 
-			signal_send_thread(sender, target, sig);
+			signal_send_task(sender, target, sig);
 		}
 	}
 
@@ -465,35 +455,34 @@ int kill(pid_t pid, int sig) {
 static void sigreturn_default(int release_block) {
 	asm volatile ("cli");
 
-	struct sched_task *task = CURRENT_TASK;
-	struct sched_thread *thread = CURRENT_THREAD;
+	struct task *task = CURRENT_TASK;
 
-	struct signal_queue *signal_queue = &thread->signal_queue;
+	struct signal_queue *signal_queue = &task->signal_queue;
 
 	spinlock_irqsave(&signal_queue->siglock);
 
-	struct signal *signal = &signal_queue->queue[thread->signal_context.signum - 1];
+	struct signal *signal = &signal_queue->queue[task->signal_context.signum - 1];
 	waitq_wake(signal->trigger);
 
 	spinrelease_irqsave(&signal_queue->siglock);
 
-	struct stack *stack = &thread->signal_context.stack;
-	struct registers *context = &thread->signal_context.registers;
+	struct stack *stack = &task->signal_context.stack;
+	struct registers *context = &task->signal_context.registers;
 
 	pmm_free(stack->sp - HIGH_VMA - stack->size, DIV_ROUNDUP(stack->size, PAGE_SIZE));
 
-	thread->regs = *context;
+	task->regs = *context;
 
 	if(release_block) {
-		thread->blocking = false;
-		thread->signal_release_block = true;
+		task->blocking = false;
+		task->signal_release_block = true;
 	}
 
 	task->dispatch_ready = false;
-	thread->dispatch_ready = false;
+	task->dispatch_ready = false;
 
-	CORE_LOCAL->user_stack = thread->user_stack.sp;
-	CORE_LOCAL->kernel_stack = thread->kernel_stack.sp;
+	CORE_LOCAL->user_stack = task->user_stack.sp;
+	CORE_LOCAL->kernel_stack = task->kernel_stack.sp;
 
 	if(context->cs & 0x3) {
 		swapgs();
@@ -528,40 +517,39 @@ void syscall_sigreturn(struct registers*) {
 #endif
 	asm volatile ("cli");
 
-	struct sched_task *task = CURRENT_TASK;
-	struct sched_thread *thread = CURRENT_THREAD;
+	struct task *task = CURRENT_TASK;
 
-	struct signal_queue *signal_queue = &thread->signal_queue;
+	struct signal_queue *signal_queue = &task->signal_queue;
 
 	spinlock_irqsave(&signal_queue->siglock);
 
-	struct signal *signal = &signal_queue->queue[thread->signal_context.signum - 1];
+	struct signal *signal = &signal_queue->queue[task->signal_context.signum - 1];
 	waitq_wake(signal->trigger);
 
 	spinrelease_irqsave(&signal_queue->siglock);
 
-	struct stack *stack = &thread->signal_context.stack;
-	struct registers *context = &thread->signal_context.registers;
+	struct stack *stack = &task->signal_context.stack;
+	struct registers *context = &task->signal_context.registers;
 
-	thread->regs = *context;
+	task->regs = *context;
 	munmap(task->page_table, (void*)(stack->sp - stack->size), stack->size);
 
-	thread->blocking = false;
-	thread->signal_release_block = true;
+	task->blocking = false;
+	task->signal_release_block = true;
 
 	task->dispatch_ready = false;
-	thread->dispatch_ready = false;
+	task->dispatch_ready = false;
 
-	struct stack tmp = thread->kernel_stack;
-	thread->kernel_stack = thread->signal_kernel_stack;
-	thread->signal_kernel_stack = tmp;
+	struct stack tmp = task->kernel_stack;
+	task->kernel_stack = task->signal_kernel_stack;
+	task->signal_kernel_stack = tmp;
 
-	tmp = thread->user_stack;
-	thread->user_stack = thread->signal_user_stack;
-	thread->signal_user_stack = tmp;
+	tmp = task->user_stack;
+	task->user_stack = task->signal_user_stack;
+	task->signal_user_stack = tmp;
 
-	CORE_LOCAL->user_stack = thread->user_stack.sp;
-	CORE_LOCAL->kernel_stack = thread->kernel_stack.sp;
+	CORE_LOCAL->user_stack = task->user_stack.sp;
+	CORE_LOCAL->kernel_stack = task->kernel_stack.sp;
 
 	if(context->cs & 0x3) {
 		swapgs();
@@ -590,22 +578,22 @@ void syscall_sigreturn(struct registers*) {
 	);
 }
 
-int signal_is_blocked(struct sched_thread *thread, int sig) {
+int signal_is_blocked(struct task *task, int sig) {
 	if(signal_is_valid(sig) == -1) {
 		return -1;
 	}
 
-	spinlock_irqsave(&thread->signal_queue.siglock);
-	if(thread->signal_queue.sigmask & SIGMASK(sig)) {
-		spinrelease_irqsave(&thread->signal_queue.siglock);
+	spinlock_irqsave(&task->signal_queue.siglock);
+	if(task->signal_queue.sigmask & SIGMASK(sig)) {
+		spinrelease_irqsave(&task->signal_queue.siglock);
 		return 0;
 	}
 
-	spinrelease_irqsave(&thread->signal_queue.siglock);
+	spinrelease_irqsave(&task->signal_queue.siglock);
 	return -1;
 }
 
-int signal_is_ignored(struct sched_task *task, int sig) {
+int signal_is_ignored(struct task *task, int sig) {
 	if(signal_is_valid(sig) == -1) {
 		return -1;
 	}
@@ -671,12 +659,12 @@ void syscall_pause(struct registers *regs) {
 	print("syscall: [pid %x] pause\n", CORE_LOCAL->pid);
 #endif
 
-	struct sched_thread *thread = CURRENT_THREAD;
-	if(thread == NULL) {
+	struct task *task = CURRENT_TASK;
+	if(task == NULL) {
 		panic("");
 	}
 
-	struct signal_queue *queue = &thread->signal_queue;
+	struct signal_queue *queue = &task->signal_queue;
 
 	signal_wait(queue, ~0ull, NULL);
 
@@ -691,12 +679,12 @@ void syscall_sigsuspend(struct registers *regs) {
 	print("syscall: [pid %x] pause\n", CORE_LOCAL->pid);
 #endif
 
-	struct sched_thread *thread = CURRENT_THREAD;
-	if(thread == NULL) {
+	struct task *task = CURRENT_TASK;
+	if(task == NULL) {
 		panic("");
 	}
 
-	struct signal_queue *queue = &thread->signal_queue;
+	struct signal_queue *queue = &task->signal_queue;
 
 	sigset_t save;
 

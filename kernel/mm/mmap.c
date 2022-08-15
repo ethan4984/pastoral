@@ -338,7 +338,7 @@ int munmap(struct page_table *page_table, void *addr, size_t length) {
 }
 
 extern void syscall_mmap(struct registers *regs) {
-	struct sched_task *current_task = CURRENT_TASK;
+	struct task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
 		panic("cant find current task");
 	}
@@ -359,7 +359,7 @@ extern void syscall_mmap(struct registers *regs) {
 }
 
 extern void syscall_munmap(struct registers *regs) {
-	struct sched_task *current_task = CURRENT_TASK;
+	struct task *current_task = CURRENT_TASK;
 	if(current_task == NULL) {
 		panic("cant find current task");
 	}

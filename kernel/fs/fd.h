@@ -6,6 +6,7 @@
 #include <lib/cpu.h>
 #include <sched/sched.h>
 #include <sched/queue.h>
+#include <bitmap.h>
 #include <lock.h>
 
 #define PIPE_BUFFER_SIZE 0x10000
@@ -48,6 +49,12 @@ struct fd_handle {
 	struct file_handle *file_handle;
 	int fd_number;
 	int flags;
+};
+
+struct fd_table {
+	struct spinlock fd_lock;
+	struct hash_table fd_list;
+	struct bitmap fd_bitmap;
 };
 
 struct pipe {

@@ -79,22 +79,19 @@ void init_process() {
 		.argv_cnt = 1
 	};
 
-	struct sched_task *task = sched_default_task();
+	struct task *task = sched_default_task(CURRENT_TASK->namespace);
 	if(task == NULL) panic("unable to start init process");
 
-	struct sched_thread *thread = sched_default_thread(task);
-	if(thread == NULL) panic("unable to start init process");
-
-	int ret = sched_load_program(thread, "/usr/sbin/init");
+	int ret = sched_load_program(task, "/usr/sbin/init");
 	if(ret == -1) panic("unable to start init process");
 
-	ret = sched_thread_init(thread, envp, argv);
+	ret = sched_task_init(task, envp, argv);
 	if(ret == -1) panic("unable to start init process");
 
-	waitq_trigger_calibrate(task->status_trigger, task, thread, EVENT_PROCESS_STATUS);
+	waitq_trigger_calibrate(task->status_trigger, task, EVENT_PROCESS_STATUS);
 	waitq_add(CURRENT_TASK->waitq, task->status_trigger);
 
-	struct sched_task *parent = task->parent;
+	struct task *parent = task->parent;
 	if(parent == NULL) panic("unable to start init process");
 
 	task->session = parent->session;
@@ -103,10 +100,9 @@ void init_process() {
 	VECTOR_PUSH(task->group->process_list, task);
 
 	task->sched_status = TASK_WAITING;
-	thread->sched_status = TASK_WAITING;
-	thread->signal_queue.active = true;
+	task->signal_queue.active = true;
 
-	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
+	sched_dequeue(CURRENT_TASK);
 
 	for(;;)
 		asm ("hlt");
@@ -143,7 +139,7 @@ void pastoral_thread() {
 
 	init_process();
 
-	sched_dequeue(CURRENT_TASK, CURRENT_THREAD);
+	sched_dequeue(CURRENT_TASK);
 
 	for(;;)
 		asm ("hlt");
@@ -201,14 +197,14 @@ void pastoral_entry(void) {
 
 	apic_timer_init(20);
 
-	struct sched_task *kernel_task = sched_default_task();
-	struct sched_thread *kernel_thread = sched_default_thread(kernel_task);
+	struct pid_namespace *namespace = sched_default_namespace();
+	struct task *kernel_task = sched_default_task(namespace);
 
-	kernel_thread->regs.cs = 0x28;
-	kernel_thread->regs.ss = 0x30;
-	kernel_thread->regs.rip = (uintptr_t)pastoral_thread;
-	kernel_thread->regs.rflags = 0x202;
-	kernel_thread->regs.rsp = kernel_thread->kernel_stack.sp;
+	kernel_task->regs.cs = 0x28;
+	kernel_task->regs.ss = 0x30;
+	kernel_task->regs.rip = (uintptr_t)pastoral_thread;
+	kernel_task->regs.rflags = 0x202;
+	kernel_task->regs.rsp = kernel_task->kernel_stack.sp;
 	kernel_task->cwd = NULL;
 
 	kernel_task->page_table = alloc(sizeof(struct page_table));
@@ -217,7 +213,6 @@ void pastoral_entry(void) {
 	task_create_session(kernel_task, true);
 
 	kernel_task->sched_status = TASK_WAITING;
-	kernel_thread->sched_status = TASK_WAITING;
 
 	asm ("sti");
 

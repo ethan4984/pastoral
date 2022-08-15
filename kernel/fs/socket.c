@@ -119,16 +119,16 @@ static struct fd_handle *create_sockfd(struct socket *socket, struct file_handle
 	fd_init(socket_fd_handle);
 
 	socket_fd_handle->file_handle = socket_file_handle;
-	socket_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_bitmap);
+	socket_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
 
 	socket->fd_handle = socket_fd_handle;
 	socket->file_handle = socket_file_handle;
 
 	stat_update_time(socket_file_handle->stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
-	spinlock_irqsave(&CURRENT_TASK->fd_lock);
-	hash_table_push(&CURRENT_TASK->fd_list, &socket_fd_handle->fd_number, socket_fd_handle, sizeof(socket_fd_handle->fd_number));
-	spinrelease_irqsave(&CURRENT_TASK->fd_lock);
+	spinlock_irqsave(&CURRENT_TASK->fd_table->fd_lock);
+	hash_table_push(&CURRENT_TASK->fd_table->fd_list, &socket_fd_handle->fd_number, socket_fd_handle, sizeof(socket_fd_handle->fd_number));
+	spinrelease_irqsave(&CURRENT_TASK->fd_table->fd_lock);
 
 	return socket_fd_handle;
 }

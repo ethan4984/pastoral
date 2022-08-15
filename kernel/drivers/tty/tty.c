@@ -78,7 +78,7 @@ static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t
 	if(CURRENT_TASK->session == tty->session) {
 		if(CURRENT_TASK->group != tty->foreground_group) {
 			if(signal_is_ignored(CURRENT_TASK, SIGTTIN)
-				|| signal_is_blocked(CURRENT_THREAD, SIGTTIN)) {
+				|| signal_is_blocked(CURRENT_TASK, SIGTTIN)) {
 				set_errno(EIO);
 				return -1;
 			}
@@ -109,7 +109,7 @@ static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count
 			&& (tty->termios.c_lflag & TOSTOP)) {
 
 			if(signal_is_ignored(CURRENT_TASK, SIGTTOU)
-				|| signal_is_blocked(CURRENT_THREAD, SIGTTOU)) {
+				|| signal_is_blocked(CURRENT_TASK, SIGTTOU)) {
 				set_errno(EIO);
 				return -1;
 			}

@@ -14,16 +14,33 @@
 #include <sched/program.h>
 #include <lock.h>
 
-struct sched_task;
+struct task;
+struct process_group;
+struct session;
 
-struct sched_thread {
+struct pid_namespace {
+	nid_t nid;
+	struct hash_table process_list;
+	struct bitmap pid_bitmap;
+};
+
+struct task {
 	struct spinlock lock;
 
+	struct pid_namespace *namespace;
 	tid_t tid;
-	struct sched_task *task;
+	pid_t pid;
 
-	size_t sched_status;
+	struct task *parent;
+	struct process_group *group;
+	struct session *session;
+
+	int has_execved;
+
 	size_t idle_cnt;
+	int sched_status;
+	int process_status;
+
 	size_t user_gs_base;
 	size_t user_fs_base;
 
@@ -35,45 +52,20 @@ struct sched_thread {
 
 	size_t errno;
 
+	struct waitq *waitq;
+	struct waitq_trigger *status_trigger;
+	struct waitq_trigger *last_trigger;
+
 	bool blocking;
 	bool signal_release_block;
-	bool dispatch_ready;
 
 	struct signal_queue signal_queue;
 
 	struct registers regs;
 	struct ucontext signal_context;
-};
 
-struct process_group;
-struct session;
-
-struct sched_task {
-	struct spinlock fd_lock;
-	struct hash_table fd_list;
-	struct bitmap fd_bitmap;
-
-	struct spinlock tid_lock;
-	struct hash_table thread_list;
-	struct bitmap tid_bitmap;
-
-	struct waitq *waitq;
-	struct waitq_trigger *status_trigger;
-	struct waitq_trigger *last_trigger;
-
+	struct fd_table *fd_table;
 	struct vfs_node *cwd;
-
-	pid_t pid;
-
-	struct sched_task *parent;
-	struct process_group *group;
-	struct session *session;
-
-	int has_execved;
-
-	size_t idle_cnt;
-	int sched_status;
-	int process_status;
 
 	uid_t real_uid;
 	uid_t effective_uid;
@@ -89,13 +81,13 @@ struct sched_task {
 	struct sigaction *sigactions;
 	bool dispatch_ready;
 
-	VECTOR(struct sched_task*) children;
-	VECTOR(struct sched_task*) zombies;
+	VECTOR(struct task*) children;
+	VECTOR(struct task*) zombies;
+
+	struct pid_namespace *thread_namespace;
 
 	struct program program;
 	struct page_table *page_table;
-
-	struct spinlock lock;
 };
 
 struct process_group {
@@ -104,10 +96,10 @@ struct process_group {
 	pid_t pgid;
 	pid_t pid_leader;
 
-	struct sched_task *leader;
+	struct task *leader;
 	struct session *session;
 
-	VECTOR(struct sched_task*) process_list;
+	VECTOR(struct task*) process_list;
 };
 
 struct session {
@@ -129,44 +121,35 @@ struct sched_arguments {
 	char **envp;
 };
 
-struct sched_task *sched_translate_pid(pid_t pid);
-struct sched_thread *sched_translate_tid(pid_t pid, tid_t tid);
-struct sched_task *sched_default_task();
-struct sched_thread *sched_default_thread(struct sched_task *task);
-int sched_thread_init(struct sched_thread *thread, char **envp, char **argv);
-int sched_load_program(struct sched_thread *thread, const char *path);
+struct pid_namespace *sched_default_namespace();
+struct task *sched_translate_pid(nid_t nid, pid_t pid);
+struct task *sched_default_task(struct pid_namespace *namespace);
+int sched_task_init(struct task *task, char **envp, char **argv);
+int sched_load_program(struct task *task, const char *path);
 
 void reschedule(struct registers *regs, void *ptr);
-void sched_dequeue(struct sched_task *task, struct sched_thread *thread);
-void sched_dequeue_and_yield(struct sched_task *task, struct sched_thread *thread);
-void sched_requeue(struct sched_task *task, struct sched_thread *thread);
-void sched_requeue_and_yield(struct sched_task *task, struct sched_thread *thread);
+void sched_dequeue(struct task *task);
+void sched_dequeue_and_yield(struct task *task);
+void sched_requeue(struct task *task);
+void sched_requeue_and_yield(struct task *task);
 void sched_yield();
-void task_terminate(struct sched_task *task, int status);
-void task_stop(struct sched_task *task, int sig);
-void task_continue(struct sched_task *task);
-int task_create_session(struct sched_task *task, bool force);
+void task_terminate(struct task *task, int status);
+void task_stop(struct task *task, int sig);
+void task_continue(struct task *task);
+int task_create_session(struct task *task, bool force);
 
 extern struct spinlock sched_lock;
 
 #define CURRENT_TASK ({ \
-	struct sched_task *ret = NULL; \
+	struct task *ret = NULL; \
 	if(CORE_LOCAL) { \
-		ret = sched_translate_pid(CORE_LOCAL->pid); \
-	} \
-	ret; \
-})
-
-#define CURRENT_THREAD ({ \
-	struct sched_thread *ret = NULL; \
-	if(CORE_LOCAL) { \
-		ret = sched_translate_tid(CORE_LOCAL->pid, CORE_LOCAL->tid); \
+		ret = sched_translate_pid(CORE_LOCAL->nid, CORE_LOCAL->pid); \
 	} \
 	ret; \
 })
 
 #define SIGPENDING ({ \
-	CURRENT_THREAD->signal_queue.sigpending; \
+	CURRENT_TASK->signal_queue.sigpending; \
 })
 
 #define TASK_RUNNING 0
@@ -195,20 +178,12 @@ static inline void process_group_unlock(struct process_group *group) {
 	spinrelease_irqsave(&group->lock);
 }
 
-static inline void task_lock(struct sched_task *task) {
+static inline void task_lock(struct task *task) {
 	spinlock_irqsave(&task->lock);
 }
 
-static inline void task_unlock(struct sched_task *task) {
+static inline void task_unlock(struct task *task) {
 	spinrelease_irqsave(&task->lock);
-}
-
-static inline void thread_lock(struct sched_thread *thread) {
-	spinlock_irqsave(&thread->lock);
-}
-
-static inline void thread_unlock(struct sched_thread *thread) {
-	spinrelease_irqsave(&thread->lock);
 }
 
 #define WEXITSTATUS(x) ((x) & 0xff)
