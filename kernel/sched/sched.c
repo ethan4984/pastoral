@@ -14,7 +14,7 @@
 #include <lock.h>
 
 static struct hash_table namespace_list;
-static struct hash_table task_queue;
+static VECTOR(struct task*) task_queue;
 
 static struct bitmap nid_bitmap = {
 	.data = NULL,
@@ -36,7 +36,7 @@ struct task *sched_translate_pid(nid_t nid, pid_t pid) {
 struct task *find_next_task() {
 	struct task *ret = NULL;
 
-	for(size_t i = 0, cnt = 0; i < task_queue.capacity; i++) {
+	for(size_t i = 0, cnt = 0; i < task_queue.length; i++) {
 		struct task *task = task_queue.data[i];
 		if(task == NULL) {
 			continue;
@@ -114,7 +114,6 @@ void reschedule(struct registers *regs, void*) {
 
 	next_task->idle_cnt = 0;
 	next_task->idle_cnt = 0;
-	next_task->sched_status = TASK_RUNNING;
 	next_task->sched_status = TASK_RUNNING;
 
 	set_user_fs(next_task->user_fs_base);
@@ -264,9 +263,7 @@ struct task *sched_default_task(struct pid_namespace *namespace) {
 	task->id.pid = task->id.pid;
 	task->id.tid = task->id.tid;
 
-	print("pushing task on queue %x:%x:%x\n", task->id.nid, task->id.pid, task->id.tid);
-
-	hash_table_push(&task_queue, &task->id, task, sizeof(task->id));
+	VECTOR_PUSH(task_queue, task);
 
 	spinrelease_irqsave(&sched_lock);
 
@@ -541,7 +538,7 @@ void task_terminate(struct task *task, int status) {
 
 		thread->sched_status = TASK_YIELD;
 		hash_table_delete(&task->thread_group->process_list, &thread->id.tid, sizeof(thread->id.tid));
-		hash_table_delete(&task_queue, &thread->id, sizeof(thread->id));
+		VECTOR_REMOVE_BY_VALUE(task_queue, thread);
 	}
 
 	struct page_table *page_table = task->page_table;
@@ -592,7 +589,6 @@ void task_terminate(struct task *task, int status) {
 	task->sched_status = TASK_YIELD;
 
 	hash_table_delete(&task->namespace->process_list, &task->id.pid, sizeof(task->id.pid));
-	hash_table_delete(&task_queue, &task->id, sizeof(task->id));
 
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
@@ -635,6 +631,7 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 		return NULL;
 	}
 
+	task_lock(current_task);
 	spinlock_irqsave(&sched_lock);
 
 	if((flags & CLONE_FILES) == CLONE_FILES) {
@@ -711,10 +708,8 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 	task->id.tid = bitmap_alloc(&task->thread_group->pid_bitmap);
 	hash_table_push(&task->thread_group->process_list, &task->id.tid, task, sizeof(task->id.tid));
 
-	print("pushing task on queue %x:%x:%x\n", task->id.nid, task->id.pid, task->id.tid);
-
 	hash_table_push(&task->namespace->process_list, &task->id.pid, task, sizeof(task->id.pid));
-	hash_table_push(&task_queue, &task->id, task, sizeof(task->id));
+	VECTOR_PUSH(task_queue, task);
 
 	task->regs = *regs;
 
@@ -785,6 +780,7 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 	VECTOR_PUSH(current_task->children, task);
 
 	spinrelease_irqsave(&sched_lock);
+	task_unlock(current_task);
 
 	return task;
 }
@@ -988,9 +984,7 @@ void syscall_fork(struct registers *regs) {
 	print("syscall: [pid %x] fork\n", CORE_LOCAL->pid);
 #endif
 	
-	int flags = CLONE_FS;
-
-	struct task *task = clone(flags, NULL, NULL, NULL, NULL, regs);
+	struct task *task = clone(0, NULL, NULL, NULL, NULL, regs);
 	if(task == NULL) {
 		regs->rax = -1;
 		return;
