@@ -235,7 +235,11 @@ struct task *sched_default_task(struct pid_namespace *namespace) {
 	task->page_table = alloc(sizeof(struct page_table));
 	vmm_default_table(task->page_table);
 
-	task->umask = 022;
+	task->umask = alloc(sizeof(task->umask));
+	*task->umask = 022;
+
+	task->cwd = alloc(sizeof(task->cwd));
+	*task->cwd = NULL;
 
 	task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
 
@@ -589,8 +593,6 @@ void task_terminate(struct task *task, int status) {
 
 
 void task_stop(struct task *task, int sig) {
-	// TODO: figure out why this doesn't work.
-	//task->process_status = WSTOPPED_CONSTRUCT(sig);
 	task->status_trigger->agent_task->process_status = WSTOPPED_CONSTRUCT(sig);
 	signal_send_task(NULL, task, SIGCHLD);
 	waitq_wake(task->status_trigger);
@@ -598,12 +600,169 @@ void task_stop(struct task *task, int sig) {
 }
 
 void task_continue(struct task *task) {
-	// TODO: figure out why this doesn't work.
-	//task->process_status = WCONTINUED_CONSTRUCT;
 	task->status_trigger->agent_task->process_status = WCONTINUED_CONSTRUCT;
 	signal_send_task(NULL, task, SIGCHLD);
 	waitq_wake(task->status_trigger);
 	sched_requeue_and_yield(CURRENT_TASK);
+}
+
+struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void *newtls, struct registers *regs) {
+	struct task *current_task = CURRENT_TASK;
+	if(current_task == NULL) {
+		panic("");
+	}
+
+	struct task *task = alloc(sizeof(struct task));
+
+	if(((flags & CLONE_SIGHAND) == CLONE_SIGHAND && (flags & CLONE_VM) != CLONE_VM) ||
+		((flags & CLONE_THREAD) == CLONE_THREAD && (flags & CLONE_SIGHAND) != CLONE_SIGHAND) ||
+		((flags & CLONE_FS) == CLONE_FS && (flags & CLONE_NEWNS) == CLONE_NEWNS) ||
+		((flags & CLONE_NEWIPC) == CLONE_NEWIPC && (flags & CLONE_SYSVSEM) == CLONE_SYSVSEM) ||
+		((flags & CLONE_NEWPID) == CLONE_NEWPID && (flags & CLONE_THREAD) == CLONE_THREAD) ||
+		((flags & CLONE_VM) == CLONE_VM && child_stack == NULL)) {
+		set_errno(EINVAL);
+		return NULL;
+	}
+
+	if((flags & CLONE_FILES) == CLONE_FILES) {
+		spinlock_irqsave(&current_task->fd_table->fd_lock);
+		task->fd_table = current_task->fd_table;
+		spinrelease_irqsave(&current_task->fd_table->fd_lock);
+	} else {
+		spinlock_irqsave(&current_task->fd_table->fd_lock);
+
+		task->fd_table = alloc(sizeof(struct fd_table));
+		task->fd_table->fd_bitmap.resizable = true;
+
+		for(size_t i = 0; i < current_task->fd_table->fd_list.capacity; i++) {
+			struct fd_handle *handle = current_task->fd_table->fd_list.data[i];
+			if(handle) {
+				struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
+				*new_handle = *handle;
+				file_get(new_handle->file_handle);
+				hash_table_push(&task->fd_table->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
+			}
+		}
+
+		bitmap_dup(&current_task->fd_table->fd_bitmap, &task->fd_table->fd_bitmap);
+
+		spinrelease_irqsave(&current_task->fd_table->fd_lock);
+	}
+
+	if((flags & CLONE_FS) == CLONE_FS) {
+		task->cwd = current_task->cwd;
+		task->umask = current_task->umask;
+	} else {
+		task->cwd = alloc(sizeof(task->cwd));
+		task->umask = alloc(sizeof(task->umask));
+
+		*task->cwd = *current_task->cwd;
+		*task->umask = *current_task->umask;
+	}
+
+	if((flags & CLONE_PARENT) == CLONE_PARENT) {
+		task->parent = current_task->parent;
+	} else {
+		task->parent = current_task;
+	}
+
+	if((flags & CLONE_SIGHAND) == CLONE_SIGHAND) {
+		task->sigactions = current_task->sigactions;
+	} else {
+		task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
+		memcpy(task->sigactions, current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
+	}
+
+	task->user_gs_base = CURRENT_TASK->user_gs_base;
+
+	if((flags & CLONE_SETTLS) == CLONE_SETTLS) {
+		task->user_fs_base = (uint64_t)newtls;
+	} else {
+		task->user_fs_base = CURRENT_TASK->user_fs_base;
+	}
+
+	if((flags & CLONE_NEWPID) == CLONE_NEWPID) {
+		task->namespace = sched_default_namespace();
+	} else {
+		task->namespace = current_task->namespace;
+	}
+
+	task->pid = bitmap_alloc(&task->namespace->pid_bitmap);
+
+	if((flags & CLONE_THREAD) == CLONE_THREAD) {
+		task->tid = bitmap_alloc(&current_task->thread_group->pid_bitmap);
+		hash_table_push(&task->thread_group->process_list, &task->tid, task, sizeof(task->tid));
+	}
+
+	hash_table_push(&task->namespace->process_list, &task->pid, task, sizeof(task->pid));
+
+	task->regs = *regs;
+
+	if((flags & CLONE_VM) == CLONE_VM) {
+		task->page_table = current_task->page_table;
+		task->regs.rsp = (uint64_t)child_stack;
+
+		task->user_stack = (struct stack) {
+			.sp = (uint64_t)child_stack,
+			.size = THREAD_USER_STACK_SIZE
+		};
+	} else {
+		task->page_table = vmm_fork_page_table(current_task->page_table);
+		task->user_stack = current_task->user_stack;
+	}
+
+	if((flags & CLONE_CHILD_SETTID) == CLONE_CHILD_SETTID && ctid != NULL) {
+		CORE_LOCAL->pid = task->pid;
+		CORE_LOCAL->tid = task->tid;
+
+		vmm_init_page_table(task->page_table);
+
+		*ctid = task->tid;
+
+		vmm_init_page_table(CORE_LOCAL->page_table);
+
+		CORE_LOCAL->pid = current_task->pid;
+		CORE_LOCAL->tid = current_task->tid;
+	}
+
+	if((flags & CLONE_PARENT_SETTID) == CLONE_PARENT_SETTID && ptid != NULL) {
+		CORE_LOCAL->pid = task->pid;
+		CORE_LOCAL->tid = task->tid;
+
+		vmm_init_page_table(task->page_table);
+
+		*ptid = task->tid;
+
+		vmm_init_page_table(CORE_LOCAL->page_table);
+
+		CORE_LOCAL->pid = current_task->pid;
+		CORE_LOCAL->tid = current_task->tid;
+	}
+
+	task->sched_status = TASK_WAITING;
+
+	task->group = current_task->group;
+	task->session = current_task->session;
+
+	task->real_uid = current_task->real_uid;
+	task->effective_uid = current_task->effective_uid;
+	task->saved_uid = current_task->saved_uid;
+
+	task->real_gid = current_task->real_gid;
+	task->effective_gid = current_task->effective_gid;
+	task->saved_gid = current_task->saved_gid;
+
+	task->waitq = alloc(sizeof(struct waitq));
+	task->status_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_PROCESS_STATUS);
+	waitq_trigger_calibrate(task->status_trigger, task, EVENT_PROCESS_STATUS);
+
+	task->kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	task->kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+
+	task->signal_kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	task->signal_kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+
+	return task;
 }
 
 void syscall_exit(struct registers *regs) {
@@ -773,9 +932,7 @@ void syscall_execve(struct registers *regs) {
 }
 
 void syscall_clone(struct registers *regs) {
-	spinlock_irqsave(&sched_lock);
-
-	void *function = (void*)regs->rdi;
+/*	void *function = (void*)regs->rdi;
 	void *stack = (void*)regs->rsi;
 	int flags = regs->rdx;
 	pid_t *ptid = (void*)regs->r10;
@@ -784,197 +941,24 @@ void syscall_clone(struct registers *regs) {
 
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] clone\n", CORE_LOCAL->pid);
-#endif
-
-	struct task *current_task = CURRENT_TASK;
-	if(current_task == NULL) {
-		panic("");
-	}
-
-	struct task *task = alloc(sizeof(struct task));
-
-	if((flags & CLONE_FILES) == CLONE_FILES) {
-		spinlock_irqsave(&current_task->fd_table->fd_lock);
-		task->fd_table = current_task->fd_table;
-		spinrelease_irqsave(&current_task->fd_table->fd_lock);
-	} else {
-		spinlock_irqsave(&current_task->fd_table->fd_lock);
-
-		task->fd_table = alloc(sizeof(struct fd_table));
-		task->fd_table->fd_bitmap.resizable = true;
-
-		for(size_t i = 0; i < current_task->fd_table->fd_list.capacity; i++) {
-			struct fd_handle *handle = current_task->fd_table->fd_list.data[i];
-			if(handle) {
-				struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
-				*new_handle = *handle;
-				file_get(new_handle->file_handle);
-				hash_table_push(&task->fd_table->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
-			}
-		}
-
-		bitmap_dup(&current_task->fd_table->fd_bitmap, &task->fd_table->fd_bitmap);
-
-		spinrelease_irqsave(&current_task->fd_table->fd_lock);
-	}
-
-	if((flags & CLONE_FS) == CLONE_FS) {
-		task->cwd = current_task->cwd;
-		task->umask = current_task->umask;
-	}
-
-	if((flags & CLONE_PARENT) == CLONE_PARENT) {
-		task->parent = current_task->parent;
-	} else {
-		task->parent = current_task;
-	}
-
-	if((flags & CLONE_SIGHAND) == CLONE_SIGHAND) {
-		task->sigactions = current_task->sigactions;
-	} else {
-		task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
-		memcpy(task->sigactions, current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
-	}
-
-	task->user_gs_base = CURRENT_TASK->user_gs_base;
-
-	if((flags & CLONE_SETTLS) == CLONE_SETTLS) {
-		task->user_fs_base = (uint64_t)newtls;
-	} else {
-		task->user_fs_base = CURRENT_TASK->user_fs_base;
-	}
-
-	if((flags & CLONE_NEWPID) == CLONE_NEWPID) {
-		task->namespace = sched_default_namespace();
-	} else {
-		task->namespace = current_task->namespace;
-	}
-
-	task->pid = bitmap_alloc(&task->namespace->pid_bitmap);
-	hash_table_push(&task->namespace->process_list, &task->pid, task, sizeof(task->pid));
-
-	if((flags & CLONE_THREAD) == CLONE_THREAD) {
-		task->tid = bitmap_alloc(&current_task->thread_group->pid_bitmap);
-		hash_table_push(&task->thread_group->process_list, &task->tid, task, sizeof(task->tid));
-	}
-
-	if((flags & CLONE_VM) == CLONE_VM) {
-		task->page_table = current_task->page_table;
-	} else {
-		task->page_table = vmm_fork_page_table(current_task->page_table);
-	}
-
-	if((flags & CLONE_PARENT_SETTID) == CLONE_PARENT_SETTID && ptid != NULL) {
-		*ptid = task->tid;
-	}
-
-	task->sched_status = TASK_WAITING;
-	task->sched_status = TASK_WAITING;
-
-	task->group = current_task->group;
-	task->session = current_task->session;
-
-	task->real_uid = current_task->real_uid;
-	task->effective_uid = current_task->effective_uid;
-	task->saved_uid = current_task->saved_uid;
-
-	task->real_gid = current_task->real_gid;
-	task->effective_gid = current_task->effective_gid;
-	task->saved_gid = current_task->saved_gid;
-
-	task->kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
-	task->kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
-
-	task->signal_kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
-	task->signal_kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+#endif*/
 }
 
 void syscall_fork(struct registers *regs) {
-	spinlock_irqsave(&sched_lock);
-
 #ifndef SYSCALL_DEBUG
 	print("syscall: [pid %x] fork\n", CORE_LOCAL->pid);
 #endif
+	
+	int flags = CLONE_FS;
 
-	struct task *current_task = CURRENT_TASK;
-	if(current_task == NULL) {
-		panic("");
+	struct task *task = clone(flags, NULL, NULL, NULL, NULL, regs);
+	if(task == NULL) {
+		regs->rax = -1;
+		return;
 	}
 
-	task_lock(current_task);
-	struct task *task = alloc(sizeof(struct task));
-
-	task->fd_table = alloc(sizeof(struct fd_table));
-	task->fd_table->fd_bitmap.resizable = true;
-
-	task->namespace = current_task->namespace;
-
-	task->pid = bitmap_alloc(&current_task->namespace->pid_bitmap);
-	task->parent = current_task;
-	task->sched_status = TASK_WAITING;
-	task->page_table = vmm_fork_page_table(current_task->page_table);
-	task->cwd = current_task->cwd;
-
-	task->real_uid = current_task->real_uid;
-	task->effective_uid = current_task->effective_uid;
-	task->saved_uid = current_task->saved_uid;
-
-	task->real_gid = current_task->real_gid;
-	task->effective_gid = current_task->effective_gid;
-	task->saved_gid = current_task->saved_gid;
-
-	task->umask = current_task->umask;
-
-	task->group = current_task->group;
-	task->session = current_task->session;
-
-	task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
-	memcpy(task->sigactions, current_task->sigactions, SIGNAL_MAX * sizeof(struct sigaction));
-
-	task->waitq = alloc(sizeof(struct waitq));
-	task->status_trigger = waitq_alloc(CURRENT_TASK->waitq, EVENT_PROCESS_STATUS);
-	waitq_trigger_calibrate(task->status_trigger, task, EVENT_PROCESS_STATUS);
-
-	spinlock_irqsave(&current_task->fd_table->fd_lock);
-
-	for(size_t i = 0; i < current_task->fd_table->fd_list.capacity; i++) {
-		struct fd_handle *handle = current_task->fd_table->fd_list.data[i];
-		if(handle) {
-			struct fd_handle *new_handle = alloc(sizeof(struct fd_handle));
-			*new_handle = *handle;
-			file_get(new_handle->file_handle);
-			hash_table_push(&task->fd_table->fd_list, &new_handle->fd_number, new_handle, sizeof(new_handle->fd_number));
-		}
-	}
-
-	bitmap_dup(&current_task->fd_table->fd_bitmap, &task->fd_table->fd_bitmap);
-
-	spinrelease_irqsave(&current_task->fd_table->fd_lock);
-
-	task->regs = *regs;
-	task->user_gs_base = CURRENT_TASK->user_gs_base;
-	task->user_fs_base = CURRENT_TASK->user_fs_base;
-
-	task->kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
-	task->kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
-
-	task->signal_kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
-	task->signal_kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
-
-	task->user_stack = CURRENT_TASK->user_stack;
-
-	task->sched_status = TASK_WAITING;
-	task->signal_queue.sigmask = CURRENT_TASK->signal_queue.sigmask;
-
-	hash_table_push(&task->namespace->process_list, &task->pid, task, sizeof(task->pid));
-
-	regs->rax = task->pid;
 	task->regs.rax = 0;
-
-	VECTOR_PUSH(current_task->children, task);
-
-	task_unlock(current_task);
-	spinrelease_irqsave(&sched_lock);
+	regs->rax = task->pid;
 }
 
 void syscall_getpid(struct registers *regs) {

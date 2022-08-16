@@ -16,7 +16,7 @@ static int user_dir_lookup(int dirfd, const char *path, struct vfs_node **ret) {
 
 	if(relative) {
 		if(dirfd == AT_FDCWD) {
-			*ret = CURRENT_TASK->cwd;
+			*ret = *CURRENT_TASK->cwd;
 		} else {
 			struct fd_handle *dir_handle = fd_translate(dirfd);
 			if(dir_handle == NULL) {
@@ -409,7 +409,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 		struct stat *stat = alloc(sizeof(struct stat));
 		stat_init(stat);
-		stat->st_mode = S_IFREG | (mode & ~(CURRENT_TASK->umask));
+		stat->st_mode = S_IFREG | (mode & ~(*CURRENT_TASK->umask));
 		stat->st_uid = CURRENT_TASK->effective_uid;
 
 		stat_update_time(stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
@@ -559,7 +559,7 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 			dir = vfs_root;
 		} else {
 			if(dirfd == AT_FDCWD) {
-				dir = CURRENT_TASK->cwd;
+				dir = *CURRENT_TASK->cwd;
 			} else {
 				struct fd_handle *fd_handle = fd_translate(dirfd);
 				if(fd_handle == NULL) {
@@ -1015,7 +1015,7 @@ void syscall_getcwd(struct registers *regs) {
 	print("syscall: [pid %x] getcwd: buf {%x}, size {%x}\n", CORE_LOCAL->pid, buf, size);
 #endif
 
-	const char *path = vfs_absolute_path(CURRENT_TASK->cwd);
+	const char *path = vfs_absolute_path(*CURRENT_TASK->cwd);
 	if(strlen(path) <= size) {
 		memcpy8((void*)buf, (void*)path, strlen(path));
 	} else {
@@ -1040,7 +1040,7 @@ void syscall_chdir(struct registers *regs) {
 		return;
 	}
 
-	CURRENT_TASK->cwd = node;
+	*CURRENT_TASK->cwd = node;
 
 	regs->rax = 0;
 }
@@ -1152,7 +1152,7 @@ void syscall_symlinkat(struct registers *regs) {
 	int relative = *linkpath == '/' ? 0 : 1;
 	if(relative) {
 		if(newdirfd == AT_FDCWD) {
-			link_node = vfs_search_absolute(CURRENT_TASK->cwd, linkpath, true);
+			link_node = vfs_search_absolute(*CURRENT_TASK->cwd, linkpath, true);
 		} else {
 			struct fd_handle *fd_handle = fd_translate(newdirfd);
 			if(fd_handle == NULL) {
@@ -1215,8 +1215,8 @@ void syscall_umask(struct registers *regs) {
 	print("syscall: [pid %x] umask: mask {%x}\n", CORE_LOCAL->pid, mask);
 #endif
 
-	regs->rax = CURRENT_TASK->umask;
-	CURRENT_TASK->umask = mask;
+	regs->rax = *CURRENT_TASK->umask;
+	*CURRENT_TASK->umask = mask;
 }
 
 static int stat_chmod(struct stat *stat, mode_t mode) {

@@ -65,7 +65,7 @@ struct task {
 	struct ucontext signal_context;
 
 	struct fd_table *fd_table;
-	struct vfs_node *cwd;
+	struct vfs_node **cwd;
 
 	uid_t real_uid;
 	uid_t effective_uid;
@@ -75,7 +75,7 @@ struct task {
 	gid_t effective_gid;
 	gid_t saved_gid;
 
-	mode_t umask;
+	mode_t *umask;
 
 	struct spinlock sig_lock;
 	struct sigaction *sigactions;
