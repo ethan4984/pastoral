@@ -7,7 +7,7 @@
 struct elf_file kernel_file; 
 
 void stacktrace(uint64_t *rbp) {
-/*	for(;;) {
+	for(;;) {
 		if(rbp == NULL) {
 			return;
 		}
@@ -29,7 +29,7 @@ void stacktrace(uint64_t *rbp) {
 		}
 
 		rbp = (void*)previous_rbp;
-	}*/
+	}
 }
 
 static void serial_write(uint8_t data) {

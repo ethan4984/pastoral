@@ -624,6 +624,8 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 		return NULL;
 	}
 
+	spinlock_irqsave(&sched_lock);
+
 	if((flags & CLONE_FILES) == CLONE_FILES) {
 		spinlock_irqsave(&current_task->fd_table->fd_lock);
 		task->fd_table = current_task->fd_table;
@@ -761,6 +763,8 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 
 	task->signal_kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
 	task->signal_kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+
+	spinrelease_irqsave(&sched_lock);
 
 	return task;
 }
@@ -932,7 +936,7 @@ void syscall_execve(struct registers *regs) {
 }
 
 void syscall_clone(struct registers *regs) {
-/*	void *function = (void*)regs->rdi;
+	void *function = (void*)regs->rdi;
 	void *stack = (void*)regs->rsi;
 	int flags = regs->rdx;
 	pid_t *ptid = (void*)regs->r10;
@@ -940,8 +944,23 @@ void syscall_clone(struct registers *regs) {
 	pid_t *ctid = (void*)regs->r9;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] clone\n", CORE_LOCAL->pid);
-#endif*/
+	print("syscall: [pid %x] clone: function {%x}, stack {%x}, flags {%x}, ptid {%x}, newtls {%x}, ctid {%x}\n", CORE_LOCAL->pid, function, stack, flags, ptid, newtls, ctid);
+#endif
+
+	struct registers registers;
+
+	registers.cs = 0x43;
+	registers.rip = (uint64_t)function;
+	registers.ss = 0x3b;
+	registers.rflags = 0x202;
+
+	struct task *task = clone(flags, stack, ptid, ctid, newtls, &registers);
+	if(task == NULL) {
+		regs->rax = -1;
+		return;
+	}
+
+	regs->rax = task->tid;
 }
 
 void syscall_fork(struct registers *regs) {
