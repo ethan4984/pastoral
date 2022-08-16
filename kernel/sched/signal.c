@@ -171,7 +171,7 @@ int signal_send_task(struct task *sender, struct task *target, int sig) {
 
 int signal_send_group(struct task *sender, struct process_group *target, int sig) {
 	for(size_t i = 0; i < target->process_list.length; i++) {
-		pid_t pid = target->process_list.data[i]->pid;
+		pid_t pid = target->process_list.data[i]->id.pid;
 
 		struct task *task = sched_translate_pid(CORE_LOCAL->nid, pid);
 
@@ -437,7 +437,7 @@ int kill(pid_t pid, int sig) {
 		}
 
 		for(size_t i = 0; i < group->process_list.length; i++) {
-			pid_t pid = group->process_list.data[i]->pid;
+			pid_t pid = group->process_list.data[i]->id.pid;
 
 			struct task *target = sched_translate_pid(CORE_LOCAL->nid, pid);
 			if(target == NULL) {

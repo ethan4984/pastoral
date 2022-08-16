@@ -24,12 +24,17 @@ struct pid_namespace {
 	struct bitmap pid_bitmap;
 };
 
+struct task_id {
+	nid_t nid;
+	tid_t tid;
+	pid_t pid;
+}; 
+
 struct task {
 	struct spinlock lock;
 
 	struct pid_namespace *namespace;
-	tid_t tid;
-	pid_t pid;
+	struct task_id id;
 
 	struct task *parent;
 	struct process_group *group;
