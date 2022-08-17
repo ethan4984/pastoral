@@ -403,7 +403,7 @@ struct page_table *vmm_fork_page_table(struct page_table *page_table) {
 			struct page *new_page = alloc(sizeof(struct page));
 			*new_page = *page;
 
-			new_page->pml_entry = new_table->map_page(new_table, page->vaddr, page->paddr, page->flags);
+			new_page->pml_entry = new_table->map_page(new_table, page->vaddr, page->frame->addr, page->flags);
 
 			hash_table_push(new_table->pages, &new_page->vaddr, new_page, sizeof(new_page->vaddr));
 		}
@@ -436,7 +436,7 @@ int vmm_file_map(struct page_table *page_table, uintptr_t address) {
 
 			invlpg(address);
 
-			int ret = page->file->ops->read(page->file, (void*)(page->paddr + HIGH_VMA), PAGE_SIZE, page->offset) == -1 ? 0 : 1;
+			int ret = page->file->ops->read(page->file, (void*)(page->frame->addr + HIGH_VMA), PAGE_SIZE, page->offset) == -1 ? 0 : 1;
 			if(ret) {
 				*lowest_level = *lowest_level | VMM_FLAGS_P;
 			}
@@ -471,7 +471,9 @@ int vmm_anon_map(struct page_table *page_table, uintptr_t address) {
 
 			size_t misalignment = address & (PAGE_SIZE - 1);
 
-			uint64_t paddr = pmm_alloc(1, 1);
+			struct frame *frame = alloc(sizeof(struct frame));
+			frame->addr = pmm_alloc(1, 1);
+
 			uint64_t vaddr = address - misalignment;
 
 			invlpg(address);
@@ -479,10 +481,10 @@ int vmm_anon_map(struct page_table *page_table, uintptr_t address) {
 			struct page *new_page = alloc(sizeof(struct page));
 			*new_page = (struct page) {
 				.vaddr = vaddr,
-				.paddr = paddr,
+				.frame = frame,
 				.size = PAGE_SIZE,
 				.flags = flags,
-				.pml_entry = page_table->map_page(page_table, vaddr, paddr, flags),
+				.pml_entry = page_table->map_page(page_table, vaddr, frame->addr, flags),
 				.reference = alloc(sizeof(int))
 			};
 
@@ -535,6 +537,7 @@ int vmm_pf_handler(struct registers *regs) {
 		if((*page->reference) <= 1) {
 			new_frame = original_frame;
 		} else {
+			page->frame = alloc(sizeof(struct frame));
 			new_frame = pmm_alloc(1, 1);
 			memcpy64((uint64_t*)(new_frame + HIGH_VMA), (uint64_t*)(original_frame + HIGH_VMA), PAGE_SIZE / 8);
 		}
@@ -546,7 +549,7 @@ int vmm_pf_handler(struct registers *regs) {
 
 		invlpg(faulting_address);
 
-		page->paddr = new_frame;
+		page->frame->addr = new_frame;
 		page->reference = alloc(sizeof(int));
 		(*page->reference) = 1;
 

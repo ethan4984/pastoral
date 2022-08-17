@@ -1,6 +1,6 @@
 #pragma once
 
-struct sched_thread;
+struct task;
 
 struct spinlock {
 	char lock;

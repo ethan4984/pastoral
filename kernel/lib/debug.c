@@ -8,7 +8,7 @@ struct elf_file kernel_file;
 
 void stacktrace(uint64_t *rbp) {
 	for(;;) {
-		/*if(rbp == NULL) {
+		if(rbp == NULL) {
 			return;
 		}
 
@@ -28,7 +28,7 @@ void stacktrace(uint64_t *rbp) {
 			print("trace: [%x]\n", return_address);
 		}
 
-		rbp = (void*)previous_rbp;*/
+		rbp = (void*)previous_rbp;
 	}
 }
 

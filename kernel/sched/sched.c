@@ -554,7 +554,7 @@ void task_terminate(struct task *task, int status) {
 				continue;
 			}
 
-			pmm_free(page->paddr, 1);
+			pmm_free(page->frame->addr, 1);
 		}
 	}
 

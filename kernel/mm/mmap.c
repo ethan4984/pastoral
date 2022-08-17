@@ -74,34 +74,34 @@ static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int
 
 			*new_page = (struct page) {
 				.vaddr = vaddr,
-				.paddr = page->paddr,
+				.frame = page->frame,
 				.size = PAGE_SIZE,
 				.flags = flags,
 				.offset = offset,
-				.pml_entry = page_table->map_page(page_table, vaddr, page->paddr, flags),
+				.pml_entry = page_table->map_page(page_table, vaddr, page->frame->addr, flags),
 				.reference = page->reference
 			};
 
 			(*new_page->reference)++;
 		} else {
-			uint64_t frame;
+			struct frame *frame = alloc(sizeof(struct frame));
 			uint64_t extra_flags = 0;
 
 			if(handle->file_handle->ops->shared == NULL) {
-				frame = pmm_alloc(1, 1);
+				frame->addr = pmm_alloc(1, 1);
 			} else {
-				frame = (uint64_t)handle->file_handle->ops->shared(handle->file_handle, NULL, offset);
+				frame->addr = (uint64_t)handle->file_handle->ops->shared(handle->file_handle, NULL, offset);
 				extra_flags |= VMM_FLAGS_P;
 			}
 
 			*new_page = (struct page) {
 				.vaddr = vaddr,
-				.paddr = frame,
+				.frame = frame,
 				.size = PAGE_SIZE,
 				.flags = flags | extra_flags,
 				.file = handle->file_handle,
 				.offset = offset,
-				.pml_entry = page_table->map_page(page_table, vaddr, frame, flags | extra_flags),
+				.pml_entry = page_table->map_page(page_table, vaddr, frame->addr, flags | extra_flags),
 				.reference = alloc(sizeof(int))
 			};
 
@@ -137,16 +137,17 @@ static int mmap_private_pages(struct page_table *page_table, uintptr_t vaddr, in
 	for(size_t i = 0; i < DIV_ROUNDUP(length, PAGE_SIZE); i++) {
 		struct page *page = alloc(sizeof(struct page));
 
-		uint64_t frame = pmm_alloc(1, 1);
+		struct frame *frame = alloc(sizeof(struct frame));
+		frame->addr = pmm_alloc(1, 1);
 
 		*page = (struct page) {
 			.vaddr = vaddr,
-			.paddr = frame,
+			.frame = frame,
 			.size = PAGE_SIZE,
 			.flags = flags,
 			.file = handle->file_handle,
 			.offset = offset,
-			.pml_entry = page_table->map_page(page_table, vaddr, frame, flags),
+			.pml_entry = page_table->map_page(page_table, vaddr, frame->addr, flags),
 			.reference = alloc(sizeof(int))
 		};
 
@@ -320,7 +321,7 @@ int munmap(struct page_table *page_table, void *addr, size_t length) {
 
 				if(*page->reference == 0 && page->file) {
 					if(page->file->ops->shared == NULL) {
-						page->file->ops->write(page->file, (void*)(page->paddr + HIGH_VMA), PAGE_SIZE, page->offset);
+						page->file->ops->write(page->file, (void*)(page->frame->addr + HIGH_VMA), PAGE_SIZE, page->offset);
 					}
 
 					hash_table_delete(&page->file->vfs_node->shared_pages, &page->vaddr, sizeof(page->vaddr));

@@ -26,8 +26,15 @@
 #define VMM_FILE_FLAG (1 << 10)
 #define VMM_SHARE_FLAG (1 << 11)
 
+struct futex;
+
+struct frame {
+	uint64_t addr;
+	VECTOR(struct futex*) locks;
+};
+
 struct page {
-	uint64_t paddr;
+	struct frame *frame;
 	uint64_t vaddr;
 	uint64_t size;
 	uint64_t flags;

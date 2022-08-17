@@ -14,6 +14,7 @@
 #define EVENT_POLLOUT (1 << 7)
 #define EVENT_SOCKET (1 << 8)
 #define EVENT_PROCESS_STATUS (1 << 9)
+#define EVENT_LOCK (1 << 10)
 
 struct task;
 struct waitq;

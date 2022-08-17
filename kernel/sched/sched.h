@@ -12,6 +12,7 @@
 #include <drivers/tty/tty.h>
 #include <sched/signal.h>
 #include <sched/program.h>
+#include <sched/futex.h>
 #include <lock.h>
 
 struct task;
