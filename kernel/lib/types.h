@@ -145,12 +145,17 @@ typedef size_t nfds_t;
 #define POLLNVAL 0x40
 #define POLLWRNORM 0x80
 
-#define WCONTINUED 1
-#define WNOHANG 2
-#define WUNTRACED 4
-#define WEXITED 8
-#define WNOWAIT 16
-#define WSTOPPED 32
+#define WNOHANG 1
+#define WUNTRACED 2
+#define WSTOPPED 2
+#define WEXITED 4
+#define WCONTINUED 8
+#define WNOWAIT 0x01000000
+
+#define __WALL 0x40000000
+#define __WCLONE 0x80000000
+
+#define WCOREFLAG 0x80
 
 #include <lib/time.h>
 

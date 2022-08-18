@@ -192,13 +192,14 @@ static inline void task_unlock(struct task *task) {
 	spinrelease_irqsave(&task->lock);
 }
 
-#define WEXITSTATUS(x) ((x) & 0xff)
-#define WIFCONTINUED(x) ((x) & 0x100)
-#define WIFEXITED(x) ((x) & 0x200)
-#define WIFSIGNALED(x) ((x) & 0x400)
-#define WIFSTOPPED(x) ((x) & 0x800)
-#define WSTOPSIG(x) (((x) & 0xff0000) >> 16)
-#define WTERMSIG(x) (((x) & 0xff000000) >> 24)
+#define WEXITSTATUS(x) (((x) & 0xff00) >> 8)
+#define WTERMSIG(x) ((x) & 0x7f)
+#define WSTOPSIG(x) WEXITSTATUS(x)
+#define WIFEXITED(x) (WTERMSIG(x) == 0)
+#define WIFSIGNALED(x) (((signed char) (((x) & 0x7f) + 1) >> 1) > 0)
+#define WIFSTOPPED(x) (((x) & 0xff) == 0x7f)
+#define WIFCONTINUED(x) ((x) == 0xffff)
+#define WCOREDUMP(x) ((x) & WCOREFLAG)
 
 #define WEXITED_CONSTRUCT(status) ((status & 0xff) | 0x200)
 #define WSIGNALED_CONSTRUCT(status) (((int) (status & 0xff) << 24) | 0x400)

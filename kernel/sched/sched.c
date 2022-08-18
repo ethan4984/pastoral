@@ -593,6 +593,8 @@ void task_terminate(struct task *task, int status) {
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
 
+	vmm_init_page_table(&kernel_mappings);
+
 	asm volatile ("sti");
 
 	sched_yield();

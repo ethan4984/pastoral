@@ -61,7 +61,7 @@ static ssize_t kernel_file_read(struct elf_file*, void *buffer, off_t offset, si
 }
 
 void init_process() {
-	char *argv[] = { "/init", NULL };
+	char *argv[] = { "/usr/sbin/init", NULL };
 	char *envp[] = {
         "HOME=/",
         "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -69,6 +69,7 @@ void init_process() {
 		"FBDEV=/dev/fb0",
 		NULL
 	};
+
 
 	struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
 
@@ -82,7 +83,7 @@ void init_process() {
 	struct task *task = sched_default_task(CURRENT_TASK->namespace);
 	if(task == NULL) panic("unable to start init process");
 
-	int ret = sched_load_program(task, "/usr/sbin/init");
+	int ret = sched_load_program(task, argv[0]);
 	if(ret == -1) panic("unable to start init process");
 
 	ret = sched_task_init(task, envp, argv);

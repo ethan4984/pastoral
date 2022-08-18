@@ -71,3 +71,16 @@ int futex(uintptr_t uaddr, int ops, int expected, const struct timespec *timeout
 
 	return 0;
 }
+
+void syscall_futex(struct registers *regs) {
+	uint32_t *uaddr = (void*)regs->rdi;
+	int op = regs->rsi;
+	uint32_t val = regs->rdx; 
+	const struct timespec *timeout = (void*)regs->r10;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x] futex: uaddr {%x}, op {%x}, val {%x}, timeout {%x}\n", uaddr, op, val, timeout);
+#endif
+
+	futex((uintptr_t)uaddr, op, val, timeout);
+}
