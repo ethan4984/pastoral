@@ -139,7 +139,7 @@ void syscall_socket(struct registers *regs) {
 	int protocol = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] socket: family {%x}, type {%x}, protocol {%x}\n", CORE_LOCAL->pid, family, type, protocol);
+	print("syscall: [pid %x, tid %x] socket: family {%x}, type {%x}, protocol {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, family, type, protocol);
 #endif
 
 	struct socket *socket = socket_create(family, type, protocol);
@@ -170,7 +170,7 @@ void syscall_getsockname(struct registers *regs) {
 	socklen_t *addrlen = (void*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getsockname: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
+	print("syscall: [pid %x, tid %x] getsockname: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -189,7 +189,7 @@ void syscall_getpeername(struct registers *regs) {
 	socklen_t *addrlen = (void*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getpeername: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
+	print("syscall: [pid %x, tid %x] getpeername: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -207,7 +207,7 @@ void syscall_listen(struct registers *regs) {
 	int backlog = regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] backlog: sockfd {%x}, backlog {%x}\n", CORE_LOCAL->pid, sockfd, backlog);
+	print("syscall: [pid %x, tid %x] backlog: sockfd {%x}, backlog {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, backlog);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -226,7 +226,7 @@ void syscall_accept(struct registers *regs) {
 	socklen_t *addrlen = (void*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] accept: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
+	print("syscall: [pid %x, tid %x] accept: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -245,7 +245,7 @@ void syscall_bind(struct registers *regs) {
 	socklen_t addrlen = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] bind: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
+	print("syscall: [pid %x, tid %x] bind: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -267,7 +267,7 @@ void syscall_sendto(struct registers *regs) {
 	socklen_t addrlen = regs->r9;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] sendto: sockfd {%x}, buf {%x}, len {%x}, flags {%x}, dest {%x}, addrlen {%x}\n", sockfd, buf, len, flags, dest, addrlen);
+	print("syscall: [pid %x, tid %x] sendto: sockfd {%x}, buf {%x}, len {%x}, flags {%x}, dest {%x}, addrlen {%x}\n", sockfd, buf, len, flags, dest, addrlen);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -305,7 +305,7 @@ void syscall_recvfrom(struct registers *regs) {
 	socklen_t *addrlen = (void*)regs->r9;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] recvfrom: sockfd {%x}, buf {%x}, len {%x}, flags {%x}, src {%x}, addrlen {%x}\n", sockfd, buf, len, flags, src, addrlen);
+	print("syscall: [pid %x, tid %x] recvfrom: sockfd {%x}, buf {%x}, len {%x}, flags {%x}, src {%x}, addrlen {%x}\n", sockfd, buf, len, flags, src, addrlen);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -339,7 +339,7 @@ void syscall_connect(struct registers *regs) {
 	socklen_t addrlen = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] connect: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, sockfd, addr, addrlen);
+	print("syscall: [pid %x, tid %x] connect: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);

@@ -32,11 +32,11 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *old) {
 		*current_action = *act;
 		current_action->sa_mask &= ~(SIGMASK(SIGKILL) | SIGMASK(SIGSTOP));
 
-		//print("sigaction [pid %d]: signum %x: handler %x\n", CORE_LOCAL->pid, sig, act->handler);
+		//print("sigaction [pid %d, tid %d]: signum %x: handler %x\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sig, act->handler);
 
 		spinlock_irqsave(&queue->siglock);
 
-		if(act->handler.sa_sigaction == SIG_IGN && queue->sigpending & (1 << sig)) {
+		if(act->handler.sa_sigaction == SIG_IGN && queue->sigpending & (1ull << sig)) {
 			queue->sigpending &= ~(1 << sig);
 		}
 
@@ -173,7 +173,7 @@ int signal_send_group(struct task *sender, struct process_group *target, int sig
 	for(size_t i = 0; i < target->process_list.length; i++) {
 		pid_t pid = target->process_list.data[i]->id.pid;
 
-		struct task *task = sched_translate_pid(CORE_LOCAL->nid, pid);
+		struct task *task = sched_translate_pid(CORE_LOCAL->nid, pid, 0);
 
 		if(!task) {
 			set_errno(ESRCH);
@@ -416,7 +416,7 @@ int kill(pid_t pid, int sig) {
 	}
 
 	if(pid > 0) {
-		struct task *target = sched_translate_pid(CORE_LOCAL->nid, pid);
+		struct task *target = sched_translate_pid(CORE_LOCAL->nid, pid, 0);
 		if(target == NULL) {
 			set_errno(ESRCH);
 			return -1;
@@ -439,7 +439,7 @@ int kill(pid_t pid, int sig) {
 		for(size_t i = 0; i < group->process_list.length; i++) {
 			pid_t pid = group->process_list.data[i]->id.pid;
 
-			struct task *target = sched_translate_pid(CORE_LOCAL->nid, pid);
+			struct task *target = sched_translate_pid(CORE_LOCAL->nid, pid, 0);
 			if(target == NULL) {
 				set_errno(ESRCH);
 				return -1;
@@ -513,7 +513,7 @@ static void sigreturn_default(int release_block) {
 
 void syscall_sigreturn(struct registers*) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] sigreturn\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] sigreturn\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	asm volatile ("cli");
 
@@ -615,7 +615,7 @@ void syscall_sigaction(struct registers *regs) {
 	struct sigaction *old = (void*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] sigaction: signum {%x}, act {%x}, old {%x}\n", CORE_LOCAL->pid, sig, act, old);
+	print("syscall: [pid %x, tid %x] sigaction: signum {%x}, act {%x}, old {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sig, act, old);
 #endif
 
 	regs->rax = sigaction(sig, act, old);
@@ -625,7 +625,7 @@ void syscall_sigpending(struct registers *regs) {
 	sigset_t *set = (void*)regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] sigpending: set {%x}\n", CORE_LOCAL->pid, set);
+	print("syscall: [pid %x, tid %x] sigpending: set {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, set);
 #endif
 
 	regs->rax = sigpending(set);
@@ -637,7 +637,7 @@ void syscall_sigprocmask(struct registers *regs) {
 	sigset_t *oldset = (void*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] sigprocmask: how {%x}, set {%x}, oldset {%x}\n", CORE_LOCAL->pid, how, set, oldset);
+	print("syscall: [pid %x, tid %x] sigprocmask: how {%x}, set {%x}, oldset {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, how, set, oldset);
 #endif
 
 	regs->rax = sigprocmask(how, set, oldset);
@@ -648,7 +648,7 @@ void syscall_kill(struct registers *regs) {
 	int sig = regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] kill: pid {%x}, sig {%x}\n", CORE_LOCAL->pid, pid, sig);
+	print("syscall: [pid %x, tid %x] kill: pid {%x}, sig {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pid, sig);
 #endif
 
 	regs->rax = kill(pid, sig);
@@ -656,7 +656,7 @@ void syscall_kill(struct registers *regs) {
 
 void syscall_pause(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] pause\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] pause\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
 	struct task *task = CURRENT_TASK;
@@ -676,7 +676,7 @@ void syscall_sigsuspend(struct registers *regs) {
 	sigset_t *mask = (void*)regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] pause\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] pause\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
 	struct task *task = CURRENT_TASK;

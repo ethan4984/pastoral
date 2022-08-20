@@ -24,13 +24,20 @@ static struct bitmap nid_bitmap = {
 
 struct spinlock sched_lock;
 
-struct task *sched_translate_pid(nid_t nid, pid_t pid) {
+struct task *sched_translate_pid(nid_t nid, pid_t pid, tid_t tid) {
 	struct pid_namespace *namespace = hash_table_search(&namespace_list, &nid, sizeof(nid));
 	if(namespace == NULL) {
 		return NULL;
 	}
 
-	return hash_table_search(&namespace->process_list, &pid, sizeof(pid));
+	struct task *task = hash_table_search(&namespace->process_list, &pid, sizeof(pid));
+	if(task == NULL) {
+		return NULL;
+	}
+
+	struct task *thread = hash_table_search(&task->thread_group->process_list, &tid, sizeof(tid));
+
+	return thread;
 }
 
 struct task *find_next_task() {
@@ -123,7 +130,7 @@ void reschedule(struct registers *regs, void*) {
 		swapgs();
 	}
 
-	//print("rescheduling to %x:%x to %x:%x [stack] %x:%x\n", next_task->regs.cs, next_task->regs.rip, next_task->id.pid, next_task->id.tid, next_task->regs.ss, next_task->regs.rsp);
+	//print("rescheduling to %x:%x to %x:%x [stack] %x:%x rax %x\n", next_task->regs.cs, next_task->regs.rip, next_task->id.pid, next_task->id.tid, next_task->regs.ss, next_task->regs.rsp, next_task->regs.rax);
 
 	xapic_write(XAPIC_EOI_OFF, 0);
 	spinrelease_irqsave(&sched_lock);
@@ -298,6 +305,8 @@ int sched_task_init(struct task *task, char **envp, char **argv) {
 	}
 
 	CORE_LOCAL->pid = task->id.pid;
+	CORE_LOCAL->tid = task->id.tid;
+
 	vmm_init_page_table(task->page_table);
 
 	task->regs.rip = task->program.entry;
@@ -319,6 +328,8 @@ int sched_task_init(struct task *task, char **envp, char **argv) {
 	int ret = program_place_parameters(&task->program, envp, argv);
 
 	CORE_LOCAL->pid = current_task->id.pid;
+	CORE_LOCAL->tid = current_task->id.tid;
+
 	vmm_init_page_table(current_task->page_table);
 
 	spinrelease_irqsave(&sched_lock);
@@ -341,6 +352,7 @@ int sched_load_program(struct task *task, const char *path) {
 	task->program.task = task;
 
 	vmm_init_page_table(task->page_table);
+	CORE_LOCAL->tid = task->id.tid;
 	CORE_LOCAL->pid = task->id.pid;
 
 	int ret = program_load(&task->program, path);
@@ -350,6 +362,7 @@ int sched_load_program(struct task *task, const char *path) {
 	}
 
 	vmm_init_page_table(current_task->page_table);
+	CORE_LOCAL->tid = current_task->id.tid;
 	CORE_LOCAL->pid = current_task->id.pid;
 
 	spinrelease_irqsave(&sched_lock);
@@ -424,7 +437,7 @@ void syscall_waitpid(struct registers *regs) {
 	int options = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] waitpid: pid {%x}, status {%x}, options {%x}\n", CURRENT_TASK->id.pid, pid, (uintptr_t)status, options);
+	print("syscall: [pid %x, tid %x] waitpid: pid {%x}, status {%x}, options {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pid, (uintptr_t)status, options);
 #endif
 
 	asm volatile ("cli");
@@ -487,7 +500,7 @@ void syscall_waitpid(struct registers *regs) {
 			}
 		}
 	} else if(pid > 0) {
-		VECTOR_PUSH(process_list, sched_translate_pid(namespace->nid, pid));
+		VECTOR_PUSH(process_list, sched_translate_pid(namespace->nid, pid, 0));
 	}
 
 	for(size_t i = 0; i < process_list.length; i++) {
@@ -560,7 +573,7 @@ void task_terminate(struct task *task, int status) {
 
 	signal_send_task(NULL, task, SIGCHLD);
 
-	struct task *parent = sched_translate_pid(task->namespace->nid, 1);
+	struct task *parent = sched_translate_pid(task->namespace->nid, 1, 0);
 
 	for(size_t i = 0; i < task->children.length; i++) {
 		struct task *child = task->children.data[i];
@@ -678,6 +691,8 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 		task->parent = current_task;
 	}
 
+	task->signal_queue.sigmask = current_task->signal_queue.sigmask;
+
 	if((flags & CLONE_SIGHAND) == CLONE_SIGHAND) {
 		task->sigactions = current_task->sigactions;
 	} else {
@@ -789,7 +804,7 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 
 void syscall_exit(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] exit\n", CURRENT_TASK->id.pid);
+	print("syscall: [pid %x, tid %x] exit: status {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, regs->rdi);
 #endif
 	struct task *task = CURRENT_TASK;
 	if(task == NULL) {
@@ -819,8 +834,8 @@ void syscall_execve(struct registers *regs) {
 	}
 
 	char *path = alloc(strlen(_path) + 1);
-	char **argv = alloc(sizeof(char*) * argv_cnt);
-	char **envp = alloc(sizeof(char*) * envp_cnt);
+	char **argv = alloc(sizeof(char*) * (argv_cnt + 1));
+	char **envp = alloc(sizeof(char*) * (envp_cnt + 1));
 
 	strcpy(path, _path);
 
@@ -954,36 +969,42 @@ void syscall_execve(struct registers *regs) {
 }
 
 void syscall_clone(struct registers *regs) {
-	void *function = (void*)regs->rdi;
-	void *stack = (void*)regs->rsi;
-	int flags = regs->rdx;
-	pid_t *ptid = (void*)regs->r10;
-	void *newtls = (void*)regs->r8;
-	pid_t *ctid = (void*)regs->r9;
+	struct clone_args *clone_args = (void*)regs->rdi;
+	size_t size = regs->rsi;
+
+	if(sizeof(struct clone_args) != size) {
+		set_errno(EINVAL);
+		regs->rax = -1;
+		return;
+	}
+
+	void *stack = (void*)clone_args->stack;
+	int flags = clone_args->flags;
+	pid_t *ptid = (void*)clone_args->parent_tid;
+	pid_t *ctid = (void*)clone_args->child_tid;
+	void *tls = (void*)clone_args->tls;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] clone: function {%x}, stack {%x}, flags {%x}, ptid {%x}, newtls {%x}, ctid {%x}\n", CORE_LOCAL->pid, function, stack, flags, ptid, newtls, ctid);
+	print("syscall: [pid %x, tid %x] clone: stack {%x}, flags {%x}, ptid {%x}, tls {%x}, ctid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, stack, flags, ptid, tls, ctid);
 #endif
 
-	struct registers registers;
+	struct registers registers = *regs;
+	registers.rsp = (uint64_t)stack;
+	registers.rdi = 0;
 
-	registers.cs = 0x43;
-	registers.rip = (uint64_t)function;
-	registers.ss = 0x3b;
-	registers.rflags = 0x202;
-
-	struct task *task = clone(flags, stack, ptid, ctid, newtls, &registers);
+	struct task *task = clone(flags, stack, ptid, ctid, tls, &registers);
 	if(task == NULL) {
 		regs->rax = -1;
 		return;
 	}
 
+	task->regs.rax = 0;
 	regs->rax = task->id.tid;
 }
 
 void syscall_fork(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] fork\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] fork\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	
 	struct task *task = clone(0, NULL, NULL, NULL, NULL, regs);
@@ -998,49 +1019,49 @@ void syscall_fork(struct registers *regs) {
 
 void syscall_getpid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getpid\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] getpid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CORE_LOCAL->pid;
 }
 
 void syscall_getppid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getppid\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] getppid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->parent->id.pid;
 }
 
 void syscall_gettid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] gettid\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] gettid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CORE_LOCAL->tid;
 }
 
 void syscall_getuid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getuid\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] getuid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->real_uid;
 }
 
 void syscall_geteuid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] geteuid\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] geteuid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->effective_uid;
 }
 
 void syscall_getgid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getgid\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] getgid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->real_gid;
 }
 
 void syscall_getegid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getegid\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] getegid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->effective_gid;
 }
@@ -1050,7 +1071,7 @@ void syscall_setuid(struct registers *regs) {
 	struct task *current_task = CURRENT_TASK;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] setuid: uid {%x}\n", CORE_LOCAL->pid, uid);
+	print("syscall: [pid %x, tid %x] setuid: uid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, uid);
 #endif
 
 	if(current_task->effective_uid == 0) {
@@ -1076,7 +1097,7 @@ void syscall_seteuid(struct registers *regs) {
 	struct task *current_task = CURRENT_TASK;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] seteuid: euid {%x}\n", CORE_LOCAL->pid, euid);
+	print("syscall: [pid %x, tid %x] seteuid: euid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, euid);
 #endif
 
 	if(current_task->real_uid == euid || current_task->effective_uid == euid || current_task->saved_uid == euid) {
@@ -1094,7 +1115,7 @@ void syscall_setgid(struct registers *regs) {
 	struct task *current_task = CURRENT_TASK;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] setgid: gid {%x}\n", CORE_LOCAL->pid, gid);
+	print("syscall: [pid %x, tid %x] setgid: gid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, gid);
 #endif
 
 	if(current_task->effective_uid == 0) {
@@ -1120,7 +1141,7 @@ void syscall_setegid(struct registers *regs) {
 	struct task *current_task = CURRENT_TASK;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] setegid: egid {%x}\n", CORE_LOCAL->pid, egid);
+	print("syscall: [pid %x, tid %x] setegid: egid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, egid);
 #endif
 
 	if(current_task->real_gid == egid || current_task->effective_gid == egid || current_task->saved_gid == egid) {
@@ -1138,10 +1159,10 @@ void syscall_setpgid(struct registers *regs) {
 	pid_t pgid = regs->rsi == 0 ? CORE_LOCAL->pid : regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] setpgid: pid {%x}, pgid {%x}\n", CORE_LOCAL->pid, pid, pgid);
+	print("syscall: [pid %x, tid %x] setpgid: pid {%x}, pgid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pid, pgid);
 #endif
 
-	struct task *task = sched_translate_pid(CORE_LOCAL->nid, pid);
+	struct task *task = sched_translate_pid(CORE_LOCAL->nid, pid, 0);
 	if(task == NULL) {
 		set_errno(ESRCH);
 		regs->rax = -1;
@@ -1155,10 +1176,10 @@ void syscall_getpgid(struct registers *regs) {
 	pid_t pid = regs->rdi == 0 ? CORE_LOCAL->pid : regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getpgid: pid {%x}\n", CORE_LOCAL->pid, pid);
+	print("syscall: [pid %x, tid %x] getpgid: pid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pid);
 #endif
 
-	struct task *task = sched_translate_pid(CORE_LOCAL->nid, pid);
+	struct task *task = sched_translate_pid(CORE_LOCAL->nid, pid, 0);
 	if(task == NULL) {
 		set_errno(ESRCH);
 		regs->rax = -1;
@@ -1176,7 +1197,7 @@ void syscall_getpgid(struct registers *regs) {
 
 void syscall_setsid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] setsid\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] setsid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
 	struct task *current_task = CURRENT_TASK;
@@ -1189,7 +1210,7 @@ void syscall_setsid(struct registers *regs) {
 
 void syscall_getsid(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getsid\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] getsid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
 	regs->rax = CURRENT_TASK->session->sid;

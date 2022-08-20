@@ -128,7 +128,7 @@ struct sched_arguments {
 };
 
 struct pid_namespace *sched_default_namespace();
-struct task *sched_translate_pid(nid_t nid, pid_t pid);
+struct task *sched_translate_pid(nid_t nid, pid_t pid, tid_t tid);
 struct task *sched_default_task(struct pid_namespace *namespace);
 int sched_task_init(struct task *task, char **envp, char **argv);
 int sched_load_program(struct task *task, const char *path);
@@ -149,7 +149,7 @@ extern struct spinlock sched_lock;
 #define CURRENT_TASK ({ \
 	struct task *ret = NULL; \
 	if(CORE_LOCAL) { \
-		ret = sched_translate_pid(CORE_LOCAL->nid, CORE_LOCAL->pid); \
+		ret = sched_translate_pid(CORE_LOCAL->nid, CORE_LOCAL->pid, CORE_LOCAL->tid); \
 	} \
 	ret; \
 })
@@ -196,19 +196,34 @@ static inline void task_unlock(struct task *task) {
 #define WTERMSIG(x) ((x) & 0x7f)
 #define WSTOPSIG(x) WEXITSTATUS(x)
 #define WIFEXITED(x) (WTERMSIG(x) == 0)
-#define WIFSIGNALED(x) (((signed char) (((x) & 0x7f) + 1) >> 1) > 0)
+#define WIFSIGNALED(x) (((signed char)(((x) & 0x7f) + 1) >> 1) > 0)
 #define WIFSTOPPED(x) (((x) & 0xff) == 0x7f)
 #define WIFCONTINUED(x) ((x) == 0xffff)
 #define WCOREDUMP(x) ((x) & WCOREFLAG)
 
-#define WEXITED_CONSTRUCT(status) ((status & 0xff) | 0x200)
-#define WSIGNALED_CONSTRUCT(status) (((int) (status & 0xff) << 24) | 0x400)
-#define WSTOPPED_CONSTRUCT(sig) (((int) (sig & 0xff) << 16) | 0x800)
-#define WCONTINUED_CONSTRUCT 0x100
+#define WSTATUS_CONSTRUCT(x) ((x) << 8)
+#define WEXITED_CONSTRUCT(x) (WSTATUS_CONSTRUCT(x))
+#define WSIGNALED_CONSTRUCT(x) ((x) & 0x7f)
+#define WSTOPPED_CONSTRUCT(x) (0x7f)
+#define WCONTINUED_CONSTRUCT 0xffff
+
+struct clone_args {
+	uint64_t flags;
+	uint64_t pidfd;
+	uint64_t child_tid;
+	uint64_t parent_tid;
+	uint64_t exit_signal;
+	uint64_t stack;
+	uint64_t stack_size;
+	uint64_t tls;
+	uint64_t set_tid;
+	uint64_t set_tid_size;
+	uint64_t cgroup;
+};
 
 #define CLONE_VM 0x00000100
 #define CLONE_FS 0x00000200
-#define CLONE_FILES	0x00000400
+#define CLONE_FILES 0x00000400
 #define CLONE_SIGHAND 0x00000800
 #define CLONE_PTRACE 0x00002000
 #define CLONE_VFORK 0x00004000

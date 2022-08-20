@@ -168,7 +168,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 	switch(req) {
 		case TIOCGPGRP: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] tty_ioctl (TIOCGPGRP)\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] tty_ioctl (TIOCGPGRP)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			if(CURRENT_TASK->session != tty->session) {
 				tty_unlock(tty);
@@ -184,7 +184,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 		case TIOCSPGRP: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] tty_ioctl (TIOCSPGRP)\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] tty_ioctl (TIOCSPGRP)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
 			if(CURRENT_TASK->session != tty->session) {
@@ -209,7 +209,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 		case TIOCSCTTY: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] tty_ioctl (TIOCSCTTY)\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] tty_ioctl (TIOCSCTTY)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			if(tty->session || (CURRENT_TASK->session->pgid_leader
 				!= CURRENT_TASK->group->pgid)) {
@@ -226,7 +226,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 		case TCGETS: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] tty_ioctl (TCGETS)\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] tty_ioctl (TCGETS)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			spinlock_irqsave(&tty->input_lock);
 			spinlock_irqsave(&tty->output_lock);
@@ -240,7 +240,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 		case TCSETS: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] tty_ioctl (TCSETS)\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] tty_ioctl (TCSETS)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			spinlock_irqsave(&tty->input_lock);
 			spinlock_irqsave(&tty->output_lock);
@@ -254,7 +254,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 		case TCSETSW: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] tty_ioctl (TCSETW)\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] tty_ioctl (TCSETW)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			while(__atomic_load_n(&tty->output_queue.items, __ATOMIC_RELAXED));
 			spinlock_irqsave(&tty->output_lock);
@@ -269,7 +269,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 		case TCSETSF: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] tty_ioctl (TCSETF)\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] tty_ioctl (TCSETF)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			while(__atomic_load_n(&tty->output_queue.items, __ATOMIC_RELAXED));
 			spinlock_irqsave(&tty->output_lock);

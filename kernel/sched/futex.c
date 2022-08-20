@@ -11,7 +11,8 @@ int futex(uintptr_t uaddr, int ops, int expected, const struct timespec *timeout
 		panic("");
 	}
 
-	struct page *page = hash_table_search(task->page_table->pages, &uaddr, sizeof(uaddr));
+	uint64_t uaddr_page = uaddr & ~(0xfff);
+	struct page *page = hash_table_search(task->page_table->pages, &uaddr_page, sizeof(uaddr_page));
 	if(page == NULL) {
 		set_errno(EFAULT);
 		return -1;
@@ -79,8 +80,8 @@ void syscall_futex(struct registers *regs) {
 	const struct timespec *timeout = (void*)regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] futex: uaddr {%x}, op {%x}, val {%x}, timeout {%x}\n", uaddr, op, val, timeout);
+	print("syscall: [pid %x, tid %x] futex: uaddr {%x}, op {%x}, val {%x}, timeout {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, uaddr, op, val, timeout);
 #endif
 
-	futex((uintptr_t)uaddr, op, val, timeout);
+	regs->rax = futex((uintptr_t)uaddr, op, val, timeout);
 }

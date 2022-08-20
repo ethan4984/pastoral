@@ -190,7 +190,7 @@ static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 	switch(req) {
 		case TIOCGPTN:
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] pty_ioctl: TIOCGPTN\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGPTN\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			int *ptn = arg;
 			*ptn = pts->slave_no;
@@ -198,7 +198,7 @@ static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 		case TIOCGWINSZ: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			memcpy(arg, &pts->winsize, sizeof(struct winsize));
 			return 0;
@@ -206,7 +206,7 @@ static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 		case TIOCSWINSZ: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			memcpy(&pts->winsize, arg, sizeof(struct winsize));
 			// TODO: inject signal.
@@ -217,6 +217,8 @@ static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			set_errno(ENOSYS);
 			return -1;
 	}
+
+	return 0;
 }
 
 static int pts_ioctl(struct tty *tty, uint64_t req, void *arg) {
@@ -225,7 +227,7 @@ static int pts_ioctl(struct tty *tty, uint64_t req, void *arg) {
 	switch(req) {
 		case TIOCGWINSZ: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			memcpy(arg, &pts->winsize, sizeof(struct winsize));
 			return 0;
@@ -233,7 +235,7 @@ static int pts_ioctl(struct tty *tty, uint64_t req, void *arg) {
 
 		case TIOCSWINSZ: {
 #ifndef SYSCALL_DEBUG
-			print("syscall: [pid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid);
+			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			memcpy(&pts->winsize, arg, sizeof(struct winsize));
 			// TODO: inject signal.

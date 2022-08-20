@@ -78,7 +78,7 @@ static void syscall_set_fs_base(struct registers *regs) {
 	CURRENT_TASK->user_fs_base = addr;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] set_fs_base: addr {%x}\n", CORE_LOCAL->pid, addr);
+	print("syscall: [pid %x, tid %x] set_fs_base: addr {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, addr);
 #endif
 
 	set_user_fs(addr);
@@ -88,7 +88,7 @@ static void syscall_set_fs_base(struct registers *regs) {
 
 static void syscall_get_fs_base(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] get_fs_base\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] get_fs_base\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
 	regs->rax = get_user_fs();
@@ -100,7 +100,7 @@ static void syscall_set_gs_base(struct registers *regs) {
 	CURRENT_TASK->user_gs_base = addr;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] set_gs_base: addr {%x}\n", CORE_LOCAL->pid, addr);
+	print("syscall: [pid %x, tid %x] set_gs_base: addr {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, addr);
 #endif
 
 	set_user_gs(addr);
@@ -110,7 +110,7 @@ static void syscall_set_gs_base(struct registers *regs) {
 
 static void syscall_get_gs_base(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] get_gs_base\n", CORE_LOCAL->pid);
+	print("syscall: [pid %x, tid %x] get_gs_base\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
 	regs->rax = get_user_gs();
@@ -214,7 +214,7 @@ extern void syscall_handler(struct registers *regs) {
 	}
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid, syscall_list[syscall_number].name, regs->rax, get_errno());
+	print("syscall: [pid %x, tid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid, CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
 #endif
 
 	CURRENT_TASK->signal_queue.active = true;

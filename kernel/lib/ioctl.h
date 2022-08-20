@@ -17,6 +17,7 @@
 #define TIOCGSID 0x5429
 
 #define TIOCGPTN 0x80045430
+#define TIOCSPTLCK 0x40045431
 
 struct winsize {
 	uint16_t ws_row;
@@ -24,5 +25,3 @@ struct winsize {
 	uint16_t ws_xpixel;
 	uint16_t ws_ypixel;
 };
-
-

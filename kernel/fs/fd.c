@@ -796,7 +796,7 @@ void syscall_dup2(struct registers *regs) {
 	int newfd = regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] dup2: oldfd {%x}, newfd {%x}\n", CORE_LOCAL->pid, oldfd, newfd);
+	print("syscall: [pid %x, tid %x] dup2: oldfd {%x}, newfd {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, oldfd, newfd);
 #endif
 
 	regs->rax = fd_dup2(oldfd, newfd);
@@ -806,7 +806,7 @@ void syscall_dup(struct registers *regs) {
 	int fd = regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] dup: fd {%x}\n", CORE_LOCAL->pid, fd);
+	print("syscall: [pid %x, tid %x] dup: fd {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd);
 #endif
 
 	regs->rax = fd_dup(fd, true);
@@ -817,7 +817,7 @@ void syscall_stat(struct registers *regs) {
 	void *buf = (void*)regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] stat: fd {%x}, buf {%x}\n", CORE_LOCAL->pid, fd, (uintptr_t)buf);
+	print("syscall: [pid %x, tid %x] stat: fd {%x}, buf {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, (uintptr_t)buf);
 #endif
 
 	regs->rax = fd_stat(fd, buf);
@@ -830,7 +830,7 @@ void syscall_statat(struct registers *regs) {
 	int flags = regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] statat: dirfd {%x}, path {%s}, buf {%x}, flags {%x}\n", CORE_LOCAL->pid, dirfd, path, (uintptr_t)buf, flags);
+	print("syscall: [pid %x, tid %x] statat: dirfd {%x}, path {%s}, buf {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, path, (uintptr_t)buf, flags);
 #endif
 
 	regs->rax = fd_statat(dirfd, path, buf, flags);
@@ -842,7 +842,7 @@ void syscall_write(struct registers *regs) {
 	size_t cnt = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] write: fd {%x}, buf {%x}, cnt {%x}\n", CORE_LOCAL->pid, fd, (uintptr_t)buf, cnt);
+	print("syscall: [pid %x, tid %x] write: fd {%x}, buf {%x}, cnt {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, (uintptr_t)buf, cnt);
 #endif
 
 	regs->rax = fd_write(fd, buf, cnt);
@@ -854,7 +854,7 @@ void syscall_read(struct registers *regs) {
 	size_t cnt = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] read: fd {%x}, buf {%x}, cnt {%x}\n", CORE_LOCAL->pid, fd, (uintptr_t)buf, cnt);
+	print("syscall: [pid %x, tid %x] read: fd {%x}, buf {%x}, cnt {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, (uintptr_t)buf, cnt);
 #endif
 
 	regs->rax = fd_read(fd, buf, cnt);
@@ -866,7 +866,7 @@ void syscall_seek(struct registers *regs) {
 	int whence = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] seek: fd {%x}, offset {%x}, whence {%x}\n", CORE_LOCAL->pid, fd, offset, whence);
+	print("syscall: [pid %x, tid %x] seek: fd {%x}, offset {%x}, whence {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, offset, whence);
 #endif
 
 	regs->rax = fd_seek(fd, offset, whence);
@@ -879,7 +879,7 @@ void syscall_openat(struct registers *regs) {
 	mode_t mode = regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] open: dirfd {%x}, pathname {%s}, flags {%x}\n", CORE_LOCAL->pid, dirfd, pathname, flags);
+	print("syscall: [pid %x, tid %x] open: dirfd {%x}, pathname {%s}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, pathname, flags);
 #endif
 
 	regs->rax = fd_openat(dirfd, pathname, flags, mode);
@@ -889,7 +889,7 @@ void syscall_close(struct registers *regs) {
 	int fd = regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] close: fd {%x}\n", CORE_LOCAL->pid, fd);
+	print("syscall: [pid %x, tid %x] close: fd {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd);
 #endif
 
 	regs->rax = fd_close(fd);
@@ -897,7 +897,7 @@ void syscall_close(struct registers *regs) {
 
 void syscall_fcntl(struct registers *regs) {
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] fcntl: fd {%x}, cmd {%x}, data {%x}\n", CORE_LOCAL->pid, regs->rdi, regs->rsi, regs->rdx);
+	print("syscall: [pid %x, tid %x] fcntl: fd {%x}, cmd {%x}, data {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, regs->rdi, regs->rsi, regs->rdx);
 #endif
 
 	struct fd_handle *fd_handle = fd_translate(regs->rdi);
@@ -955,7 +955,7 @@ void syscall_readdir(struct registers *regs) {
 	struct dirent *buf = (void*)regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] readdir: fd {%x}, buf {%x}\n", CORE_LOCAL->pid, fd, (uintptr_t)buf);
+	print("syscall: [pid %x, tid %x] readdir: fd {%x}, buf {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, (uintptr_t)buf);
 #endif
 
 	struct fd_handle *dir_handle = fd_translate(fd);
@@ -1012,7 +1012,7 @@ void syscall_getcwd(struct registers *regs) {
 	size_t size = regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] getcwd: buf {%x}, size {%x}\n", CORE_LOCAL->pid, buf, size);
+	print("syscall: [pid %x, tid %x] getcwd: buf {%x}, size {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, buf, size);
 #endif
 
 	const char *path = vfs_absolute_path(*CURRENT_TASK->cwd);
@@ -1031,7 +1031,7 @@ void syscall_chdir(struct registers *regs) {
 	const char *path = (const char*)regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] chdir: path {%s}\n", CORE_LOCAL->pid, path);
+	print("syscall: [pid %x, tid %x] chdir: path {%s}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, path);
 #endif
 
 	struct vfs_node *node;
@@ -1049,7 +1049,7 @@ void syscall_pipe(struct registers *regs) {
 	int *fd_pair = (int*)regs->rdi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] pipe: fd pair {%x}\n", CORE_LOCAL->pid, fd_pair);
+	print("syscall: [pid %x, tid %x] pipe: fd pair {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd_pair);
 #endif
 
 	fd_pair[0] = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
@@ -1115,7 +1115,7 @@ void syscall_faccessat(struct registers *regs) {
 	int flags = regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] faccessat: dirfd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, dirfd, path, mode, flags);
+	print("syscall: [pid %x, tid %x] faccessat: dirfd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, path, mode, flags);
 #endif
 
 	if (!(mode & F_OK) && !(mode & (R_OK | W_OK | X_OK))) {
@@ -1144,7 +1144,7 @@ void syscall_symlinkat(struct registers *regs) {
 	const char *linkpath = (const char*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] symlink: target {%s}, newdirfd {%x}, linkpath {%s}\n", CORE_LOCAL->pid, target, newdirfd, linkpath);
+	print("syscall: [pid %x, tid %x] symlink: target {%s}, newdirfd {%x}, linkpath {%s}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, target, newdirfd, linkpath);
 #endif
 
 	struct vfs_node *link_node;
@@ -1189,7 +1189,7 @@ void syscall_ioctl(struct registers *regs) {
 	void *args = (void*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] ioctl: fd {%x}, req {%x}, args {%x}\n", CORE_LOCAL->pid, fd, req, args);
+	print("syscall: [pid %x, tid %x] ioctl: fd {%x}, req {%x}, args {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, req, args);
 #endif
 
 	struct fd_handle *fd_handle = fd_translate(fd);
@@ -1212,7 +1212,7 @@ void syscall_umask(struct registers *regs) {
 	mode_t mask = regs->rdi & 0777;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] umask: mask {%x}\n", CORE_LOCAL->pid, mask);
+	print("syscall: [pid %x, tid %x] umask: mask {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, mask);
 #endif
 
 	regs->rax = *CURRENT_TASK->umask;
@@ -1238,7 +1238,7 @@ void syscall_fchmod(struct registers *regs) {
 	mode_t mode = regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] fchmod: fd {%x}, mode {%x}\n", CORE_LOCAL->pid, fd, mode);
+	print("syscall: [pid %x, tid %x] fchmod: fd {%x}, mode {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, mode);
 #endif
 
 	struct fd_handle *handle = fd_translate(fd);
@@ -1258,7 +1258,7 @@ void syscall_fchmodat(struct registers *regs) {
 	int flags = regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] fchmodat: fd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, fd, path, mode, flags);
+	print("syscall: [pid %x, tid %x] fchmodat: fd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, path, mode, flags);
 #endif
 
 	struct vfs_node *file;
@@ -1280,7 +1280,7 @@ void syscall_fchownat(struct registers *regs) {
 	int flag = regs->r8;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] fchownat: fd {%x}, path {%s}, uid {%x}, gid {%x}, flag {%x}\n", CORE_LOCAL->pid, fd, path, uid, gid, flag);
+	print("syscall: [pid %x, tid %x] fchownat: fd {%x}, path {%s}, uid {%x}, gid {%x}, flag {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, path, uid, gid, flag);
 #endif
 
 	regs->rax = fd_fchownat(fd, path, uid, gid, flag);
@@ -1292,7 +1292,7 @@ void syscall_poll(struct registers *regs) {
 	int timeout = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] poll: fds {%x}, nfds {%x}, timeout {%x}\n", CORE_LOCAL->pid, fds, nfds, timeout);
+	print("syscall: [pid %x, tid %x] poll: fds {%x}, nfds {%x}, timeout {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fds, nfds, timeout);
 #endif
 
 	if(timeout == 0) {
@@ -1312,7 +1312,7 @@ void syscall_ppoll(struct registers *regs) {
 	sigset_t *sigmask = (void*)regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] ppoll: fds {%x}, nfds {%x}, timespec {%x}, sigmask {%x}\n", CORE_LOCAL->pid, fds, nfds, timespec, sigmask);
+	print("syscall: [pid %x, tid %x] ppoll: fds {%x}, nfds {%x}, timespec {%x}, sigmask {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fds, nfds, timespec, sigmask);
 #endif
 
 	sigset_t original_mask;

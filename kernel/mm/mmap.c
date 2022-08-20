@@ -353,7 +353,7 @@ extern void syscall_mmap(struct registers *regs) {
 	off_t offset = regs->r9;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x] mmap: addr {%x}, length {%x}, prot {%x}, flags {%x}, fd {%x}, offset {%x}\n", CORE_LOCAL->pid, (uintptr_t)addr, length, prot, flags, fd, offset);
+	print("syscall: [pid %x, tid %x] mmap: addr {%x}, length {%x}, prot {%x}, flags {%x}, fd {%x}, offset {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, (uintptr_t)addr, length, prot, flags, fd, offset);
 #endif
 
 	regs->rax = (uint64_t)mmap(page_table, addr, length, prot | MMAP_PROT_USER, flags, fd, offset);
@@ -370,7 +370,7 @@ extern void syscall_munmap(struct registers *regs) {
 	size_t length = regs->rsi;
 
 #ifndef SYSCALL_DBEUG
-	print("syscall: [pid %x] munmap: addr {%x}, length {%x}\n", CORE_LOCAL->pid, (uintptr_t)addr, length);
+	print("syscall: [pid %x, tid %x] munmap: addr {%x}, length {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, (uintptr_t)addr, length);
 #endif
 
 	regs->rax = munmap(page_table, addr, length);

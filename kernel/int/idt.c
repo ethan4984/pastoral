@@ -118,7 +118,7 @@ extern void isr_handler_main(struct registers *regs) {
 		spinlock_irqsave(&exception_lock);
 
 		print("debug: Kowalski analysis: \"%s\", Error: %x\n", exception_messages[regs->isr_number], regs->error_code);
-		if(CORE_LOCAL) print("debug: pid: %x | tid: %x | apic_id: %x\n", CORE_LOCAL->pid, CORE_LOCAL->tid, CORE_LOCAL->apic_id);
+		if(CORE_LOCAL) print("debug: pid: %x | tid: %x | apic_id: %x\n", CORE_LOCAL->pid, CORE_LOCAL->tid, CORE_LOCAL->tid, CORE_LOCAL->apic_id);
 		print("debug: RAX: %x | RBX: %x | RCX: %x | RDX: %x\n", regs->rax, regs->rbx, regs->rcx, regs->rdx);
 		print("debug: RSI: %x | RDI: %x | RBP: %x | RSP: %x\n", regs->rsi, regs->rdi, regs->rbp, regs->rsp);
 		print("debug: r8:  %x | r9:  %x | r10: %x | r11: %x\n", regs->r8, regs->r9, regs->r10, regs->r11);
