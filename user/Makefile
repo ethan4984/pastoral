@@ -5,7 +5,7 @@ default: etcfiles init su program runfolder
 
 
 etcfiles:
-	cp .bashrc build/system-root/etc
+	cp .bashrc build/system-root/
 	cp .nanorc build/system-root/etc
 	cp passwd build/system-root/etc
 	cp group build/system-root/etc
