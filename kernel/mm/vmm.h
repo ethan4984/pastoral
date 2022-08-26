@@ -72,6 +72,7 @@ struct page_table {
 
 	uint64_t *pml_high;
 
+	int refcnt;
 	struct spinlock lock;
 };
 

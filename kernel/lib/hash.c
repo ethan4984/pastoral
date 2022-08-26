@@ -48,12 +48,14 @@ void hash_table_push(struct hash_table *table, void *key, void *data, size_t key
 		if(table->keys[index] == NULL || memcmp(table->keys[index], key, key_size) == 0) {
 			table->keys[index] = key;
 			table->data[index] = data;
+			table->element_cnt++;
 			return;
 		}
 	}
 
 	struct hash_table expanded_table = {
 		.capacity = table->capacity * 2,
+		.element_cnt = 0,
 		.data = (void*)(pmm_alloc(DIV_ROUNDUP(table->capacity * sizeof(void*) * 2, PAGE_SIZE), 1) + HIGH_VMA),
 		.keys = (void*)(pmm_alloc(DIV_ROUNDUP(table->capacity * sizeof(void*) * 2, PAGE_SIZE), 1) + HIGH_VMA)
 	};
@@ -68,7 +70,6 @@ void hash_table_push(struct hash_table *table, void *key, void *data, size_t key
 	pmm_free((uintptr_t)table->data - HIGH_VMA, DIV_ROUNDUP(table->capacity * sizeof(void*), PAGE_SIZE));
 
 	hash_table_push(&expanded_table, key, data, key_size);
-
 	*table = expanded_table;
 }
 
@@ -85,6 +86,7 @@ void hash_table_delete(struct hash_table *table, void *key, size_t key_size) {
 		if(table->keys[index] != NULL && memcmp(table->keys[index], key, key_size) == 0) {
 			table->keys[index] = NULL;
 			table->data[index] = NULL;
+			table->element_cnt--;
 			return;
 		}
 	}

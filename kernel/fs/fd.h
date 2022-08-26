@@ -55,6 +55,7 @@ struct fd_table {
 	struct spinlock fd_lock;
 	struct hash_table fd_list;
 	struct bitmap fd_bitmap;
+	int refcnt;
 };
 
 struct pipe {
@@ -73,6 +74,12 @@ struct file_ops {
 	int (*truncate)(struct file_handle *, off_t);
 	void *(*shared)(struct file_handle *, void *, off_t);
 };
+
+static inline void fd_table_init(struct fd_table *table) {
+	memset(table, 0, sizeof(*table));
+	table->fd_bitmap.resizable = true;
+	table->refcnt = 1;
+}
 
 static inline void fd_init(struct fd_handle *handle) {
 	memset(handle, 0, sizeof(*handle));
@@ -104,12 +111,10 @@ static inline void file_get(struct file_handle *handle) {
 	__atomic_fetch_add(&handle->refcnt, 1, __ATOMIC_RELAXED);
 }
 
-
 static inline void file_put(struct file_handle *handle) {
 	if (__atomic_sub_fetch(&handle->refcnt, 1, __ATOMIC_RELAXED) == 0)
 		free(handle);
 }
-
 
 int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode);
 int stat_update_time(struct stat *stat, int flags);

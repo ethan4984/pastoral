@@ -8,6 +8,7 @@ struct hash_table {
     void **data;
 
     int capacity;
+	int element_cnt;
 };
 
 void *hash_table_search(struct hash_table *table, void *key, size_t key_size);

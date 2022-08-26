@@ -217,7 +217,7 @@ struct task *sched_default_task(struct pid_namespace *namespace) {
 	task->id.pid = bitmap_alloc(&namespace->pid_bitmap);
 
 	task->fd_table = alloc(sizeof(struct fd_table));
-	task->fd_table->fd_bitmap.resizable = true;
+	fd_table_init(task->fd_table);
 
 	task->thread_group = sched_default_namespace();
 	task->id.tid = bitmap_alloc(&task->thread_group->pid_bitmap);
@@ -537,9 +537,12 @@ finish:
 void task_terminate(struct task *task, int status) {
 	asm volatile ("cli");
 
-	for(size_t i = 0; i < task->fd_table->fd_bitmap.size; i++) {
-		if(BIT_TEST(task->fd_table->fd_bitmap.data, i)) {
-			fd_close(i);
+	task->fd_table->refcnt--;
+	if(task->fd_table->refcnt == 0) {
+		for(size_t i = 0; i < task->fd_table->fd_bitmap.size; i++) {
+			if(BIT_TEST(task->fd_table->fd_bitmap.data, i)) {
+				fd_close(i);
+			}
 		}
 	}
 
@@ -556,18 +559,21 @@ void task_terminate(struct task *task, int status) {
 
 	struct page_table *page_table = task->page_table;
 
-	for(size_t i = 0; i < page_table->pages->capacity; i++) {
-		struct page *page = page_table->pages->data[i];
+	page_table->refcnt--;
+	if(page_table->refcnt == 0) {
+		for(size_t i = 0; i < page_table->pages->capacity; i++) {
+			struct page *page = page_table->pages->data[i];
 
-		if(page) {
-			hash_table_delete(page_table->pages, &page->vaddr, sizeof(page->vaddr));
+			if(page) {
+				hash_table_delete(page_table->pages, &page->vaddr, sizeof(page->vaddr));
 
-			if((*page->reference) <= 1) { // shared page
-				(*page->reference)--;
-				continue;
+				if((*page->reference) <= 1) { // shared page
+					(*page->reference)--;
+					continue;
+				}
+
+				pmm_free(page->frame->addr, 1);
 			}
-
-			pmm_free(page->frame->addr, 1);
 		}
 	}
 
@@ -601,7 +607,9 @@ void task_terminate(struct task *task, int status) {
 
 	task->sched_status = TASK_YIELD;
 
-	hash_table_delete(&task->namespace->process_list, &task->id.pid, sizeof(task->id.pid));
+	if(task->id.tid == 0) {
+		hash_table_delete(&task->namespace->process_list, &task->id.pid, sizeof(task->id.pid));
+	}
 
 	CORE_LOCAL->pid = -1;
 	CORE_LOCAL->tid = -1;
@@ -657,7 +665,7 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 		spinlock_irqsave(&current_task->fd_table->fd_lock);
 
 		task->fd_table = alloc(sizeof(struct fd_table));
-		task->fd_table->fd_bitmap.resizable = true;
+		fd_table_init(task->fd_table);
 
 		for(size_t i = 0; i < current_task->fd_table->fd_list.capacity; i++) {
 			struct fd_handle *handle = current_task->fd_table->fd_list.data[i];
