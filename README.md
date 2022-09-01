@@ -23,6 +23,7 @@ Kernel:
 - Posix standard signals
 - Unix domain sockets
 - POSIX threads
+- TTYs/PTYs/Job control
 
 Userland:
 - Pastorals userspace is powered by ![mlibc](https://github.com/managarm/mlibc) which facilitates many ports, including:
