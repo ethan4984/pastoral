@@ -129,15 +129,13 @@ struct sched_arguments {
 
 struct pid_namespace *sched_default_namespace();
 struct task *sched_translate_pid(nid_t nid, pid_t pid, tid_t tid);
-struct task *sched_default_task(struct pid_namespace *namespace);
+int sched_default_task(struct task *task, struct pid_namespace *namespace, int queue);
 int sched_task_init(struct task *task, char **envp, char **argv);
 int sched_load_program(struct task *task, const char *path);
 
 void reschedule(struct registers *regs, void *ptr);
 void sched_dequeue(struct task *task);
-void sched_dequeue_and_yield(struct task *task);
 void sched_requeue(struct task *task);
-void sched_requeue_and_yield(struct task *task);
 void sched_yield();
 void task_terminate(struct task *task, int status);
 void task_stop(struct task *task, int sig);

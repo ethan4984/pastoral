@@ -51,6 +51,8 @@ struct task *find_next_task() {
 
 		task->idle_cnt++;
 
+		//print("task: %d:%d: status: %d\n", task->id.pid, task->id.tid, task->sched_status);
+
 		if((task->sched_status == TASK_WAITING || task->dispatch_ready == true) && cnt < task->idle_cnt) {
 			cnt = task->idle_cnt;
 			ret = task;
@@ -168,11 +170,6 @@ void sched_dequeue(struct task *task) {
 	spinrelease_irqsave(&sched_lock);
 }
 
-void sched_dequeue_and_yield(struct task *task) {
-	sched_dequeue(task);
-	sched_yield();
-}
-
 void sched_requeue(struct task *task) {
 	spinlock_irqsave(&sched_lock);
 
@@ -180,21 +177,6 @@ void sched_requeue(struct task *task) {
 	task->idle_cnt = TASK_MAX_PRIORITY;
 
 	spinrelease_irqsave(&sched_lock);
-}
-
-void sched_requeue_and_yield(struct task *task) {
-	asm volatile ("cli");
-
-	sched_requeue(task);
-
-	xapic_write(XAPIC_ICR_OFF + 0x10, CORE_LOCAL->apic_id << 24);
-	xapic_write(XAPIC_ICR_OFF, 32);
-
-	asm volatile ("sti");
-
-	for(;;) {
-		asm volatile ("hlt");
-	}
 }
 
 void sched_yield() {
@@ -208,7 +190,76 @@ void sched_yield() {
 	}
 }
 
-struct task *sched_default_task(struct pid_namespace *namespace) {
+int sched_default_task(struct task *task, struct pid_namespace *namespace, int queue) {
+	spinlock_irqsave(&sched_lock);
+
+	task->namespace = namespace;
+	task->id.pid = bitmap_alloc(&namespace->pid_bitmap);
+
+	task->fd_table = alloc(sizeof(struct fd_table));
+	fd_table_init(task->fd_table);
+
+	task->thread_group = sched_default_namespace();
+	task->id.tid = bitmap_alloc(&task->thread_group->pid_bitmap);
+	hash_table_push(&task->thread_group->process_list, &task->id.tid, task, sizeof(task->id.tid));
+
+	task->sched_status = TASK_YIELD;
+
+	task->waitq = alloc(sizeof(struct waitq));
+	task->status_trigger = waitq_alloc(task->waitq, EVENT_PROCESS_STATUS);
+
+	task->real_uid = 0;
+	task->effective_uid = 0;
+	task->saved_uid = 0;
+
+	task->real_gid = 0;
+	task->effective_gid = 0;
+	task->saved_gid = 0;
+
+	task->page_table = alloc(sizeof(struct page_table));
+	vmm_default_table(task->page_table);
+
+	task->umask = alloc(sizeof(task->umask));
+	*task->umask = 022;
+
+	task->cwd = alloc(sizeof(task->cwd));
+	*task->cwd = NULL;
+
+	task->sigactions = alloc(sizeof(struct sigaction) * SIGNAL_MAX);
+
+	for(int i = 0; i < SIGNAL_MAX; i++) {
+		struct sigaction *sa = &task->sigactions[i];
+		sa->handler.sa_sigaction = SIG_DFL;
+	}
+
+	if(CURRENT_TASK != NULL) {
+		task->parent = CURRENT_TASK;
+	} else {
+		task->parent = NULL;
+	}
+
+	task->kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	task->kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+
+	task->signal_kernel_stack.sp = pmm_alloc(DIV_ROUNDUP(THREAD_KERNEL_STACK_SIZE, PAGE_SIZE), 1) + THREAD_KERNEL_STACK_SIZE + HIGH_VMA;
+	task->signal_kernel_stack.size = THREAD_KERNEL_STACK_SIZE;
+
+	hash_table_push(&namespace->process_list, &task->id.pid, task, sizeof(task->id.pid));
+
+	task->id.nid = namespace->nid;
+	task->id.pid = task->id.pid;
+	task->id.tid = task->id.tid;
+
+	if(queue) {
+		VECTOR_PUSH(task_queue, task);
+	}
+
+	spinrelease_irqsave(&sched_lock);
+
+	return 0;
+}
+
+/*struct task *sched_default_task(struct pid_namespace *namespace) {
 	struct task *task = alloc(sizeof(struct task));
 
 	spinlock_irqsave(&sched_lock);
@@ -275,7 +326,7 @@ struct task *sched_default_task(struct pid_namespace *namespace) {
 	spinrelease_irqsave(&sched_lock);
 
 	return task;
-}
+}*/
 
 struct pid_namespace *sched_default_namespace() {
 	struct pid_namespace *namespace = alloc(sizeof(struct pid_namespace));
@@ -546,15 +597,21 @@ void task_terminate(struct task *task, int status) {
 		}
 	}
 
-	for(size_t i = 1; i < task->thread_group->process_list.capacity; i++) {
-		struct task *thread = task->thread_group->process_list.data[i];
-		if(thread == NULL) {
-			continue;
-		}
+	if(task->id.tid == 0) {
+		for(size_t i = 0; i < task->thread_group->process_list.capacity; i++) {
+			struct task *thread = task->thread_group->process_list.data[i];
+			if(thread == NULL) {
+				continue;
+			}
 
-		thread->sched_status = TASK_YIELD;
-		hash_table_delete(&task->thread_group->process_list, &thread->id.tid, sizeof(thread->id.tid));
-		VECTOR_REMOVE_BY_VALUE(task_queue, thread);
+			thread->sched_status = TASK_YIELD;
+			hash_table_delete(&task->thread_group->process_list, &thread->id.tid, sizeof(thread->id.tid));
+			VECTOR_REMOVE_BY_VALUE(task_queue, thread);
+		}
+	} else {
+		task->sched_status = TASK_YIELD;
+		hash_table_delete(&task->thread_group->process_list, &task->id.tid, sizeof(task->id.tid));
+		VECTOR_REMOVE_BY_VALUE(task_queue, task);
 	}
 
 	struct page_table *page_table = task->page_table;
@@ -626,14 +683,16 @@ void task_stop(struct task *task, int sig) {
 	task->status_trigger->agent_task->process_status = WSTOPPED_CONSTRUCT(sig);
 	signal_send_task(NULL, task, SIGCHLD);
 	waitq_wake(task->status_trigger);
-	sched_dequeue_and_yield(CURRENT_TASK);
+	sched_dequeue(CURRENT_TASK);
+	sched_yield();
 }
 
 void task_continue(struct task *task) {
 	task->status_trigger->agent_task->process_status = WCONTINUED_CONSTRUCT;
 	signal_send_task(NULL, task, SIGCHLD);
 	waitq_wake(task->status_trigger);
-	sched_requeue_and_yield(CURRENT_TASK);
+	sched_requeue(CURRENT_TASK);
+	sched_yield();
 }
 
 struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void *newtls, struct registers *regs) {
@@ -660,6 +719,7 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 	if((flags & CLONE_FILES) == CLONE_FILES) {
 		spinlock_irqsave(&current_task->fd_table->fd_lock);
 		task->fd_table = current_task->fd_table;
+		task->fd_table->refcnt++;
 		spinrelease_irqsave(&current_task->fd_table->fd_lock);
 	} else {
 		spinlock_irqsave(&current_task->fd_table->fd_lock);
@@ -884,6 +944,7 @@ void syscall_execve(struct registers *regs) {
 	struct task *parent = current_task->parent;
 	VECTOR_REMOVE_BY_VALUE(parent->children, current_task);
 	VECTOR_REMOVE_BY_VALUE(parent->group->process_list, current_task);
+	VECTOR_REMOVE_BY_VALUE(task_queue, current_task);
 
 	if(stat_has_access(vfs_node->stat, current_task->effective_uid,
 		current_task->effective_gid, X_OK) == -1) {
@@ -895,8 +956,8 @@ void syscall_execve(struct registers *regs) {
 	bool is_suid = vfs_node->stat->st_mode & S_ISUID ? true : false;
 	bool is_sgid = vfs_node->stat->st_mode & S_ISGID ? true : false;
 
-	struct task *task = sched_default_task(current_task->namespace);
-	if(task == NULL) panic("");
+	struct task *task = alloc(sizeof(struct task));
+	sched_default_task(task, current_task->namespace, 0);
 
 	int ret = sched_load_program(task, path);
 	if(ret == -1) {
@@ -970,6 +1031,7 @@ void syscall_execve(struct registers *regs) {
 	CORE_LOCAL->tid = -1;
 
 	hash_table_push(&task->namespace->process_list, &task->id.pid, task, sizeof(task->id.pid));
+	VECTOR_PUSH(task_queue, task);
 
 	task->sched_status = TASK_WAITING;
 
@@ -1006,6 +1068,7 @@ void syscall_clone(struct registers *regs) {
 		return;
 	}
 
+	CURRENT_TASK->regs = *regs;
 	task->regs.rax = 0;
 	regs->rax = task->id.tid;
 }

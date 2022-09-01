@@ -30,6 +30,9 @@ int futex(uintptr_t uaddr, int ops, int expected, const struct timespec *timeout
 			struct futex *futex = hash_table_search(&futex_list, &futex_paddr, sizeof(futex_paddr));
 			if(futex == NULL) {
 				futex = alloc(sizeof(struct futex));
+
+				futex->paddr = futex_paddr;
+
 				hash_table_push(&futex_list, &futex->paddr, futex, sizeof(futex->paddr));
 				VECTOR_PUSH(page->frame->locks, futex);
 			}
@@ -84,4 +87,5 @@ void syscall_futex(struct registers *regs) {
 #endif
 
 	regs->rax = futex((uintptr_t)uaddr, op, val, timeout);
+	//regs->rax = 0;
 }

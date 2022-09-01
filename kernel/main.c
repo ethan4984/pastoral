@@ -80,8 +80,8 @@ void init_process() {
 		.argv_cnt = 1
 	};
 
-	struct task *task = sched_default_task(CURRENT_TASK->namespace);
-	if(task == NULL) panic("unable to start init process");
+	struct task *task = alloc(sizeof(struct task));
+	sched_default_task(task, CURRENT_TASK->namespace, 1);
 
 	int ret = sched_load_program(task, argv[0]);
 	if(ret == -1) panic("unable to start init process");
@@ -199,7 +199,8 @@ void pastoral_entry(void) {
 	apic_timer_init(20);
 
 	struct pid_namespace *namespace = sched_default_namespace();
-	struct task *kernel_task = sched_default_task(namespace);
+	struct task *kernel_task = alloc(sizeof(struct task));
+	sched_default_task(kernel_task, namespace, 1);
 
 	kernel_task->regs.cs = 0x28;
 	kernel_task->regs.ss = 0x30;

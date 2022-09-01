@@ -213,9 +213,9 @@ static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			return 0;
 		}
 
-		default:
+		/*default:
 			set_errno(ENOSYS);
-			return -1;
+			return -1;*/
 	}
 
 	return 0;
