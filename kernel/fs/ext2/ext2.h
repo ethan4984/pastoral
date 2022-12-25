@@ -2,6 +2,8 @@
 
 #include <drivers/block.h>
 
+#define EXT2_SIGNATURE 0xef53
+
 struct ext2_superblock {
 	uint32_t inode_cnt;
 	uint32_t block_cnt;
@@ -76,4 +78,18 @@ struct ext2_dirent {
 	uint8_t dir_type;
 };
 
-int ext2_init(struct blkdev *blkdev);
+struct ext2_fs {
+	struct ext2_superblock *superblock;
+	struct ext2_inode *root_inode;
+
+	char uuid[16];
+
+	uint64_t block_size;
+	uint64_t frag_size;
+	uint64_t bgd_cnt;
+
+	struct partition *partition;
+	struct blkdev *blkdev;
+};
+
+int ext2_init(struct partition *partition);

@@ -21,8 +21,6 @@ struct blkdev {
 	const char *firmware_revision;
 	const char *model_number;
 
-	char uuid[16];
-
 	int partition_major;
 	int partition_minor;
 	struct partition *partitions;
@@ -30,9 +28,10 @@ struct blkdev {
 
 struct partition {
 	struct blkdev *blkdev;
-
-
 	struct file_handle *handle;
+
+	char uuid[16];
+	const char *partition_path;
 
 	uint64_t lba_start;
 	uint64_t lba_cnt;

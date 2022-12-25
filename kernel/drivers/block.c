@@ -72,6 +72,16 @@ int register_blkdev(struct blkdev *blkdev) {
 		char *partition_path = alloc(MAX_PATH_LENGTH);
 		sprint(partition_path, "%s%d", blkdev->device_prefix, blkdev->partition_minor);
 
+		struct file_handle *handle = alloc(sizeof(struct file_handle));
+
+		handle->private_data = partition;
+		handle->ops = &partition_fops;
+		handle->stat = stat;
+
+		partition->partition_path = partition_path;
+		partition->handle = handle;
+		partition->blkdev = blkdev;
+
 		vfs_create_node_deep(NULL, NULL, NULL, stat, partition_path);
 
 		print("block: partition: [%s] [%x:%x] [%x -> %x]\n", partition_path, blkdev->partition_major, blkdev->partition_minor, partition->lba_start, partition->lba_start + partition->lba_cnt);
