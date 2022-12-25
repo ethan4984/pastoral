@@ -1,5 +1,6 @@
 #include <drivers/pci.h>
 #include <drivers/hda/hda.h>
+#include <drivers/ahci/ahci.h>
 #include <int/apic.h>
 #include <debug.h>
 #include <cpu.h>
@@ -372,6 +373,7 @@ void pci_init() {
 			case 1: // mass storage controlelr
 				switch(device->sub_class) {
 					case 6: // sata
+						ahci_controller_initialise(device);
 						break;
 					case 8: // nvme
 						break;

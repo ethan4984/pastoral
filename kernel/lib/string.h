@@ -119,6 +119,14 @@ static inline size_t abs(ssize_t n) {
 	return (n < 0) ? -n : n;
 }
 
+static inline void swap_endianess(char *buf, size_t length) {
+	for(size_t i = 0; i < length; i += 2) {
+		char tmp = buf[i];
+		buf[i] = buf[i + 1];
+		buf[i + 1] = tmp;
+	}
+}
+
 int strcmp(const char *str0, const char *str1);
 int strncmp(const char *str0, const char *str1, size_t n);
 int sprint(char *str, const char *format, ...);
