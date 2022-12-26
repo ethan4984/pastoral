@@ -1,18 +1,18 @@
 #pragma once
 
 #include <fs/fd.h>
+#include <fs/cdev.h>
 
 #define GPT_SIGNATURE 0x5452415020494645
 #define MBR_SIGNATURE 0xaa55
 
-#define SECTOR_SIZE 0x200
-
 struct partition;
 
 struct blkdev {
-	struct file_handle *disk;
+	struct cdev *disk;
 
-	struct cdev *cdev;
+	uint64_t sector_size;
+	uint64_t sector_cnt;
 
 	const char *device_name;
 	const char *device_prefix;
@@ -28,7 +28,7 @@ struct blkdev {
 
 struct partition {
 	struct blkdev *blkdev;
-	struct file_handle *handle;
+	struct cdev *cdev;
 
 	char uuid[16];
 	const char *partition_path;

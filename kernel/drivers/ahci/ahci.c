@@ -9,14 +9,13 @@
 
 static int hda_minor = 0;
 
-static ssize_t ahci_device_read(struct file_handle *, void *, size_t, off_t);
-static ssize_t ahci_device_write(struct file_handle *, void *, size_t, off_t);
+static ssize_t ahci_device_read(struct cdev *, void *, size_t, off_t);
+static ssize_t ahci_device_write(struct cdev *, const void *, size_t, off_t);
 
-static struct file_ops ahci_device_ops = {
+static struct block_ops ahci_device_ops = {
 	.read = ahci_device_read,
 	.write = ahci_device_write,
-	.ioctl = NULL,
-	.shared = NULL
+	.ioctl = NULL
 };
 
 static const char *ahci_interface_speed(int iss) {
@@ -172,7 +171,7 @@ static int ahci_issue_read(struct ahci_device *device, uint64_t block, uint64_t 
 	ahci_cmd->cmdhdr->prdtl = 1;
 
 	ahci_cmd->data_base = (uintptr_t)buffer - HIGH_VMA;
-	ahci_cmd->data_length = cnt * SECTOR_SIZE - 1;
+	ahci_cmd->data_length = cnt * AHCI_SECTOR_SIZE - 1;
 	ahci_cmd->interrupt = false;
 
 	ahci_initialise_prdt(ahci_cmd, 0);
@@ -202,7 +201,7 @@ static int ahci_issue_read(struct ahci_device *device, uint64_t block, uint64_t 
 
 	uint32_t bytes_read = ahci_cmd->cmdhdr->prdbc;
 
-	return DIV_ROUNDUP(bytes_read, SECTOR_SIZE);
+	return DIV_ROUNDUP(bytes_read, AHCI_SECTOR_SIZE);
 }
 
 static int ahci_issue_write(struct ahci_device *device, uint64_t block, uint64_t cnt, void *buffer) {
@@ -217,7 +216,7 @@ static int ahci_issue_write(struct ahci_device *device, uint64_t block, uint64_t
 	ahci_cmd->cmdhdr->prdtl = 1;
 
 	ahci_cmd->data_base = (uintptr_t)buffer - HIGH_VMA;
-	ahci_cmd->data_length = cnt * SECTOR_SIZE - 1;
+	ahci_cmd->data_length = cnt * AHCI_SECTOR_SIZE - 1;
 	ahci_cmd->interrupt = false;
 
 	ahci_initialise_prdt(ahci_cmd, 0);
@@ -247,52 +246,52 @@ static int ahci_issue_write(struct ahci_device *device, uint64_t block, uint64_t
 
 	uint32_t bytes_wrote = ahci_cmd->cmdhdr->prdbc;
 
-	return DIV_ROUNDUP(bytes_wrote, SECTOR_SIZE);
+	return DIV_ROUNDUP(bytes_wrote, AHCI_SECTOR_SIZE);
 }
 
-static ssize_t ahci_device_read(struct file_handle *handle, void *buffer, size_t cnt, off_t offset) {
-	struct ahci_device *device = handle->private_data; 
+static ssize_t ahci_device_read(struct cdev *cdev, void *buffer, size_t cnt, off_t offset) {
+	struct ahci_device *device = cdev->private_data; 
 
-	size_t lba_start = offset / SECTOR_SIZE;
-	size_t lba_cnt = DIV_ROUNDUP(cnt, SECTOR_SIZE);
+	size_t lba_start = offset / AHCI_SECTOR_SIZE;
+	size_t lba_cnt = DIV_ROUNDUP(cnt, AHCI_SECTOR_SIZE);
 
 	if(lba_cnt == 0) {
 		return 0;
 	}
 
-	void *lba_buffer = (void*)(pmm_alloc(DIV_ROUNDUP(lba_cnt * SECTOR_SIZE, PAGE_SIZE), 1) + HIGH_VMA);
+	void *lba_buffer = (void*)(pmm_alloc(DIV_ROUNDUP(lba_cnt * AHCI_SECTOR_SIZE, PAGE_SIZE), 1) + HIGH_VMA);
 
 	int bytes_read = ahci_issue_read(device, lba_start, lba_cnt, lba_buffer);
 	if(bytes_read == -1) {
 		return -1;
 	}
 
-	memcpy(buffer, lba_buffer + (offset % SECTOR_SIZE), cnt);
+	memcpy(buffer, lba_buffer + (offset % AHCI_SECTOR_SIZE), cnt);
 
-	pmm_free((uintptr_t)lba_buffer - HIGH_VMA, DIV_ROUNDUP(lba_cnt * SECTOR_SIZE, PAGE_SIZE));
+	pmm_free((uintptr_t)lba_buffer - HIGH_VMA, DIV_ROUNDUP(lba_cnt * AHCI_SECTOR_SIZE, PAGE_SIZE));
 
 	return bytes_read - ABS(bytes_read, cnt);
 }
 
-static ssize_t ahci_device_write(struct file_handle *handle, void *buffer, size_t cnt, off_t offset) {
-	struct ahci_device *device = handle->private_data; 
+static ssize_t ahci_device_write(struct cdev *cdev, const void *buffer, size_t cnt, off_t offset) {
+	struct ahci_device *device = cdev->private_data; 
 
-	size_t lba_start = offset / SECTOR_SIZE;
-	size_t lba_cnt = DIV_ROUNDUP(cnt, SECTOR_SIZE);
+	size_t lba_start = offset / AHCI_SECTOR_SIZE;
+	size_t lba_cnt = DIV_ROUNDUP(cnt, AHCI_SECTOR_SIZE);
 
-	void *lba_buffer = (void*)(pmm_alloc(DIV_ROUNDUP(lba_cnt * SECTOR_SIZE, PAGE_SIZE), 1) + HIGH_VMA);
+	void *lba_buffer = (void*)(pmm_alloc(DIV_ROUNDUP(lba_cnt * AHCI_SECTOR_SIZE, PAGE_SIZE), 1) + HIGH_VMA);
 
-	if(offset % SECTOR_SIZE != 0) ahci_device_read(handle, lba_buffer, SECTOR_SIZE, offset);
-	if(cnt % SECTOR_SIZE != 0) ahci_device_read(handle, lba_buffer, SECTOR_SIZE, offset + lba_cnt - 1);
+	if(offset % AHCI_SECTOR_SIZE != 0) ahci_device_read(cdev, lba_buffer, AHCI_SECTOR_SIZE, offset);
+	if(cnt % AHCI_SECTOR_SIZE != 0) ahci_device_read(cdev, lba_buffer, AHCI_SECTOR_SIZE, offset + lba_cnt - 1);
 
-	memcpy(lba_buffer + (offset % SECTOR_SIZE), buffer, cnt);
+	memcpy(lba_buffer + (offset % AHCI_SECTOR_SIZE), buffer, cnt);
 
 	int bytes_read = ahci_issue_write(device, lba_start, lba_cnt, lba_buffer);
 	if(bytes_read == -1) {
 		return -1;
 	}
 
-	pmm_free((uintptr_t)lba_buffer, DIV_ROUNDUP(lba_cnt * SECTOR_SIZE, PAGE_SIZE));
+	pmm_free((uintptr_t)lba_buffer, DIV_ROUNDUP(lba_cnt * AHCI_SECTOR_SIZE, PAGE_SIZE));
 
 	return bytes_read - ABS(bytes_read, cnt);
 }
@@ -366,7 +365,7 @@ static int ahci_port_initialise(struct ahci_controller *controller, int index) {
 
 	struct cdev *hda_cdev = alloc(sizeof(struct cdev));
 
-	hda_cdev->fops = &ahci_device_ops;
+	hda_cdev->bops = &ahci_device_ops;
 	hda_cdev->private_data = device;
 	hda_cdev->rdev = makedev(HDA_MAJOR, hda_minor);
 
@@ -375,7 +374,7 @@ static int ahci_port_initialise(struct ahci_controller *controller, int index) {
 	struct stat *stat = alloc(sizeof(struct stat));
 	stat_init(stat);
 
-	stat->st_blksize = SECTOR_SIZE;
+	stat->st_blksize = AHCI_SECTOR_SIZE;
 	stat->st_mode = S_IFCHR | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
 	stat->st_rdev = makedev(HDA_MAJOR, hda_minor);
 
@@ -384,16 +383,11 @@ static int ahci_port_initialise(struct ahci_controller *controller, int index) {
 
 	vfs_create_node_deep(NULL, NULL, NULL, stat, device_path);
 
-	struct file_handle *handle = alloc(sizeof(struct file_handle));
-
-	handle->private_data = device;
-	handle->ops = &ahci_device_ops;
-	handle->stat = stat;
-
 	struct blkdev *blkdev = alloc(sizeof(struct blkdev));
 
-	blkdev->disk = handle;
-	blkdev->cdev = hda_cdev;
+	blkdev->disk = hda_cdev;
+	blkdev->sector_size = AHCI_SECTOR_SIZE;
+	blkdev->sector_cnt = *(uint64_t*)(identity + 200);
 	blkdev->device_name = "ahci";
 	blkdev->device_prefix = device_path;
 	blkdev->serial_number = device->serial_number;

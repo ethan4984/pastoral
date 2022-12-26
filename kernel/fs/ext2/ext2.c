@@ -38,19 +38,19 @@ static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode 
 			uint32_t double_indirect_block_offset = iblock % blocks_per_level;
 			uint32_t double_indirect_block = 0;
 
-			if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, &double_indirect_block, sizeof(double_indirect_block),
+			if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &double_indirect_block, sizeof(double_indirect_block),
 						inode->blocks[14] * ext2_fs->block_size + double_indirect_block_index * 4) == -1) { 
 				print("ext2: read error\n");
 				return -1;
 			}
 
-			if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, &indirect_block, sizeof(indirect_block),
+			if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &indirect_block, sizeof(indirect_block),
 						double_indirect_block_index * ext2_fs->block_size + double_indirect_block * 4) == -1) { 
 				print("ext2: read error\n");
 				return -1;
 			}
 
-			if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, &block, sizeof(block),
+			if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &block, sizeof(block),
 						indirect_block * ext2_fs->block_size + double_indirect_block_offset * 4) == -1) { 
 				print("ext2: read error\n");
 				return -1;
@@ -59,21 +59,23 @@ static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode 
 			return block;
 		}
 
-		if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, &indirect_block, sizeof(indirect_block),
+		if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &indirect_block, sizeof(indirect_block),
 					inode->blocks[13] * ext2_fs->block_size + indirect_block_index * 4) == -1) { 
 			print("ext2: read error\n");
 			return -1;
 		}
 
-		if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, &block, sizeof(block),
+		if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &block, sizeof(block),
 					indirect_block * ext2_fs->block_size + indirect_block_offset * 4) == -1) { 
 			print("ext2: read error\n");
 			return -1;
 		}
+
+		return block;
 	}
 
 	// singly indirect
-	if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, &block, sizeof(block), inode->blocks[12] * ext2_fs->block_size + iblock * 4) == -1) { 
+	if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &block, sizeof(block), inode->blocks[12] * ext2_fs->block_size + iblock * 4) == -1) { 
 		print("ext2: read error\n");
 		return -1;
 	}
@@ -92,7 +94,7 @@ static int ext2_free_block(struct ext2_fs *ext2_fs, uint32_t block) {
 
 	uint8_t *bitmap = alloc(ext2_fs->block_size);
 
-	if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, bitmap, ext2_fs->block_size, bgd.block_addr_bitmap * ext2_fs->block_size) == -1) {
+	if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, bitmap, ext2_fs->block_size, bgd.block_addr_bitmap * ext2_fs->block_size) == -1) {
 		print("ext2: read error\n");
 		return -1;
 	}
@@ -104,7 +106,7 @@ static int ext2_free_block(struct ext2_fs *ext2_fs, uint32_t block) {
 
 	BIT_CLEAR(bitmap, bitmap_index);
 
-	if(ext2_fs->partition->handle->ops->write(ext2_fs->partition->handle, bitmap, ext2_fs->block_size, bgd.block_addr_bitmap * ext2_fs->block_size) == -1) {
+	if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, bitmap, ext2_fs->block_size, bgd.block_addr_bitmap * ext2_fs->block_size) == -1) {
 		print("ext2: write error\n");
 		return -1;
 	}
@@ -130,7 +132,7 @@ static int ext2_free_inode(struct ext2_fs *ext2_fs, uint32_t inode) {
 
 	uint8_t *bitmap = alloc(ext2_fs->block_size);
 
-	if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, bitmap, ext2_fs->block_size, bgd.block_addr_inode * ext2_fs->block_size) == -1) {
+	if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, bitmap, ext2_fs->block_size, bgd.block_addr_inode * ext2_fs->block_size) == -1) {
 		print("ext2: read error\n");
 		return -1;
 	}
@@ -142,7 +144,7 @@ static int ext2_free_inode(struct ext2_fs *ext2_fs, uint32_t inode) {
 
 	BIT_CLEAR(bitmap, bitmap_index);
 
-	if(ext2_fs->partition->handle->ops->write(ext2_fs->partition->handle, bitmap, ext2_fs->block_size, bgd.block_addr_inode * ext2_fs->block_size) == -1) {
+	if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, bitmap, ext2_fs->block_size, bgd.block_addr_inode * ext2_fs->block_size) == -1) {
 		print("ext2: write error\n");
 		return -1;
 	}
@@ -202,7 +204,7 @@ static int ext2_bgd_allocate_inode(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd
 
 	uint8_t *bitmap = alloc(ext2_fs->block_size);
 
-	if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, bitmap, ext2_fs->block_size, bgd->block_addr_inode * ext2_fs->block_size) == -1) {
+	if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, bitmap, ext2_fs->block_size, bgd->block_addr_inode * ext2_fs->block_size) == -1) {
 		print("ext2: read error\n");
 		return -1;
 	}
@@ -211,7 +213,7 @@ static int ext2_bgd_allocate_inode(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd
 		if(!BIT_TEST(bitmap, i)) {
 			BIT_TEST(bitmap, i);
 
-			if(ext2_fs->partition->handle->ops->write(ext2_fs->partition->handle, bitmap, ext2_fs->block_size, bgd->block_addr_inode * ext2_fs->block_size) == -1) {
+			if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, bitmap, ext2_fs->block_size, bgd->block_addr_inode * ext2_fs->block_size) == -1) {
 				print("ext2: write error\n");
 				return -1;
 			}
@@ -239,7 +241,7 @@ static int ext2_bgd_allocate_block(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd
 
 	uint8_t *bitmap = alloc(ext2_fs->block_size);
 
-	if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, bitmap, ext2_fs->block_size, bgd->block_addr_bitmap * ext2_fs->block_size) == -1) {
+	if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, bitmap, ext2_fs->block_size, bgd->block_addr_bitmap * ext2_fs->block_size) == -1) {
 		print("ext2: read error\n");
 		return -1;
 	}
@@ -248,7 +250,7 @@ static int ext2_bgd_allocate_block(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd
 		if(!BIT_TEST(bitmap, i)) {
 			BIT_TEST(bitmap, i);
 
-			if(ext2_fs->partition->handle->ops->write(ext2_fs->partition->handle, bitmap, ext2_fs->block_size, bgd->block_addr_bitmap * ext2_fs->block_size) == -1) {
+			if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, bitmap, ext2_fs->block_size, bgd->block_addr_bitmap * ext2_fs->block_size) == -1) {
 				print("ext2: write error\n");
 				return -1;
 			}
@@ -279,7 +281,7 @@ static int ext2_read_inode(struct ext2_fs *ext2_fs, struct ext2_inode *inode, in
 		return -1;
 	}
 
-	if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, inode, sizeof(struct ext2_inode), table_index * ext2_fs->block_size + ext2_fs->superblock->inode_size * table_index) == -1) {
+	if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, inode, sizeof(struct ext2_inode), table_index * ext2_fs->block_size + ext2_fs->superblock->inode_size * table_index) == -1) {
 		print("ext2: read error\n");
 		return -1;
 	}
@@ -297,7 +299,7 @@ static int ext2_write_inode(struct ext2_fs *ext2_fs, struct ext2_inode *inode, i
 		return -1;
 	}
 
-	if(ext2_fs->partition->handle->ops->write(ext2_fs->partition->handle, inode, sizeof(struct ext2_inode), table_index * ext2_fs->block_size + ext2_fs->superblock->inode_size * table_index) == -1) {
+	if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, inode, sizeof(struct ext2_inode), table_index * ext2_fs->block_size + ext2_fs->superblock->inode_size * table_index) == -1) {
 		print("ext2: writeerror\n");
 		return -1;
 	}
@@ -308,7 +310,7 @@ static int ext2_write_inode(struct ext2_fs *ext2_fs, struct ext2_inode *inode, i
 static int ext2_read_bgd(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd, int index) {
 	uint64_t bgd_offset = (ext2_fs->block_size >= 2048) ? ext2_fs->block_size : ext2_fs->block_size * 2;
 	
-	if(ext2_fs->partition->handle->ops->read(ext2_fs->partition->handle, bgd, sizeof(struct ext2_bgd), bgd_offset + index * sizeof(struct ext2_bgd)) == -1) {
+	if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, bgd, sizeof(struct ext2_bgd), bgd_offset + index * sizeof(struct ext2_bgd)) == -1) {
 		print("ext2: read error\n");
 		return -1;
 	}
@@ -319,7 +321,7 @@ static int ext2_read_bgd(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd, int inde
 static int ext2_write_bgd(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd, int index) {
 	uint64_t bgd_offset = (ext2_fs->block_size >= 2048) ? ext2_fs->block_size : ext2_fs->block_size * 2;
 	
-	if(ext2_fs->partition->handle->ops->write(ext2_fs->partition->handle, bgd, sizeof(struct ext2_bgd), bgd_offset + index * sizeof(struct ext2_bgd)) == -1) {
+	if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, bgd, sizeof(struct ext2_bgd), bgd_offset + index * sizeof(struct ext2_bgd)) == -1) {
 		print("ext2: write error\n");
 		return -1;
 	}
@@ -330,7 +332,7 @@ static int ext2_write_bgd(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd, int ind
 int ext2_init(struct partition *partition) {
 	struct ext2_superblock *superblock = alloc(sizeof(struct ext2_superblock));
 
-	if(partition->handle->ops->read(partition->handle, superblock, sizeof(struct ext2_superblock), 1024) == -1) {
+	if(partition->cdev->bops->read(partition->cdev, superblock, sizeof(struct ext2_superblock), 1024) == -1) {
 		print("ext2: partition: read error\n");
 	}
 

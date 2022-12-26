@@ -23,7 +23,7 @@
 #define PORT_TFD_BSY (1 << 7)
 
 #define AHCI_MAX_CMD 32
-#define SECTOR_SIZE 0x200
+#define AHCI_SECTOR_SIZE 0x200
 
 struct ahci_port {
 	uint32_t clb;
