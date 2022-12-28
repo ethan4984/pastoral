@@ -1,8 +1,8 @@
 #include <fs/ext2/ext2.h>
 #include <debug.h>
 
-static int ext2_read_inode(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index);
-static int ext2_write_inode(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index);
+static int ext2_read_inode_entry(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index);
+static int ext2_write_inode_entry(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index);
 static int ext2_read_bgd(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd, int index);
 static int ext2_write_bgd(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd, int index);
 static int ext2_bgd_allocate_inode(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd, int bgd_index);
@@ -11,8 +11,216 @@ static int ext2_allocate_inode(struct ext2_fs *ext2_fs);
 static int ext2_allocate_block(struct ext2_fs *ext2_fs);
 static int ext2_free_inode(struct ext2_fs *ext2_fs, uint32_t inode);
 static int ext2_free_block(struct ext2_fs *ext2_fs, uint32_t block);
-static int ext2_inode_set_block(struct ext2_fs *ext2_fs, struct ext2_inode *inode, uint32_t block);
-static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode *inode, uint32_t block);
+static int ext2_inode_set_block(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index, uint32_t iblock, uint32_t block);
+static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode *inode, uint32_t iblock);
+
+static int ext2_inode_read(struct ext2_fs *ext2_fs, struct ext2_inode *inode, void *buffer, size_t cnt, off_t offset);
+static int ext2_inode_write(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index, const void *buffer, size_t cnt, off_t offset);
+static int ext2_create_dirent(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index, int dir_inode, int dirtype, const char *name);
+
+static int ext2_inode_write(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index, const void *buffer, size_t cnt, off_t offset) {
+	for(uint64_t headway = 0; headway < cnt;) {
+		uint32_t iblock = (offset + headway) / ext2_fs->block_size;
+
+		uint32_t block = ext2_inode_get_block(ext2_fs, inode, iblock);
+		if(block == -1) {
+			return -1;
+		} else if(block == -2) {
+			block = ext2_allocate_block(ext2_fs);
+			if(block == -1) {
+				return -1;
+			}
+
+			if(ext2_inode_set_block(ext2_fs, inode, index, iblock, block) == -1) {
+				return -1;
+			}
+		}
+
+		size_t length = cnt - headway;
+		size_t block_offset = (offset + headway) % ext2_fs->block_size;
+
+		if(length > (ext2_fs->block_size - offset)) {
+			length = ext2_fs->block_size - offset;
+		}
+
+		if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, buffer + headway, length,
+					block * ext2_fs->block_size + block_offset) == -1) { 
+			print("ext2: write error\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int ext2_inode_read(struct ext2_fs *ext2_fs, struct ext2_inode *inode, void *buffer, size_t cnt, off_t offset) {
+	if(offset > inode->size32l) {
+		return 0;
+	}
+
+	if((offset + cnt) > inode->size32l) {
+		cnt = inode->size32l - offset;
+	}
+
+	for(uint64_t headway = 0; headway < cnt;) {
+		uint32_t iblock = (offset + headway) / ext2_fs->block_size;
+
+		uint32_t block = ext2_inode_get_block(ext2_fs, inode, iblock);
+		if(block == -1) {
+			return -1;
+		}
+
+		size_t length = cnt - headway;
+		size_t block_offset = (offset + headway) % ext2_fs->block_size;
+
+		if(length > (ext2_fs->block_size - offset)) {
+			length = ext2_fs->block_size - offset;
+		}
+
+		if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, buffer + headway, length,
+					block * ext2_fs->block_size + block_offset) == -1) { 
+			print("ext2: read error\n");
+			return -1;
+		}
+	}
+
+	return cnt;
+}
+
+static int ext2_inode_set_block(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index, uint32_t iblock, uint32_t block) {
+	uint32_t blocks_per_level = ext2_fs->block_size / 4;
+
+	if(iblock < 12) {
+		inode->blocks[iblock] = block;
+		return 0;
+	}
+
+	iblock -= 12;
+
+	if(iblock >= blocks_per_level) { // double indirect
+		iblock -= blocks_per_level;
+
+		uint32_t indirect_block_index = iblock / blocks_per_level;
+		uint32_t indirect_block_offset = iblock / blocks_per_level;
+		uint32_t indirect_block = 0;
+
+		if(indirect_block_index >= blocks_per_level) { // triply indirect
+			iblock -= blocks_per_level * blocks_per_level;
+
+			uint32_t double_indirect_block_index = iblock / blocks_per_level;
+			uint32_t double_indirect_block_offset = iblock % blocks_per_level;
+			uint32_t double_indirect_block = 0;
+
+			if(!inode->blocks[14]) {
+				if((inode->blocks[14] = ext2_allocate_block(ext2_fs)) == -1) {
+					return -1;
+				}	
+
+				if(ext2_write_inode_entry(ext2_fs, inode, index) == -1) {
+					return -1;
+				}
+			}
+
+			if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &double_indirect_block, sizeof(double_indirect_block),
+						inode->blocks[14] * ext2_fs->block_size + double_indirect_block_index * 4) == -1) { 
+				print("ext2: read error\n");
+				return -1;
+			}
+
+			if(!double_indirect_block) {
+				if((double_indirect_block = ext2_allocate_block(ext2_fs)) == -1) {
+					return -1;
+				}
+
+				if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, &double_indirect_block, sizeof(double_indirect_block),
+							inode->blocks[14] * ext2_fs->block_size + double_indirect_block_index * 4) == -1) { 
+					print("ext2: write error\n");
+					return -1;
+				}
+			}
+
+			if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &indirect_block, sizeof(indirect_block),
+						double_indirect_block_index * ext2_fs->block_size + double_indirect_block * 4) == -1) { 
+				print("ext2: read error\n");
+				return -1;
+			}
+
+			if(!indirect_block) {
+				if((indirect_block = ext2_allocate_block(ext2_fs)) == -1) {
+					return -1;
+				}
+
+				if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, &indirect_block, sizeof(indirect_block),
+							double_indirect_block_index * ext2_fs->block_size + double_indirect_block * 4) == -1) { 
+					print("ext2: read error\n");
+					return -1;
+				}
+			}
+
+			if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, &block, sizeof(block),
+						indirect_block * ext2_fs->block_size + double_indirect_block_offset * 4) == -1) { 
+				print("ext2: read error\n");
+				return -1;
+			}
+
+			return 0;
+		}
+
+		if(!inode->blocks[13]) {
+			if((inode->blocks[13] = ext2_allocate_block(ext2_fs)) == -1) {
+				return -1;
+			}
+
+			if(ext2_write_inode_entry(ext2_fs, inode, index) == -1) {
+				return -1;
+			}
+		}
+
+		if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &indirect_block, sizeof(indirect_block),
+					inode->blocks[13] * ext2_fs->block_size + indirect_block_index * 4) == -1) { 
+			print("ext2: read error\n");
+			return -1;
+		}
+
+		if(!indirect_block) {
+			if((indirect_block = ext2_allocate_block(ext2_fs)) == -1) {
+				return -1;
+			}
+
+			if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, &indirect_block, sizeof(indirect_block),
+						inode->blocks[13] * ext2_fs->block_size + indirect_block_index * 4) == -1) { 
+				print("ext2: write error\n");
+				return -1;
+			}
+		}
+
+		if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, &block, sizeof(block),
+					indirect_block * ext2_fs->block_size + indirect_block_offset * 4) == -1) { 
+			print("ext2: write error\n");
+			return -1;
+		}
+
+		return 0;
+	}
+
+	if(!inode->blocks[12]){
+		if((inode->blocks[12] = ext2_allocate_block(ext2_fs)) == -1) {
+			return -1;
+		}
+
+		if(ext2_write_inode_entry(ext2_fs, inode, index) == -1) {
+			return -1;
+		}
+
+		if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, &block, sizeof(block),
+					inode->blocks[12] * ext2_fs->block_size + iblock * 4) == -1) { 
+			print("ext2: write error\n");
+			return -1;
+		}
+	}
+	
+	return 0;
+}
 
 static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode *inode, uint32_t iblock) {
 	uint32_t blocks_per_level = ext2_fs->block_size / 4;
@@ -44,11 +252,15 @@ static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode 
 				return -1;
 			}
 
+			if(!double_indirect_block) return -2;
+
 			if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &indirect_block, sizeof(indirect_block),
 						double_indirect_block_index * ext2_fs->block_size + double_indirect_block * 4) == -1) { 
 				print("ext2: read error\n");
 				return -1;
 			}
+
+			if(!indirect_block) return -2;
 
 			if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &block, sizeof(block),
 						indirect_block * ext2_fs->block_size + double_indirect_block_offset * 4) == -1) { 
@@ -56,7 +268,7 @@ static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode 
 				return -1;
 			}
 
-			return block;
+			return (!block) ? -2 : block;
 		}
 
 		if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &indirect_block, sizeof(indirect_block),
@@ -65,13 +277,15 @@ static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode 
 			return -1;
 		}
 
+		if(!indirect_block) return -2;
+
 		if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, &block, sizeof(block),
 					indirect_block * ext2_fs->block_size + indirect_block_offset * 4) == -1) { 
 			print("ext2: read error\n");
 			return -1;
 		}
 
-		return block;
+		return (!block) ? -2 : block;
 	}
 
 	// singly indirect
@@ -80,7 +294,7 @@ static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode 
 		return -1;
 	}
 
-	return block;
+	return (!block) ? -2 : block;
 }
 
 static int ext2_free_block(struct ext2_fs *ext2_fs, uint32_t block) {
@@ -271,7 +485,7 @@ static int ext2_bgd_allocate_block(struct ext2_fs *ext2_fs, struct ext2_bgd *bgd
 	return -1;
 }
 
-static int ext2_read_inode(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index) {
+static int ext2_read_inode_entry(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index) {
 	int table_index = (index - 1) % ext2_fs->superblock->inodes_per_group;
 	int bgd_index = (index - 1) / ext2_fs->superblock->inodes_per_group;
 
@@ -289,7 +503,7 @@ static int ext2_read_inode(struct ext2_fs *ext2_fs, struct ext2_inode *inode, in
 	return 0;
 }
 
-static int ext2_write_inode(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index) {
+static int ext2_write_inode_entry(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index) {
 	int table_index = (index - 1) % ext2_fs->superblock->inodes_per_group;
 	int bgd_index = (index - 1) / ext2_fs->superblock->inodes_per_group;
 
@@ -360,7 +574,7 @@ int ext2_init(struct partition *partition) {
 	ext2_fs->superblock = superblock;
 	ext2_fs->root_inode = alloc(sizeof(struct ext2_inode));	
 
-	if(ext2_read_inode(ext2_fs, ext2_fs->root_inode, 2) == -1) {
+	if(ext2_read_inode_entry(ext2_fs, ext2_fs->root_inode, 2) == -1) {
 		return -1;
 	}
 	
