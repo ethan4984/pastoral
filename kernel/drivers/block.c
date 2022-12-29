@@ -1,4 +1,5 @@
 #include <drivers/block.h>
+#include <fs/ext2/ext2.h>
 #include <fs/cdev.h>
 #include <debug.h>
 
@@ -114,6 +115,7 @@ static int register_mbr_partitions(struct blkdev *blkdev) {
 	uint16_t mbr_signature = *(uint16_t*)(lba + 510);
 
 	if(mbr_signature != MBR_SIGNATURE) {
+		print("Mbr signature does not match %x\n", mbr_signature);
 		return -1;
 	}
 

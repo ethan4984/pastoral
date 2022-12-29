@@ -53,13 +53,13 @@ struct ext2_bgd {
 
 struct ext2_inode {
 	uint16_t permissions;
-	uint16_t user_id;
+	uint16_t uid;
 	uint32_t size32l;
 	uint32_t access_time;
 	uint32_t creation_time;
 	uint32_t mod_time;
 	uint32_t del_time;
-	uint16_t group_id;
+	uint16_t gid;
 	uint16_t hard_link_cnt;
 	uint32_t sector_cnt;
 	uint32_t flags;
@@ -69,13 +69,21 @@ struct ext2_inode {
 	uint32_t eab;
 	uint32_t size32h;
 	uint32_t frag_addr;
-};
+} __attribute__((packed));
 
 struct ext2_dirent {
 	uint32_t inode_index;
 	uint16_t entry_size;
 	uint8_t name_length;
 	uint8_t dir_type;
+};
+
+struct ext2_file {
+	struct ext2_dirent *dirent;
+
+	const char *name;
+
+	struct ext2_file *next;
 };
 
 struct ext2_fs {

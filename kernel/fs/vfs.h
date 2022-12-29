@@ -24,6 +24,7 @@ struct vfs_node {
 	struct vfs_node *mountpoint;
 
 	VECTOR(struct vfs_node*) children;
+	int refresh;
 
 	struct hash_table shared_pages;
 
@@ -34,6 +35,9 @@ struct vfs_node {
 struct filesystem {
 	struct vfs_node *(*create)(struct vfs_node *parent, const char *name, struct stat *stat);
 	int (*truncate)(struct vfs_node *node, off_t count);
+	int (*refresh)(struct vfs_node *dir);
+
+	void *private_data;
 };
 
 extern struct vfs_node *vfs_root;
