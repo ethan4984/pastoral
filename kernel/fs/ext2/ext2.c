@@ -9,7 +9,7 @@ static ssize_t ext2_read(struct file_handle *handle, void *buf, size_t cnt, off_
 static ssize_t ext2_write(struct file_handle *handle, const void *buf, size_t cnt, off_t offset);
 
 static struct filesystem ext2_filesystem = {
-	.create = NULL,
+	.create = ext2_create,
 	.truncate = NULL,
 	.refresh = ext2_refresh
 };
@@ -35,6 +35,7 @@ static int ext2_inode_read(struct ext2_fs *ext2_fs, struct ext2_inode *inode, vo
 static int ext2_inode_write(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index, const void *buffer, size_t cnt, off_t offset);
 static int ext2_inode_set_block(struct ext2_fs *ext2_fs, struct ext2_inode *inode, int index, uint32_t iblock, uint32_t block);
 static int ext2_read_dirents(struct ext2_fs *ext2_fs, struct ext2_inode *inode, struct ext2_file **files);
+static int ext2_write_dirent(struct ext2_fs *ext2_fs, struct ext2_inode *dir, int dir_inode, const char *name, int inode, int type);
 static int ext2_read_symlink(struct ext2_fs *ext2_fs, struct ext2_inode *inode, char **path);
 static uint32_t ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode *inode, uint32_t iblock);
 
@@ -66,6 +67,52 @@ static ssize_t ext2_write(struct file_handle *handle, const void *buf, size_t cn
 	ssize_t bytes_written = ext2_inode_write(ext2_fs, &inode, handle->stat->st_ino, buf, cnt, offset);
 
 	return bytes_written;
+}
+
+static struct vfs_node *ext2_create(struct vfs_node *parent, const char *name, struct stat *stat) {
+	struct ext2_fs *ext2_fs = parent->filesystem->private_data;
+	struct ext2_inode parent_inode;
+
+	if(ext2_read_inode_entry(ext2_fs, &parent_inode, parent->stat->st_ino) == -1) {
+		return NULL;
+	}
+
+	stat->st_dev = ext2_fs->partition->cdev->rdev;
+	stat->st_ino = ext2_allocate_inode(ext2_fs);
+	stat->st_uid = parent_inode.uid;
+	stat->st_uid = parent_inode.gid;
+	stat->st_size = 0;
+	stat->st_blocks = 0;
+	stat->st_blksize = ext2_fs->block_size;
+
+	int dir_type;
+
+	if((stat->st_mode & S_IFREG) == S_IFREG) {
+		dir_type = 1;
+	} else if((stat->st_mode & S_IFDIR) == S_IFDIR) {
+		dir_type = 2;
+	} else if((stat->st_mode & S_IFCHR) == S_IFCHR) {
+		dir_type = 3;
+	} else if((stat->st_mode & S_IFBLK) == S_IFBLK) {
+		dir_type = 4;
+	} else if((stat->st_mode & S_IFIFO) == S_IFIFO) {
+		dir_type = 5;
+	} else if((stat->st_mode & S_IFSOCK) == S_IFSOCK) {
+		dir_type = 6;
+	} else if((stat->st_mode & S_IFLNK) == S_IFLNK) {
+		dir_type = 7;
+	} else {
+		print("ext2: warning: unknown st_mode %x\n", stat->st_mode);
+		dir_type = 0;
+	}
+
+	if(ext2_write_dirent(ext2_fs, &parent_inode, parent->stat->st_ino, name, stat->st_ino, dir_type) == -1) {
+		return NULL;
+	}
+
+	struct vfs_node *vfs_node = vfs_create_node(parent, &ext2_fops, &ext2_filesystem, stat, name, 0);
+
+	return vfs_node;
 }
 
 static int ext2_refresh(struct vfs_node *dir) {
@@ -140,6 +187,42 @@ static int ext2_refresh(struct vfs_node *dir) {
 		}
 
 		file = file->next;
+	}
+
+	return 0;
+}
+
+static int ext2_write_dirent(struct ext2_fs *ext2_fs, struct ext2_inode *dir, int dir_inode, const char *name, int inode, int type) {
+	size_t max_size = ext2_inode_size(dir) + sizeof(struct ext2_dirent) + strlen(name);
+	void *buffer = alloc(max_size);
+
+	if(ext2_inode_read(ext2_fs, dir, buffer, ext2_inode_size(dir), 0) == -1) {
+		return -1;	
+	}
+
+	for(size_t headway = 0; headway < max_size;) {
+		struct ext2_dirent *dirent = buffer + headway;
+
+		int expected_size = ALIGN_UP(sizeof(struct ext2_dirent) + dirent->name_length, 4);
+		if(expected_size == dirent->entry_size) {
+			continue;
+		}
+
+		dirent->entry_size = expected_size;
+		dirent = buffer + headway + expected_size;
+
+		dirent->inode_index = inode;
+		dirent->entry_size = ext2_inode_size(dir) - headway;
+		dirent->name_length = strlen(name);
+		dirent->dir_type = type;
+
+		memcpy((void*)dirent + sizeof(struct ext2_dirent), name, dirent->name_length);
+
+		if(ext2_inode_write(ext2_fs, dir, dir_inode, buffer, max_size, 0) == -1) {
+			return -1;
+		}
+
+		break;
 	}
 
 	return 0;
@@ -682,7 +765,7 @@ static int ext2_write_inode_entry(struct ext2_fs *ext2_fs, struct ext2_inode *in
 	}
 
 	if(ext2_fs->partition->cdev->bops->write(ext2_fs->partition->cdev, inode, sizeof(struct ext2_inode), bgd.inode_table_block * ext2_fs->block_size + ext2_fs->superblock->inode_size * table_index) == -1) {
-		print("ext2: writeerror\n");
+		print("ext2: writ error\n");
 		return -1;
 	}
 
@@ -747,24 +830,5 @@ int ext2_init(struct partition *partition) {
 		return -1;
 	}
 
-	struct ext2_file *files = alloc(sizeof(struct ext2_file));
-
-	if(ext2_read_dirents(ext2_fs, ext2_fs->root_inode, &files) == -1) {
-		print("Error reading the dirents from the root inode\n");
-	}
-
-	while(files) {
-		if(files->name == NULL) {
-			print("name is null\n");
-			for(;;);
-		}
-
-		print(files->name);
-
-		files = files->next;
-	}
-
-	for(;;);
-	
 	return 0;
 }

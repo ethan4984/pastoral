@@ -87,6 +87,11 @@ struct vfs_node *vfs_search_relative(struct vfs_node *parent, const char *name, 
 	}
 
 	for(size_t i = 0; i < parent->children.length; i++) {
+		if(parent->refresh) {
+			parent->filesystem->refresh(parent);
+			parent->refresh = 0;
+		}
+
 		struct vfs_node *node = parent->children.data[i];
 
 		if(strcmp(node->name, name) == 0) {

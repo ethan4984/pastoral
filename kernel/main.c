@@ -196,8 +196,6 @@ void pastoral_entry(void) {
 	pci_init();
 	pit_init();
 
-	for(;;);
-
 	apic_timer_init(20);
 
 	struct pid_namespace *namespace = sched_default_namespace();
