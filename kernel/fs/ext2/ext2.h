@@ -87,6 +87,8 @@ struct ext2_file {
 };
 
 struct ext2_fs {
+	struct filesystem *filesystem;
+
 	struct ext2_superblock *superblock;
 	struct ext2_inode *root_inode;
 

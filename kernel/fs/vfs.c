@@ -86,12 +86,12 @@ struct vfs_node *vfs_search_relative(struct vfs_node *parent, const char *name, 
 		return parent->parent;
 	}
 
-	for(size_t i = 0; i < parent->children.length; i++) {
-		if(parent->refresh) {
-			parent->filesystem->refresh(parent);
-			parent->refresh = 0;
-		}
+	if(parent->refresh) {
+		parent->filesystem->refresh(parent);
+		parent->refresh = 0;
+	}
 
+	for(size_t i = 0; i < parent->children.length; i++) {
 		struct vfs_node *node = parent->children.data[i];
 
 		if(strcmp(node->name, name) == 0) {
@@ -192,16 +192,16 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path, 
 
 	size_t i;
 	for(i = 0; i < (subpath_list.length - 1); i++) {
-		parent = vfs_search_relative(parent, subpath_list.data[i], true);
-		if(parent == NULL) {
-			return NULL;
-		}
-
 		if(parent->mountpoint) {
 			parent = parent->mountpoint;
 		}
 
 		if(!S_ISDIR(parent->stat->st_mode)) {
+			return NULL;
+		}
+
+		parent = vfs_search_relative(parent, subpath_list.data[i], true);
+		if(parent == NULL) {
 			return NULL;
 		}
 	}
@@ -282,22 +282,15 @@ struct vfs_node *vfs_parent_dir(struct vfs_node *parent, const char *path) {
 	return vfs_search_relative(parent, subpath_list.data[i], true);
 }
 
-int vfs_mount(struct vfs_node *parent, const char *source, const char *target, struct filesystem *filesystem, struct file_ops *fops) {
-	struct vfs_node *source_node = vfs_search_absolute(parent, source, true);
-	struct vfs_node *target_node = vfs_search_absolute(parent, target, true);
-
-	if(source_node == NULL || target_node == NULL) {
+int vfs_mount(struct vfs_node *target, struct stat *stat, struct filesystem *filesystem, struct file_ops *fops) {
+	if(!S_ISDIR(target->stat->st_mode)) {
 		return -1;
 	}
 
-	if(!S_ISDIR(target_node->stat->st_mode)) {
-		return -1;
-	}
+	struct vfs_node *mountpoint = vfs_create_node(target->parent, fops, filesystem, stat, target->name, 1);
+	mountpoint->refresh = 1;
 
-	struct stat *stat = alloc(sizeof(struct stat));
-	stat_init(stat);
-	stat->st_mode = S_IFDIR | S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
-	target_node->mountpoint = vfs_create_node(target_node->parent, fops, filesystem, stat, target_node->name, 1);
+	target->mountpoint = mountpoint;
 
 	return 0;
 }

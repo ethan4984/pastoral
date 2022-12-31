@@ -48,7 +48,7 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path, 
 struct vfs_node *vfs_search_relative(struct vfs_node *parent, const char *name, bool symfollow);
 struct vfs_node *vfs_parent_dir(struct vfs_node *parent, const char *path);
 const char *vfs_absolute_path(struct vfs_node *node);
-int vfs_mount(struct vfs_node *vfs_node, const char *source, const char *target, struct filesystem *filesystem, struct file_ops *fops);
+int vfs_mount(struct vfs_node *target, struct stat *stat, struct filesystem *filesystem, struct file_ops *fops);
 void vfs_init();
 
 static inline void node_lock(struct vfs_node *node) {
