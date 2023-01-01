@@ -34,6 +34,12 @@ void stacktrace(uint64_t *rbp) {
 
 static void serial_write(uint8_t data) {
 	while((inb(COM1 + 5) & (1 << 5)) == 0);
+
+	// use '__builtin_expect' to assume 'data' isn't a newline
+	if (__builtin_expect(data == '\n', 0)) {
+		outb(COM1, '\r');
+	}
+
 	outb(COM1, data);
 }
 
@@ -146,4 +152,14 @@ void view_registers(struct registers *regs) {
 	print("debug: rflags: %x\n", regs->rflags);
 	print("debug: rsp: %x\n", regs->rsp);
 	print("debug: ss: %x\n", regs->ss);
+}
+
+void debug_init() {
+	// setup the serial controller
+	outb(COM1 + 3, 0x80);   // enable DLAB (to set the baud rate to 9600)
+	outb(COM1 + 0, 0x0C);   // Set divisor to 12 (hi) and 0 (lo)
+	outb(COM1 + 1, 0x00);
+	outb(COM1 + 3, 0x03);   // 8 bits, no parity, one stop bit
+	outb(COM1 + 2, 0xC7);   // setup the FIFOs with a 14-byte threshold
+	outb(COM1 + 4, 0x0);    // finally, enable the port with IRQs disabled
 }
