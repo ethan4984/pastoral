@@ -176,6 +176,8 @@ void limine_terminals_init() {
 		char *device_path = alloc(MAX_PATH_LENGTH);
 		sprint(device_path, "/dev/tty%d", limine_tty_minor);
 
+		print("creating tty %s\n", device_path);
+
 		struct stat *stat = alloc(sizeof(struct stat));
 		stat_init(stat);
 		stat->st_rdev = makedev(LIMINE_TTY_MAJOR, limine_tty_minor);

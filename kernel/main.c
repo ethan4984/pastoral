@@ -111,9 +111,10 @@ void init_process() {
 
 void pastoral_thread() {
 	print("Greetings from pastorals kernel thread\n");
-	if(initramfs() == -1) {
-		panic("initramfs: unable to initialise");
-	}
+
+	debug_init();
+
+	initramfs();
 
 	limine_terminals_init();
 	self_tty_init();
@@ -147,6 +148,7 @@ void pastoral_thread() {
 
 void pastoral_entry(void) {
 	HIGH_VMA = limine_hhdm_request.response->offset;
+
 	debug_init();
 
 	print("Pastoral unleashes the real power of the cpu\n");

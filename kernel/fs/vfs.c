@@ -8,6 +8,72 @@
 
 struct vfs_node *vfs_root;
 
+struct vfs_node *vfs_create(struct vfs_node *parent, const char *name, struct stat *stat) {
+	if(parent->mountpoint) {
+		parent = parent->mountpoint;
+	}
+
+	if(parent->filesystem == NULL || parent->filesystem->create == NULL) {
+		return NULL;
+	}
+
+	if(!S_ISDIR(parent->stat->st_mode)) {
+		return NULL;
+	}
+
+	return parent->filesystem->create(parent, name, stat);
+}
+
+int vfs_truncate(struct vfs_node *node, off_t count) {
+	if(node->filesystem == NULL || node->filesystem->truncate == NULL) {
+		return -1;
+	}
+
+	return node->filesystem->truncate(node, count);
+}
+
+int vfs_refresh(struct vfs_node *dir) {
+	if(dir->mountpoint) {
+		dir = dir->mountpoint;
+	}
+
+	if(dir->filesystem == NULL || dir->filesystem->create == NULL) {
+		return -1;
+	}
+
+	if(!S_ISDIR(dir->stat->st_mode)) {
+		return -1;
+	}
+
+	return dir->filesystem->refresh(dir);
+}
+
+struct vfs_node *vfs_get_node(struct vfs_node *parent, int index) {
+	if(index >= parent->children.length) {
+		return NULL;
+	}
+
+	if(parent->mountpoint) {
+		parent = parent->mountpoint;
+	}
+
+	if(parent->refresh) {
+		vfs_refresh(parent);
+		parent->refresh = 0;
+	}
+
+	struct vfs_node *node = parent->children.data[index];
+	if(node == NULL) {
+		return NULL;
+	}
+
+	if(node->mountpoint) {
+		node = node->mountpoint;
+	}
+
+	return node;
+}
+
 struct vfs_node *vfs_create_node(struct vfs_node *parent, struct file_ops *fops, struct filesystem *filesystem, struct stat *stat, const char *name, int dangle) {
 	if(parent == NULL) {
 		parent = vfs_root;
@@ -86,9 +152,17 @@ struct vfs_node *vfs_search_relative(struct vfs_node *parent, const char *name, 
 		return parent->parent;
 	}
 
+	if(!S_ISDIR(parent->stat->st_mode)) {
+		return NULL;
+	}
+
 	if(parent->refresh) {
-		parent->filesystem->refresh(parent);
+		vfs_refresh(parent);
 		parent->refresh = 0;
+	}
+
+	if(parent->mountpoint) {
+		parent = parent->mountpoint;
 	}
 
 	for(size_t i = 0; i < parent->children.length; i++) {
@@ -136,16 +210,16 @@ struct vfs_node *vfs_create_node_deep(struct vfs_node *parent, struct file_ops *
 
 	size_t i = 0;
 	for(; i < subpath_list.length; i++) {
+		if(parent->mountpoint) {
+			parent = parent->mountpoint;
+		}
+
 		struct vfs_node *node = vfs_search_relative(parent, subpath_list.data[i], true);
 		if(node == NULL) {
 			break;
 		}
 
-		if(node->mountpoint) {
-			parent = node->mountpoint;
-		} else {
-			parent = node;
-		}
+		parent = node; // what if we are last??
 	}
 
 	if(i >= subpath_list.length) {
@@ -265,16 +339,16 @@ struct vfs_node *vfs_parent_dir(struct vfs_node *parent, const char *path) {
 
 	size_t i;
 	for(i = 0; i < (subpath_list.length - 1); i++) {
-		parent = vfs_search_relative(parent, subpath_list.data[i], true);
-		if(parent == NULL) {
-			return NULL;
-		}
-
 		if(parent->mountpoint) {
 			parent = parent->mountpoint;
 		}
 
 		if(!S_ISDIR(parent->stat->st_mode)) {
+			return NULL;
+		}
+
+		parent = vfs_search_relative(parent, subpath_list.data[i], true);
+		if(parent == NULL) {
 			return NULL;
 		}
 	}

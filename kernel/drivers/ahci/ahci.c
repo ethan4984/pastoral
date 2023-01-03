@@ -101,16 +101,18 @@ static int ahci_initialise_clb(struct ahci_device *device) {
 static int ahci_issue_cmd(struct ahci_cmd *cmd) {
 	struct ahci_device *device = cmd->device;
 
-	while((device->port->tfd & PORT_TFD_BSY) && (device->port->ci & (1 << cmd->slot))) asm ("pause");
+	while((device->port->tfd & PORT_TFD_BSY) || (device->port->tfd & PORT_TFD_DRQ)) asm ("pause");
 
 	device->port->cmd &= ~PORT_CMD_ST;
+	while(device->port->cmd & PORT_CMD_CR) asm ("pause"); // good
 
-	while(device->port->cmd & PORT_CMD_CR) asm ("pause");
+	device->port->cmd |= PORT_CMD_FRE;
+	while(!(device->port->cmd & PORT_CMD_FR)) asm ("pause");
+	device->port->cmd |= PORT_CMD_ST;
 
-	device->port->cmd |= PORT_CMD_FR | PORT_CMD_ST;
 	device->port->ci = 1 << cmd->slot;
 
-	while((device->port->tfd & PORT_TFD_BSY) && (device->port->ci & (1 << cmd->slot))) asm ("pause");
+	while(device->port->ci & (1 << cmd->slot)) asm ("pause");
 
 	if(device->port->tfd & PORT_TFD_ERR) {
 		print("ahci: command: an error has occured during transfer\n");
@@ -291,7 +293,7 @@ static ssize_t ahci_device_write(struct cdev *cdev, const void *buffer, size_t c
 		return -1;
 	}
 
-	pmm_free((uintptr_t)lba_buffer, DIV_ROUNDUP(lba_cnt * AHCI_SECTOR_SIZE, PAGE_SIZE));
+	pmm_free((uintptr_t)lba_buffer - HIGH_VMA, DIV_ROUNDUP(lba_cnt * AHCI_SECTOR_SIZE, PAGE_SIZE));
 
 	return bytes_read - ABS(bytes_read, cnt);
 }

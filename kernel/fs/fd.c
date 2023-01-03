@@ -78,10 +78,6 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 			set_errno(ENOENT);
 			return -1;
 		}
-
-		if(parent->mountpoint) {
-			parent = parent->mountpoint;
-		}
 	}
 
 	if(stat_has_access(parent->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
@@ -378,6 +374,8 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, symfollow);
 
+	print("Here for some fuckign reason %x on %s\n", vfs_node, path);
+
 	if(flags & O_CREAT && vfs_node == NULL) {
 		int cutoff = find_last_char(path, '/');
 
@@ -402,6 +400,8 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 			}
 		}
 
+		print("Creating file %s\n", name);
+
 		if(stat_has_access(parent->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK | X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
@@ -414,7 +414,9 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 		stat_update_time(stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
-		vfs_node = parent->filesystem->create(parent, name, stat);
+		print("Calling filesystem create %x and %s\n", parent, parent->name);
+
+		vfs_node = vfs_create(parent, name, stat);
 
 		if(parent->stat->st_mode & S_ISGID) {
 			vfs_node->stat->st_gid = parent->stat->st_gid;
@@ -440,7 +442,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	}
 
 	if((flags & O_TRUNC) && vfs_node->filesystem->truncate) {
-		vfs_node->filesystem->truncate(vfs_node, 0);
+		vfs_truncate(vfs_node, 0);
 		stat_update_time(vfs_node->stat, STAT_MOD | STAT_STATUS);
 	}
 
@@ -969,9 +971,17 @@ void syscall_readdir(struct registers *regs) {
 
 	if(!S_ISDIR(dir->stat->st_mode)) {
 		set_errno(ENOTDIR);
-		print("returingin here\n");
 		regs->rax = -1;
 		return;
+	}
+
+	if(dir->refresh) {
+		vfs_refresh(dir);
+		dir->refresh = 0;
+	}
+
+	if(dir->mountpoint) {
+		dir = dir->mountpoint;
 	}
 
 	if((dir->children.length >= dir_handle->file_handle->current_dirent) && dir->children.length != dir_handle->file_handle->dirent_list.length) {
@@ -981,7 +991,11 @@ void syscall_readdir(struct registers *regs) {
 
 	if(!dir_handle->file_handle->dirent_list.length) {
 		for(size_t i = 0; i < dir->children.length; i++) {
-			struct vfs_node *node = dir->children.data[i];
+			struct vfs_node *node = vfs_get_node(dir, i);
+			if(node == NULL) {
+				regs->rax = -1;
+				return;
+			}
 
 			struct dirent *entry = alloc(sizeof(struct dirent));
 

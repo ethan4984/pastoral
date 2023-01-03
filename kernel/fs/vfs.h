@@ -40,6 +40,10 @@ struct filesystem {
 	void *private_data;
 };
 
+struct vfs_node *vfs_create(struct vfs_node *parent, const char *name, struct stat *stat);
+int vfs_truncate(struct vfs_node *node, off_t count);
+int vfs_refresh(struct vfs_node *dir);
+
 extern struct vfs_node *vfs_root;
 
 struct vfs_node *vfs_create_node_deep(struct vfs_node *parent, struct file_ops *fops, struct filesystem *filesystem, struct stat *stat, const char *str);
@@ -47,6 +51,7 @@ struct vfs_node *vfs_create_node(struct vfs_node *parent, struct file_ops *fops,
 struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path, bool symfollow);
 struct vfs_node *vfs_search_relative(struct vfs_node *parent, const char *name, bool symfollow);
 struct vfs_node *vfs_parent_dir(struct vfs_node *parent, const char *path);
+struct vfs_node *vfs_get_node(struct vfs_node *parent, int index);
 const char *vfs_absolute_path(struct vfs_node *node);
 int vfs_mount(struct vfs_node *target, struct stat *stat, struct filesystem *filesystem, struct file_ops *fops);
 void vfs_init();

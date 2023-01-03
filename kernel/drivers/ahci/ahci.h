@@ -20,6 +20,7 @@
 #define PORT_CMD_CR (1 << 15)
 
 #define PORT_TFD_ERR (1 << 0)
+#define PORT_TFD_DRQ (1 << 3)
 #define PORT_TFD_BSY (1 << 7)
 
 #define AHCI_MAX_CMD 32
@@ -46,7 +47,7 @@ struct ahci_port {
 	uint32_t devslp;
 	uint32_t reserved1[11];
 	uint32_t vs[10];
-};
+} __attribute__((packed));
 
 struct ahci_registers {
 	uint32_t cap;
@@ -63,7 +64,7 @@ struct ahci_registers {
 	uint32_t reserved[29];
 	uint32_t vendor[24];
 	volatile struct ahci_port ports[];
-};
+} __attribute__((packed));
 
 struct ahci_fis_d2h {
 	uint8_t fis_type;
@@ -82,7 +83,7 @@ struct ahci_fis_d2h {
 	uint8_t counth;
 	uint8_t reserved3;
 	uint8_t reserved4;
-};
+} __attribute__((packed));
 
 struct ahci_fis_h2d {
 	uint8_t fis_type;
@@ -102,21 +103,21 @@ struct ahci_fis_h2d {
 	uint8_t icc;
 	uint8_t control;
 	uint32_t reserved;
-};
+} __attribute__((packed));
 
 struct ahci_hda_prdt {
 	uint32_t dba;
 	uint32_t dbau;
 	uint32_t reserved;
 	uint32_t dbc;
-};
+} __attribute__((packed));
 
 struct ahci_cmdtable {
 	uint8_t cfis[64];
 	uint8_t acmd[16];
 	uint8_t reserved[48];
 	struct ahci_hda_prdt prdt[];
-};
+} __attribute__((packed));
 
 struct ahci_cmdhdr {
 	uint16_t flags;
@@ -125,7 +126,7 @@ struct ahci_cmdhdr {
 	uint32_t ctba;
 	uint32_t ctbau;
 	uint32_t reserved[4];
-};
+} __attribute__((packed));
 
 struct ahci_cmd {
 	volatile struct ahci_cmdhdr *cmdhdr;
@@ -150,7 +151,7 @@ struct ahci_controller {
 	int port_cnt;
 	int slot_cnt;
 
-	struct ahci_registers *regs;
+	volatile struct ahci_registers *regs;
 
 	VECTOR(struct ahci_device*) device_list; 
 };
