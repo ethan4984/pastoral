@@ -257,6 +257,14 @@ static ssize_t ahci_device_read(struct cdev *cdev, void *buffer, size_t cnt, off
 	size_t lba_start = offset / AHCI_SECTOR_SIZE;
 	size_t lba_cnt = DIV_ROUNDUP(cnt, AHCI_SECTOR_SIZE);
 
+	if((cnt % AHCI_SECTOR_SIZE == 0) && (offset % AHCI_SECTOR_SIZE != 0)) {
+		lba_cnt++;
+	}
+
+	if(((offset % (AHCI_SECTOR_SIZE)) + cnt) > AHCI_SECTOR_SIZE) {
+		lba_cnt++;
+	}
+
 	if(lba_cnt == 0) {
 		return 0;
 	}
@@ -268,9 +276,9 @@ static ssize_t ahci_device_read(struct cdev *cdev, void *buffer, size_t cnt, off
 		return -1;
 	}
 
-	memcpy(buffer, lba_buffer + (offset % AHCI_SECTOR_SIZE), cnt);
-
 	pmm_free((uintptr_t)lba_buffer - HIGH_VMA, DIV_ROUNDUP(lba_cnt * AHCI_SECTOR_SIZE, PAGE_SIZE));
+
+	memcpy(buffer, (char*)lba_buffer + (offset % AHCI_SECTOR_SIZE), cnt);
 
 	return bytes_read - ABS(bytes_read, cnt);
 }

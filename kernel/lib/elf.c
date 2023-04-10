@@ -72,10 +72,19 @@ static int elf64_symtab_init(struct elf_file *file) {
 }
 
 int elf64_file_init(struct elf_file *file) {
-	ssize_t ret = file->read(file, &file->header, 0, sizeof(struct elf64_hdr));
-	if(ret != sizeof(struct elf64_hdr)) {
+	struct elf64_hdr *hdr = alloc(1024);
+
+	ssize_t ret = file->read(file, hdr, 0, 1024);
+	if(ret != 1024) {
 		return -1;
 	}
+
+	file->header = *hdr;
+
+	/*ssize_t ret = file->read(file, &file->header, 0, sizeof(struct elf64_hdr));
+	if(ret != sizeof(struct elf64_hdr)) {
+		return -1;
+	}*/
 
 	file->phdr = alloc(sizeof(struct elf64_phdr) * file->header.ph_num);
 	file->shdr = alloc(sizeof(struct elf64_shdr) * file->header.sh_num);
@@ -95,9 +104,14 @@ int elf64_file_init(struct elf_file *file) {
 		return -1;
 	}
 
+	return 0;
+
 	file->shstrtab_hdr = file->shdr + file->header.shstrndx;
 	file->shstrtab = (void*)(pmm_alloc(DIV_ROUNDUP(file->shstrtab_hdr->sh_size, PAGE_SIZE), 1) + HIGH_VMA);
 	ret = file->read(file, file->shstrtab, file->shstrtab_hdr->sh_offset, file->shstrtab_hdr->sh_size);
+
+	print("%d %d\n", file->shstrtab_hdr->sh_size, ret);
+
 	if(ret != file->shstrtab_hdr->sh_size) {
 		return -1;
 	}

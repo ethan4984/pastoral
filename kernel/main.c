@@ -142,6 +142,8 @@ void pastoral_thread() {
 
 	sched_dequeue(CURRENT_TASK);
 
+	print("this is here right\n");
+
 	for(;;)
 		asm ("hlt");
 }

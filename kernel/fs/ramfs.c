@@ -49,7 +49,6 @@ struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, struct 
 }
 
 ssize_t ramfs_read(struct file_handle *file, void *buf, size_t cnt, off_t offset) {
-	node_lock(file->vfs_node);
 	struct stat *stat = file->stat;
 
 	spinlock_irqsave(&ramfs_lock);
@@ -57,12 +56,10 @@ ssize_t ramfs_read(struct file_handle *file, void *buf, size_t cnt, off_t offset
 	spinrelease_irqsave(&ramfs_lock);
 
 	if(ramfs_handle == NULL) {
-		node_unlock(file->vfs_node);
 		return 0;
 	}
 
 	if(offset > stat->st_size) {
-		node_unlock(file->vfs_node);
 		return 0;
 	}
 
@@ -72,12 +69,10 @@ ssize_t ramfs_read(struct file_handle *file, void *buf, size_t cnt, off_t offset
 
 	memcpy8(buf, ramfs_handle->buffer + offset, cnt);
 
-	node_unlock(file->vfs_node);
 	return cnt;
 }
 
 ssize_t ramfs_write(struct file_handle *file, const void *buf, size_t cnt, off_t offset) {
-	node_lock(file->vfs_node);
 	struct stat *stat = file->stat;
 
 	spinlock_irqsave(&ramfs_lock);
@@ -85,9 +80,10 @@ ssize_t ramfs_write(struct file_handle *file, const void *buf, size_t cnt, off_t
 	spinrelease_irqsave(&ramfs_lock);
 
 	if(ramfs_handle == NULL) {
-		node_unlock(file->vfs_node);
 		return 0;
 	}
+
+	print("%x %x\n", offset + cnt, stat->st_size);
 
 	if(offset + cnt > stat->st_size) {
 		stat->st_size = offset + cnt;
@@ -95,14 +91,14 @@ ssize_t ramfs_write(struct file_handle *file, const void *buf, size_t cnt, off_t
 		ramfs_handle->buffer = realloc(ramfs_handle->buffer, stat->st_size);
 	}
 
+	print("%x %x %x\n", ramfs_handle->buffer, buf, cnt);
+
 	memcpy8(ramfs_handle->buffer + offset, buf, cnt);
 
-	node_unlock(file->vfs_node);
 	return cnt;
 }
 
 int ramfs_truncate(struct vfs_node *node, off_t cnt) {
-	node_lock(node);
 	struct stat *stat = node->stat;
 
 	spinlock_irqsave(&ramfs_lock);
@@ -110,13 +106,11 @@ int ramfs_truncate(struct vfs_node *node, off_t cnt) {
 	spinrelease_irqsave(&ramfs_lock);
 
 	if(ramfs_handle == NULL) {
-		node_unlock(node);
 		return -1;
 	}
 
 	stat->st_size = cnt;
 	ramfs_handle->buffer = realloc(ramfs_handle->buffer, stat->st_size);
 
-	node_unlock(node);
 	return 0;
 }

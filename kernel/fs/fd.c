@@ -102,7 +102,48 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 	}
 
 	*ret = vfs_node;
+
 	return 0;
+}
+
+static ssize_t file_read(struct fd_handle *fd_handle, void *buffer, size_t cnt, off_t offset) {
+	struct file_handle *file = fd_handle->file_handle;
+
+	node_lock(file->vfs_node);
+	struct stat *stat = file->stat;
+
+	if(offset > stat->st_size) {
+		node_unlock(file->vfs_node);
+		return 0;
+	}
+
+	ssize_t ret = file->ops->read(file, buffer, cnt, offset);
+
+	if(offset + cnt > stat->st_size) {
+		cnt = stat->st_size - offset;
+	}
+
+	node_unlock(file->vfs_node);
+
+	return ret;
+}
+
+static ssize_t file_write(struct fd_handle *fd_handle, const void *buffer, size_t cnt, off_t offset) {
+	struct file_handle *file = fd_handle->file_handle;
+
+	node_lock(file->vfs_node);
+	struct stat *stat = file->stat;
+
+	ssize_t ret = file->ops->write(file, buffer, cnt, offset);
+
+	if(offset + cnt > stat->st_size) {
+		stat->st_size = offset + cnt;
+		stat->st_blocks = DIV_ROUNDUP(stat->st_size, stat->st_blksize);
+	}
+
+	node_unlock(file->vfs_node);
+
+	return ret;
 }
 
 int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode) {
@@ -226,8 +267,15 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	off_t off = fd_handle->file_handle->position;
 
 	file_unlock(fd_handle->file_handle);
-	ret = fd_handle->file_handle->ops->write(fd_handle->file_handle, buf, count, off);
+
+	if(S_ISCHR(stat->st_mode)) {
+		ret = fd_handle->file_handle->ops->write(fd_handle->file_handle, buf, count, off);
+	} else {
+		ret = file_write(fd_handle, buf, count, off);
+	}
+
 	file_lock(fd_handle->file_handle);
+
 	if(ret != -1) {
 		stat_update_time(stat, STAT_MOD | STAT_STATUS);
 
@@ -271,14 +319,23 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 
 	ssize_t ret;
 	off_t off = fd_handle->file_handle->position;
+
 	file_unlock(fd_handle->file_handle);
-	ret = fd_handle->file_handle->ops->read(fd_handle->file_handle, buf, count, off);
+
+	if(S_ISCHR(stat->st_mode)) {
+		ret = fd_handle->file_handle->ops->read(fd_handle->file_handle, buf, count, off);
+	} else {
+		ret = file_read(fd_handle, buf, count, off);
+	}
+
 	file_lock(fd_handle->file_handle);
+
 	if(ret != -1) {
 		fd_handle->file_handle->position += ret;
 	}
 
 	stat_update_time(stat, STAT_ACCESS);
+
 	file_unlock(fd_handle->file_handle);
 
 	return ret;
@@ -374,8 +431,6 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 
 	struct vfs_node *vfs_node = vfs_search_absolute(dir, path, symfollow);
 
-	print("Here for some fuckign reason %x on %s\n", vfs_node, path);
-
 	if(flags & O_CREAT && vfs_node == NULL) {
 		int cutoff = find_last_char(path, '/');
 
@@ -400,8 +455,6 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 			}
 		}
 
-		print("Creating file %s\n", name);
-
 		if(stat_has_access(parent->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, W_OK | X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
@@ -413,8 +466,6 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		stat->st_uid = CURRENT_TASK->effective_uid;
 
 		stat_update_time(stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
-
-		print("Calling filesystem create %x and %s\n", parent, parent->name);
 
 		vfs_node = vfs_create(parent, name, stat);
 

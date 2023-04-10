@@ -1,5 +1,6 @@
 #include <fs/ext2/ext2.h>
 #include <fs/fd.h>
+#include <mm/pmm.h>
 #include <debug.h>
 
 static struct vfs_node *ext2_create(struct vfs_node *parent, const char *name, struct stat *stat);
@@ -51,12 +52,14 @@ static uint64_t ext2_inode_write_size(struct ext2_fs *ext2_fs, struct ext2_inode
 static ssize_t ext2_read(struct file_handle *handle, void *buf, size_t cnt, off_t offset) {
 	struct ext2_fs *ext2_fs = handle->vfs_node->filesystem->private_data;
 	if(ext2_fs == NULL) {
+		node_unlock(handle->vfs_node);
 		return -1;
 	}
 
 	struct ext2_inode inode;
 
 	if(ext2_read_inode_entry(ext2_fs, &inode, handle->stat->st_ino) == -1) {
+		node_unlock(handle->vfs_node);
 		return -1;
 	}
 
@@ -253,43 +256,31 @@ static int ext2_write_dirent(struct ext2_fs *ext2_fs, struct ext2_inode *dir, in
 		struct ext2_dirent *dirent = buffer + headway;
 
 		int expected_size = ALIGN_UP(sizeof(struct ext2_dirent) + dirent->name_length, 4);
-
-		dirent->entry_size = expected_size;
 		headway += expected_size;	
 
-		if(expected_size == dirent->entry_size && dirent->name_length != 0) {
+		if(dirent->entry_size == expected_size) {
 			continue;
 		}
 
-		dirent->entry_size = expected_size;
-		dirent = buffer + headway + expected_size;
-
 		dirent->inode_index = inode;
-		dirent->entry_size = ext2_inode_read_size(dir) - headway;
+		dirent->entry_size = expected_size;
 		dirent->name_length = strlen(name);
 		dirent->dir_type = type;
 
 		memcpy((void*)dirent + sizeof(struct ext2_dirent), name, dirent->name_length);
 
+		dirent = (void*)dirent + expected_size;
+
+		dirent->inode_index = 0;
+		dirent->entry_size = ext2_inode_read_size(dir) - headway;
+		dirent->name_length = 0;
+		dirent->dir_type = 0;
+
 		if(ext2_inode_write(ext2_fs, dir, dir_inode, buffer, ext2_inode_read_size(dir), 0) == -1) {
 			return -1;
 		}
 
-		return 0;
-	}
-
-	struct ext2_dirent *dirent = buffer + ext2_inode_read_size(dir);
-	uint64_t inode_size = ext2_inode_read_size(dir) + ext2_fs->block_size;
-
-	dirent->inode_index = inode;
-	dirent->entry_size = inode_size - ext2_inode_read_size(dir);
-	dirent->name_length = strlen(name);
-	dirent->dir_type = type;
-
-	memcpy((void*)dirent + sizeof(struct ext2_dirent), name, dirent->name_length);
-
-	if(ext2_inode_write(ext2_fs, dir, dir_inode, buffer, ext2_inode_read_size(dir) + sizeof(struct ext2_dirent) + strlen(name), 0) == -1) {
-		return -1;
+		break;
 	}
 
 	return 0;
@@ -352,11 +343,13 @@ static int ext2_inode_write(struct ext2_fs *ext2_fs, struct ext2_inode *inode, i
 		if(length > (ext2_fs->block_size - offset)) {
 			length = ext2_fs->block_size - offset;
 		}
-		
+
 		int ret = ext2_inode_get_block(ext2_fs, inode, iblock, &block);
 		if(ret == -1) {
 			return -1;
-		} else if(ret == -2) {
+		}
+		
+		if(block == 0) {
 			block = ext2_allocate_block(ext2_fs);
 			if(block == -1) {
 				return -1;
@@ -384,6 +377,54 @@ static int ext2_inode_write(struct ext2_fs *ext2_fs, struct ext2_inode *inode, i
 
 	return cnt;
 }
+
+/*static int ext2_inode_read_blocks(struct ext2_fs *ext2_fs, struct ext2_inode *inode, void *buffer, size_t iblock, size_t cnt) {
+	int blocks_read = 0;
+
+	for(size_t i = 0; i < cnt; i++) {
+		uint32_t block;
+
+		int ret = ext2_inode_get_block(ext2_fs, inode, iblock + i, &block);
+		if(ret == -1) {
+			break;
+		}
+
+		if(ext2_fs->partition->cdev->bops->read(ext2_fs->partition->cdev, buffer + (i * ext2_fs->block_size), ext2_fs->block_size, block * ext2_fs->block_size) == -1) {
+			print("ext2: read error\n");
+			return -1;
+		}
+
+		blocks_read++;
+	}
+
+	return blocks_read;
+}
+
+static int ext2_inode_read(struct ext2_fs *ext2_fs, struct ext2_inode *inode, void *buffer, size_t cnt, off_t offset) {
+	size_t iblock_start = offset / ext2_fs->block_size;
+	size_t iblock_cnt = DIV_ROUNDUP(cnt, ext2_fs->block_size);
+
+	if((cnt % ext2_fs->block_size == 0) && (offset % ext2_fs->block_size != 0)) {
+		iblock_cnt++;
+	}
+
+	if(((offset % ext2_fs->block_size) + cnt) > ext2_fs->block_size) {
+		iblock_cnt++;
+	}
+
+	void *block_buffer = (void*)(pmm_alloc(DIV_ROUNDUP(iblock_cnt * ext2_fs->block_size, PAGE_SIZE), 1) + HIGH_VMA);
+
+	int blocks_read = ext2_inode_read_blocks(ext2_fs, inode, block_buffer, iblock_start, iblock_cnt);
+	if(blocks_read == -1) {
+		return -1;
+	}
+
+	pmm_free((uintptr_t)block_buffer - HIGH_VMA, DIV_ROUNDUP(iblock_cnt * ext2_fs->block_size, PAGE_SIZE));
+
+	memcpy(buffer, block_buffer + (offset % ext2_fs->block_size), cnt);
+
+	return blocks_read * ext2_fs->block_size - ABS(blocks_read * ext2_fs->block_size, cnt);
+}*/
 
 static int ext2_inode_read(struct ext2_fs *ext2_fs, struct ext2_inode *inode, void *buffer, size_t cnt, off_t offset) {
 	if(offset > ext2_inode_read_size(inode)) {
@@ -633,7 +674,8 @@ static int ext2_inode_get_block(struct ext2_fs *ext2_fs, struct ext2_inode *inod
 	}
 
 	*ret = block;
-	return (!block) ? -2 : 0;
+
+	return 0;
 }
 
 static int ext2_free_block(struct ext2_fs *ext2_fs, uint32_t block) {
@@ -720,7 +762,7 @@ static int ext2_allocate_block(struct ext2_fs *ext2_fs) {
 			return -1;
 		}
 
-		int block_index = ext2_bgd_allocate_inode(ext2_fs, &bgd, i);
+		int block_index = ext2_bgd_allocate_block(ext2_fs, &bgd, i);
 		if(block_index == -1) {
 			continue;
 		}

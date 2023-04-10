@@ -63,7 +63,7 @@ struct elf64_hdr {
 	uint16_t shdr_size;
 	uint16_t sh_num;
 	uint16_t shstrndx;
-};
+} __attribute__((packed));
 
 struct elf64_phdr {
 	uint32_t p_type;
@@ -74,7 +74,7 @@ struct elf64_phdr {
 	uint64_t p_filesz;
 	uint64_t p_memsz;
 	uint64_t p_align;
-};
+} __attribute__((packed));
 
 struct elf64_shdr {
 	uint32_t sh_name;
@@ -87,7 +87,7 @@ struct elf64_shdr {
 	uint32_t sh_info;
 	uint64_t sh_addr_align;
 	uint64_t sh_entsize;
-};
+} __attribute__((packed));
 
 struct elf64_symtab {
 	uint32_t st_name;
@@ -96,7 +96,7 @@ struct elf64_symtab {
 	uint16_t st_shndx;
 	uint64_t st_value;
 	uint64_t st_size;
-};
+} __attribute__((packed));
 
 struct symbol {
 	const char *name;
