@@ -11,6 +11,7 @@ struct hash_table ramfs_node_list;
 
 static struct vfs_node *ramfs_create(struct vfs_node *parent, const char *name, struct stat *stat);
 static int ramfs_truncate(struct vfs_node *node, off_t cnt);
+int ramfs_unlink(struct vfs_node *node);
 static ssize_t ramfs_read(struct file_handle *file, void *buf, size_t cnt, off_t offset);
 static ssize_t ramfs_write(struct file_handle *file, const void *buf, size_t cnt, off_t offset);
 
@@ -21,7 +22,8 @@ struct filesystem ramfs_filesystem = {
 
 struct file_ops ramfs_fops = {
 	.read = ramfs_read,
-	.write = ramfs_write
+	.write = ramfs_write,
+	.unlink = ramfs_unlink
 };
 
 size_t ramfs_inode_cnt;
@@ -83,15 +85,11 @@ ssize_t ramfs_write(struct file_handle *file, const void *buf, size_t cnt, off_t
 		return 0;
 	}
 
-	print("%x %x\n", offset + cnt, stat->st_size);
-
 	if(offset + cnt > stat->st_size) {
 		stat->st_size = offset + cnt;
 		stat->st_blocks = DIV_ROUNDUP(stat->st_size, stat->st_blksize);
 		ramfs_handle->buffer = realloc(ramfs_handle->buffer, stat->st_size);
 	}
-
-	print("%x %x %x\n", ramfs_handle->buffer, buf, cnt);
 
 	memcpy8(ramfs_handle->buffer + offset, buf, cnt);
 
@@ -111,6 +109,22 @@ int ramfs_truncate(struct vfs_node *node, off_t cnt) {
 
 	stat->st_size = cnt;
 	ramfs_handle->buffer = realloc(ramfs_handle->buffer, stat->st_size);
+
+	return 0;
+}
+
+int ramfs_unlink(struct vfs_node *node) {
+	struct stat *stat = node->stat;
+
+	spinlock_irqsave(&ramfs_lock);
+	struct ramfs_handle *ramfs_handle = hash_table_search(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
+	spinrelease_irqsave(&ramfs_lock);
+
+	if(ramfs_handle == NULL) {
+		return 0;
+	}
+
+	hash_table_delete(&ramfs_node_list, &stat->st_ino, sizeof(stat->st_ino));
 
 	return 0;
 }

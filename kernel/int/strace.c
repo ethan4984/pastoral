@@ -10,6 +10,7 @@ struct syscall_handle {
 };
 
 extern void syscall_openat(struct registers*);
+extern void syscall_unlinkat(struct registers*);
 extern void syscall_close(struct registers*);
 extern void syscall_read(struct registers*);
 extern void syscall_write(struct registers*);
@@ -188,7 +189,8 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_sendto, .name = "sendto" }, // 63
 	{ .handler = syscall_recvfrom, .name = "recvfrom" }, // 64
 	{ .handler = syscall_clone, .name = "clone" }, // 65
-	{ .handler = syscall_futex, .name = "futex" } // 66
+	{ .handler = syscall_futex, .name = "futex" }, // 66
+	{ .handler = syscall_unlinkat, .name = "unlinkat" } // 67
 };
 
 extern void syscall_handler(struct registers *regs) {

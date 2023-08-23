@@ -67,6 +67,7 @@ struct pipe {
 struct file_ops {
 	int (*open)(struct vfs_node *, struct file_handle *);
 	int (*close)(struct vfs_node *, struct file_handle *);
+	int (*unlink)(struct vfs_node*); 
 
 	ssize_t (*read)(struct file_handle *, void *, size_t, off_t);
 	ssize_t (*write)(struct file_handle *, const void *, size_t, off_t);

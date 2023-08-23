@@ -368,3 +368,21 @@ int vfs_mount(struct vfs_node *target, struct stat *stat, struct filesystem *fil
 
 	return 0;
 }
+
+int vfs_unlink(struct vfs_node *node) {
+	if(node == NULL) { 
+		return -1;
+	}
+
+	struct vfs_node *parent = node->parent;
+
+	if(parent == NULL) {
+		parent = vfs_root;
+	}
+
+	VECTOR_REMOVE_BY_VALUE(parent->children, node);
+
+	free(node);
+
+	return 0;
+}

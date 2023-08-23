@@ -395,6 +395,28 @@ ssize_t pipe_write(struct file_handle *file, const void *buf, size_t cnt, off_t 
 	return cnt;
 }
 
+int fd_unlinkat(int dirfd, const char *path, int flags) {
+	if(strlen(path) > MAX_PATH_LENGTH) {
+		set_errno(ENAMETOOLONG);
+		return -1;
+	}
+
+	struct vfs_node *vfs_node;
+	if(user_lookup_at(dirfd, path, flags, W_OK, &vfs_node) == -1) {
+		return -1;
+	}
+
+	if(S_ISDIR(vfs_node->stat->st_mode)) {
+		set_errno(EISDIR);
+		return -1;
+	}
+
+	vfs_node->fops->unlink(vfs_node);
+	vfs_unlink(vfs_node);
+
+	return 0;
+}
+
 int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	if(strlen(path) > MAX_PATH_LENGTH) {
 		set_errno(ENAMETOOLONG);
@@ -923,6 +945,18 @@ void syscall_seek(struct registers *regs) {
 #endif
 
 	regs->rax = fd_seek(fd, offset, whence);
+}
+
+void syscall_unlinkat(struct registers *regs) {
+	int dirfd = regs->rdi; 
+	const char *pathname = (const char *)regs->rsi; 
+	int flags = regs->rdx;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x, tid %x] unlinkat: dirfd {%x}, pathname {%s}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, pathname, flags);
+#endif
+
+	regs->rax = fd_unlinkat(dirfd, pathname, flags);
 }
 
 void syscall_openat(struct registers *regs) {

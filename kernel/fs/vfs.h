@@ -53,6 +53,7 @@ struct vfs_node *vfs_search_relative(struct vfs_node *parent, const char *name, 
 struct vfs_node *vfs_parent_dir(struct vfs_node *parent, const char *path);
 struct vfs_node *vfs_get_node(struct vfs_node *parent, int index);
 const char *vfs_absolute_path(struct vfs_node *node);
+int vfs_unlink(struct vfs_node *node);
 int vfs_mount(struct vfs_node *target, struct stat *stat, struct filesystem *filesystem, struct file_ops *fops);
 void vfs_init();
 
