@@ -23,6 +23,9 @@ typedef int64_t blkcnt_t;
 typedef int64_t time_t;
 typedef int64_t clockid_t;
 
+#define UTIME_NOW ((1l << 30) - 1l)
+#define UTIME_OMIT ((1l << 30) - 2l)
+
 struct timespec {
 	time_t tv_sec;
 	long tv_nsec;

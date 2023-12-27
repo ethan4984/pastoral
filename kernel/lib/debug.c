@@ -71,6 +71,11 @@ static void print_internal(const char *str, va_list arg) {
 				case 's': {
 					const char *str = va_arg(arg, const char*);
 
+					if(str == NULL) {
+						serial_write('N'); serial_write('U'); serial_write('L'); serial_write('L');
+						break;
+					}
+
 					for(size_t i = 0; i < strlen(str); i++) {
 						serial_write(str[i]);
 					}

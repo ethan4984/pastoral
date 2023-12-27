@@ -2,7 +2,7 @@
 
 #include <elf.h>
 
-#define SYSCALL_DEBUG
+//#define SYSCALL_DEBUG
 
 struct registers;
 

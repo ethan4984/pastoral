@@ -1422,3 +1422,59 @@ void syscall_ppoll(struct registers *regs) {
 
 	regs->rax = ret;
 }
+
+void syscall_utimensat(struct registers *regs) {
+	int dirfd = regs->rdi;
+	const char *path = (void*)regs->rsi;
+	const struct timespec *timespec = (void*)regs->rdx;
+	int flags = regs->r10;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x, tid %x] utimensat: dirfd {%x}, path {%s}, timespec {%x}, flags {%x}\n", dirfd, path, timespec, flags);
+#endif
+
+	struct vfs_node *vfs_node;
+
+	if(!path) {
+		if(dirfd == AT_FDCWD) {
+			set_errno(EFAULT);
+			regs->rax = -1;
+			return;
+		}
+
+		struct fd_handle *handle = fd_translate(dirfd);
+		if(handle == NULL) {
+			set_errno(EBADF);
+			regs->rax = -1;
+			return;
+		}
+
+		vfs_node = handle->file_handle->vfs_node;
+	}
+
+	if(path && user_lookup_at(dirfd, path, flags, W_OK, &vfs_node) == -1) {
+		regs->rax = -1;
+		return;
+	} 
+
+	struct timespec atime;
+	struct timespec mtime;
+
+	if(!timespec) {
+		atime = clock_realtime; 
+		mtime = clock_realtime;
+	} else {
+		atime = timespec[0];
+		mtime = timespec[1];
+
+		if(atime.tv_nsec == UTIME_NOW) atime = clock_realtime;
+		if(mtime.tv_nsec == UTIME_NOW) mtime = clock_realtime;
+		if(atime.tv_nsec == UTIME_OMIT) atime = vfs_node->stat->st_atim;
+		if(mtime.tv_nsec == UTIME_OMIT) mtime = vfs_node->stat->st_mtim;
+	}
+
+	vfs_node->stat->st_atim = atime;
+	vfs_node->stat->st_mtim = mtime;
+
+	regs->rax = 0;
+}
