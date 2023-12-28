@@ -58,8 +58,7 @@ int futex(uintptr_t uaddr, int ops, int expected, const struct timespec *timeout
 		case FUTEX_WAKE: {
 			struct futex *futex = hash_table_search(&futex_list, &futex_paddr, sizeof(futex_paddr));
 			if(futex == NULL) {
-				set_errno(EINVAL);
-				return -1;
+				return 0;
 			}
 
 			hash_table_delete(&futex_list, &futex_paddr, sizeof(futex_paddr));

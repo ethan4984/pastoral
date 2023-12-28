@@ -1430,7 +1430,7 @@ void syscall_utimensat(struct registers *regs) {
 	int flags = regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x, tid %x] utimensat: dirfd {%x}, path {%s}, timespec {%x}, flags {%x}\n", dirfd, path, timespec, flags);
+	print("syscall: [pid %x, tid %x] utimensat: dirfd {%x}, path {%s}, timespec {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, path, timespec, flags);
 #endif
 
 	struct vfs_node *vfs_node;
@@ -1475,6 +1475,44 @@ void syscall_utimensat(struct registers *regs) {
 
 	vfs_node->stat->st_atim = atime;
 	vfs_node->stat->st_mtim = mtime;
+
+	regs->rax = 0;
+}
+
+void syscall_renameat(struct registers *regs) {
+	int old_dirfd = regs->rdi;
+	const char *old_path = (void*)regs->rsi;
+	int new_dirfd = regs->rdx;
+	const char *new_path = (void*)regs->r10;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x, tid %x] renameat: olddirfd {%x}, oldpath {%s}, newdirfd {%x}, newpath {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, old_dirfd, old_path, new_dirfd, new_path);
+#endif
+
+	struct vfs_node *vfs_node_old;
+	if(user_lookup_at(old_dirfd, old_path, AT_SYMLINK_FOLLOW, R_OK, &vfs_node_old) == -1) {
+		regs->rax = -1; 
+		return;
+	}
+
+	struct vfs_node *vfs_node_new;
+	if(user_lookup_at(new_dirfd, new_path, AT_SYMLINK_FOLLOW, W_OK, &vfs_node_new) == -1) {
+		int newfd = fd_openat(new_dirfd, new_path, O_CREAT, vfs_node_old->stat->st_mode);
+
+		struct fd_handle *fd_handle = fd_translate_unlocked(newfd);
+		if(fd_handle == NULL) {
+			set_errno(EBADF);
+			regs->rax = -1;
+			return;
+		}
+
+		vfs_node_new = fd_handle->file_handle->vfs_node;
+	}
+
+	if(vfs_move(vfs_node_old, vfs_node_new, 0) == -1) {
+		regs->rax = -1;
+		return;
+	}
 
 	regs->rax = 0;
 }

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include <fs/ramfs.h>
+#include <errno.h>
 #include <sched/sched.h>
 
 struct vfs_node *vfs_root;
@@ -383,6 +384,21 @@ int vfs_unlink(struct vfs_node *node) {
 	VECTOR_REMOVE_BY_VALUE(parent->children, node);
 
 	free(node);
+
+	return 0;
+}
+
+int vfs_move(struct vfs_node *old, struct vfs_node *new, int keep) {
+	if(old->filesystem != new->filesystem) { 
+		set_errno(ENOSYS);	
+		return -1;
+	}
+
+	new->stat = old->stat;
+
+	if(!keep) {
+		vfs_unlink(old);
+	}
 
 	return 0;
 }

@@ -73,6 +73,7 @@ extern void syscall_recvfrom(struct registers*);
 extern void syscall_clone(struct registers*);
 extern void syscall_futex(struct registers*);
 extern void syscall_utimensat(struct registers*);
+extern void syscall_renameat(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -192,7 +193,8 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_clone, .name = "clone" }, // 65
 	{ .handler = syscall_futex, .name = "futex" }, // 66
 	{ .handler = syscall_unlinkat, .name = "unlinkat" }, // 67
-	{ .handler = syscall_utimensat, .name = "utimensat" } // 68
+	{ .handler = syscall_utimensat, .name = "utimensat" }, // 68
+	{ .handler = syscall_renameat, .name = "renameat" } // 69
 };
 
 extern void syscall_handler(struct registers *regs) {
