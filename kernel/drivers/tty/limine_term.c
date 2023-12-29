@@ -62,7 +62,7 @@ static void limine_print(struct limine_tty *ltty, char *str, size_t length) {
 	uint64_t cr3;
 	asm volatile("mov %%cr3, %0" : "=r"(cr3));
 	asm volatile("mov %0, %%cr3" :: "r"((uint64_t) ltty->page_table.pml_high - HIGH_VMA) : "memory");
-
+	
 	ltty->write(ltty->terminal, str, length);
 
 	asm volatile("mov %0, %%cr3" :: "r"(cr3) : "memory");
@@ -90,8 +90,8 @@ static int limine_tty_ioctl(struct tty *tty, uint64_t req, void *arg) {
 			struct winsize *winsize = arg;
 
 			*winsize = (struct winsize) {
-				.ws_row = ltty->terminal->columns,
-				.ws_col = ltty->terminal->rows,
+				.ws_row = ltty->terminal->rows,
+				.ws_col = ltty->terminal->columns,
 				.ws_xpixel = ltty->fb_width,
 				.ws_ypixel = ltty->fb_height
 			};
