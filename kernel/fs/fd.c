@@ -36,7 +36,7 @@ static int dirfd_lookup_vfs(int dirfd, const char *path, struct vfs_node **ret) 
 	return 0;
 }
 
-static int user_lookup_at(int dirfd, const char *path, int lookup_flags, int level_offset, mode_t mode, struct vfs_node **ret) {
+static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
 	if(*path == '/' && *(path + 1) == '\0') {
 		*ret = vfs_root;
 		return 0;
@@ -67,7 +67,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, int lev
 	}
 
 	size_t i = 0;
-	for(; i < (subpath_list.length - 1 - level_offset); i++) {
+	for(; i < (subpath_list.length - 1); i++) {
 		parent = vfs_search_relative(parent, subpath_list.data[i], true);
 		if(parent == NULL) {
 			set_errno(ENOENT);
@@ -83,7 +83,7 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, int lev
 	}
 
 	i = 0;
-	for(; i < (subpath_list.length - 1 - level_offset); i++) {
+	for(; i < (subpath_list.length - 1); i++) {
 		if(stat_has_access(parent->stat, CURRENT_TASK->effective_uid, CURRENT_TASK->effective_gid, X_OK) == -1) {
 			set_errno(EACCES);
 			return -1;
@@ -406,7 +406,7 @@ int fd_unlinkat(int dirfd, const char *path, int flags) {
 	}
 
 	struct vfs_node *vfs_node;
-	if(user_lookup_at(dirfd, path, flags, 0, W_OK, &vfs_node) == -1) {
+	if(user_lookup_at(dirfd, path, flags, W_OK, &vfs_node) == -1) {
 		return -1;
 	}
 
@@ -799,7 +799,7 @@ int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
 	} else {
 		// We are only interested in the node and we are superuser, so with a mode of 0
 		// we can get away with it.
-		if(user_lookup_at(fd, path, flag & AT_SYMLINK_NOFOLLOW, 0, 0, &node) == -1) {
+		if(user_lookup_at(fd, path, flag & AT_SYMLINK_NOFOLLOW, 0, &node) == -1) {
 			return -1;
 		}
 	}
@@ -1138,7 +1138,7 @@ void syscall_chdir(struct registers *regs) {
 #endif
 
 	struct vfs_node *node;
-	if (user_lookup_at(AT_FDCWD, path, 0, 0, X_OK, &node) == -1) {
+	if (user_lookup_at(AT_FDCWD, path, 0, X_OK, &node) == -1) {
 		regs->rax = -1;
 		return;
 	}
@@ -1233,12 +1233,47 @@ void syscall_faccessat(struct registers *regs) {
 	if(flags & AT_EMPTY_PATH) lookup_flags |= AT_EMPTY_PATH;
 
 	struct vfs_node *node;
-	if(user_lookup_at(dirfd, path, lookup_flags, 0, mode, &node) == -1) {
+	if(user_lookup_at(dirfd, path, lookup_flags, mode, &node) == -1) {
 		regs->rax = -1;
 		return;
 	}
 
 	regs->rax = 0;
+}
+
+void syscall_readlinkat(struct registers *regs) {
+	const char *pathname = (void*)regs->rdi;
+	int dirfd = regs->rsi;
+	char *buf = (void*)regs->rdx;
+	size_t bufsize = regs->r10;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x, tid %x] readlinkat: pathname {%s}, dirfd {%x}, buf {%x}, bufsize {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pathname, dirfd, buf, bufsize);
+#endif
+
+	struct vfs_node *parent; 
+	if(dirfd_lookup_vfs(dirfd, pathname, &parent) == -1) { 
+		regs->rax = -1; 
+		return;
+	}
+
+	struct vfs_node *vfs_node = vfs_search_absolute(parent, pathname, false);
+	if(vfs_node == NULL) {
+		set_errno(EINVAL);
+		regs->rax = -1; 
+		return;
+	}
+
+	if(!S_ISLNK(vfs_node->stat->st_mode) || vfs_node->symlink == NULL) {
+		set_errno(EINVAL);
+		regs->rax = -1;
+		return;
+	}
+
+	int pathlength = strlen(vfs_node->symlink) > bufsize ? bufsize : strlen(vfs_node->symlink);
+	strncpy(buf, vfs_node->symlink, pathlength);
+
+	regs->rax = pathlength;
 }
 
 void syscall_symlinkat(struct registers *regs) {
@@ -1247,41 +1282,57 @@ void syscall_symlinkat(struct registers *regs) {
 	const char *linkpath = (const char*)regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x, tid %x] symlink: target {%s}, newdirfd {%x}, linkpath {%s}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, target, newdirfd, linkpath);
+	print("syscall: [pid %x, tid %x] symlinkat: target {%s}, newdirfd {%x}, linkpath {%s}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, target, newdirfd, linkpath);
 #endif
 
-	struct vfs_node *link_node;
+	char *linkpath_copy = alloc(strlen(linkpath));
+	strcpy(linkpath_copy, linkpath);
 
-	int relative = *linkpath == '/' ? 0 : 1;
-	if(relative) {
-		if(newdirfd == AT_FDCWD) {
-			link_node = vfs_search_absolute(*CURRENT_TASK->cwd, linkpath, true);
-		} else {
-			struct fd_handle *fd_handle = fd_translate(newdirfd);
-			if(fd_handle == NULL) {
-				set_errno(EBADF);
-				regs->rax = -1;
-				return;
-			}
+	int cutoff = find_last_char(linkpath_copy, '/');
+	const char *name; 
+	const char *dirpath;
 
-			link_node = fd_handle->file_handle->vfs_node;
-		}
+	while(*linkpath_copy == '/') linkpath_copy++;
+
+	if(cutoff == -1) {
+		name = linkpath_copy;
+		dirpath = "./";
 	} else {
-		link_node = vfs_search_absolute(NULL, linkpath, true);
+		name = linkpath_copy + cutoff + 1;
+		dirpath = linkpath_copy;
+		linkpath_copy[cutoff] = '\0';
 	}
 
-	if(link_node->symlink) {
-		set_errno(EEXIST);
+	struct vfs_node *linkpath_parent;
+	if(user_lookup_at(newdirfd, dirpath, AT_SYMLINK_NOFOLLOW, X_OK, &linkpath_parent) == -1) {
 		regs->rax = -1;
 		return;
 	}
 
-	stat_update_time(link_node->stat, STAT_STATUS);
+	struct vfs_node *linkpath_node = vfs_search_relative(linkpath_parent, name, false);
+	if(linkpath_node) { 
+		set_errno(EEXIST); 
+		regs->rax = -1 ; 
+		return; 
+	}
+
+	struct stat *stat = alloc(sizeof(struct stat));
+	stat_init(stat); 
+	stat->st_mode = S_IFLNK;
+	stat->st_uid = CURRENT_TASK->effective_uid;
+
+	linkpath_node = vfs_create(linkpath_parent, name, stat);
+
+	if(linkpath_parent->stat->st_mode & S_ISGID) {
+		linkpath_node->stat->st_gid = linkpath_parent->stat->st_gid; 
+	} else {
+		linkpath_node->stat->st_gid = CURRENT_TASK->effective_gid;
+	}
 
 	char *path = alloc(strlen(target));
 	strcpy(path, target);
 
-	link_node->symlink = path;
+	linkpath_node->symlink = path;
 
 	regs->rax = 0;
 }
@@ -1365,7 +1416,7 @@ void syscall_fchmodat(struct registers *regs) {
 #endif
 
 	struct vfs_node *file;
-	if(user_lookup_at(fd, path, 0, 0, flags, &file) == -1) {
+	if(user_lookup_at(fd, path, 0, flags, &file) == -1) {
 		regs->rax = -1;
 		return;
 	}
@@ -1454,7 +1505,7 @@ void syscall_utimensat(struct registers *regs) {
 		vfs_node = handle->file_handle->vfs_node;
 	}
 
-	if(path && user_lookup_at(dirfd, path, flags, 0, W_OK, &vfs_node) == -1) {
+	if(path && user_lookup_at(dirfd, path, flags, W_OK, &vfs_node) == -1) {
 		regs->rax = -1;
 		return;
 	} 
@@ -1492,13 +1543,13 @@ void syscall_renameat(struct registers *regs) {
 #endif
 
 	struct vfs_node *vfs_node_old;
-	if(user_lookup_at(old_dirfd, old_path, AT_SYMLINK_FOLLOW, 0, R_OK, &vfs_node_old) == -1) {
+	if(user_lookup_at(old_dirfd, old_path, AT_SYMLINK_FOLLOW, R_OK, &vfs_node_old) == -1) {
 		regs->rax = -1; 
 		return;
 	}
 
 	struct vfs_node *vfs_node_new;
-	if(user_lookup_at(new_dirfd, new_path, AT_SYMLINK_FOLLOW, 0, W_OK, &vfs_node_new) == -1) {
+	if(user_lookup_at(new_dirfd, new_path, AT_SYMLINK_FOLLOW, W_OK, &vfs_node_new) == -1) {
 		int newfd = fd_openat(new_dirfd, new_path, O_CREAT, vfs_node_old->stat->st_mode);
 
 		struct fd_handle *fd_handle = fd_translate_unlocked(newfd);
