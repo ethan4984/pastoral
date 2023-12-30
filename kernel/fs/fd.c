@@ -1143,7 +1143,25 @@ void syscall_chdir(struct registers *regs) {
 		return;
 	}
 
+	if(!S_ISDIR(node->stat->st_mode)) {
+		set_errno(ENOTDIR);
+		regs->rax = -1;
+		return;
+	}
+
 	*CURRENT_TASK->cwd = node;
+
+	regs->rax = 0;
+}
+
+void syscall_mkdirat(struct registers *regs) {
+	int dirfd = regs->rdi;
+	const char *pathname = (void*)regs->rsi;
+	mode_t mode = regs->rdx;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x, tid %x] mkdirat: dirfd {%x}, pathname {%s}, mode {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, pathname, mode);
+#endif
 
 	regs->rax = 0;
 }

@@ -76,6 +76,7 @@ extern void syscall_utimensat(struct registers*);
 extern void syscall_renameat(struct registers*);
 extern void syscall_symlinkat(struct registers*);
 extern void syscall_readlinkat(struct registers*);
+extern void syscall_mkdirat(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -198,7 +199,8 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_utimensat, .name = "utimensat" }, // 68
 	{ .handler = syscall_renameat, .name = "renameat" }, // 69
 	{ .handler = syscall_symlinkat, .name = "symlinkat" }, // 70
-	{ .handler = syscall_readlinkat, .name = "readlinkat" } // 71
+	{ .handler = syscall_readlinkat, .name = "readlinkat" }, // 71
+	{ .handler = syscall_mkdirat, .name = "mkdirat" } // 72
 };
 
 extern void syscall_handler(struct registers *regs) {
