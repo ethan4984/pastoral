@@ -68,8 +68,8 @@ extern void syscall_accept(struct registers*);
 extern void syscall_bind(struct registers*);
 extern void syscall_connect(struct registers*);
 extern void syscall_sigreturn(struct registers*);
-extern void syscall_sendto(struct registers*);
-extern void syscall_recvfrom(struct registers*);
+extern void syscall_sendmsg(struct registers*);
+extern void syscall_recvmsg(struct registers*);
 extern void syscall_clone(struct registers*);
 extern void syscall_futex(struct registers*);
 extern void syscall_utimensat(struct registers*);
@@ -191,8 +191,8 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_bind, .name = "bind" }, // 60
 	{ .handler = syscall_connect, .name = "connect" }, // 61
 	{ .handler = syscall_sigreturn, .name = "sigreturn" }, // 62
-	{ .handler = syscall_sendto, .name = "sendto" }, // 63
-	{ .handler = syscall_recvfrom, .name = "recvfrom" }, // 64
+	{ .handler = syscall_sendmsg, .name = "sendmsg" }, // 63
+	{ .handler = syscall_recvmsg, .name = "recvmsg" }, // 64
 	{ .handler = syscall_clone, .name = "clone" }, // 65
 	{ .handler = syscall_futex, .name = "futex" }, // 66
 	{ .handler = syscall_unlinkat, .name = "unlinkat" }, // 67

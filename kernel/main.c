@@ -169,6 +169,7 @@ void pastoral_entry(void) {
 	slab_cache_create(NULL, 4096);
 	slab_cache_create(NULL, 8192);
 	slab_cache_create(NULL, 16384);
+	slab_cache_create(NULL, 32768);
 
 	vmm_init();
 

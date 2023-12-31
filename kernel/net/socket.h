@@ -55,6 +55,21 @@ struct socketaddr_un {
 	char sun_path[108];
 };
 
+struct iovec {
+	void *iov_base;
+	size_t iov_len;
+};
+
+struct msghdr {
+	void *msg_name;
+	socklen_t msg_namelen;
+	struct iovec *msg_iov;
+	int msg_iovlen;
+	void *msg_control; 
+	socklen_t msg_controllen;
+	int msg_flags;
+};
+
 struct socket {
 	int family;
 	int type;
@@ -65,8 +80,8 @@ struct socket {
 
 	int (*bind)(struct socket*, const struct socketaddr*, socklen_t);
 	int (*connect)(struct socket*, const struct socketaddr*, socklen_t);
-	int (*sendto)(struct socket*, struct socket*, const void*, size_t, int);
-	int (*recvfrom)(struct socket*, struct socket*, void*, size_t, int);
+	int (*sendmsg)(struct socket*, const struct msghdr*, int);
+	int (*recvmsg)(struct socket*, struct msghdr*, int);
 	int (*getsockname)(struct socket*, struct socketaddr*, socklen_t*);
 	int (*getpeername)(struct socket*, struct socketaddr*, socklen_t*);
 	int (*accept)(struct socket*, struct socketaddr*, socklen_t*);

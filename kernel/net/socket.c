@@ -1,4 +1,4 @@
-#include <fs/socket.h>
+#include <net/socket.h>
 #include <fs/ramfs.h>
 #include <fs/fd.h>
 #include <errno.h>
@@ -8,6 +8,7 @@ static ssize_t socket_read(struct file_handle *file, void *buf, size_t cnt, off_
 static ssize_t socket_write(struct file_handle *file, const void *buf, size_t cnt, off_t offset);
 static int socket_ioctl(struct file_handle *file, uint64_t req, void *arg);
 static int socket_close(struct vfs_node*, struct file_handle *handle);
+static int socket_unlink(struct vfs_node*);
 
 static int unix_bind(struct socket *socket, const struct socketaddr *addr, socklen_t length);
 static int unix_getsockname(struct socket *socket, struct socketaddr *addr, socklen_t *length);
@@ -15,14 +16,15 @@ static int unix_getpeername(struct socket *socket, struct socketaddr *addr, sock
 static int unix_listen(struct socket *socket, int backlog);
 static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t *length);
 static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length);
-static int unix_recvfrom(struct socket *socket, struct socket *target, void *buffer, size_t len, int flags);
-static int unix_sendto(struct socket *socket, struct socket *target, const void *buffer, size_t len, int flags);
+static int unix_recvmsg(struct socket *socket, struct msghdr *msg, int flags);
+static int unix_sendmsg(struct socket *socket, const struct msghdr *msg, int flags);
 
 static struct file_ops socket_file_ops = {
 	.read = socket_read,
 	.write = socket_write,
 	.ioctl = socket_ioctl,
-	.close = socket_close
+	.close = socket_close,
+	.unlink = socket_unlink
 };
 
 static bool socket_validate_family(int family) {
@@ -63,8 +65,8 @@ static struct socket *socket_create(int family, int type, int protocol) {
 		case AF_UNIX:
 			socket->bind = unix_bind;
 			socket->connect = unix_connect;
-			socket->sendto = unix_sendto;
-			socket->recvfrom = unix_recvfrom;
+			socket->sendmsg = unix_sendmsg;
+			socket->recvmsg = unix_recvmsg;
 			socket->getsockname = unix_getsockname;
 			socket->getpeername = unix_getpeername;
 			socket->accept = unix_accept;
@@ -78,8 +80,8 @@ static struct socket *socket_create(int family, int type, int protocol) {
 		case AF_NETLINK:
 			socket->bind = NULL;
 			socket->connect = NULL;
-			socket->sendto = NULL;
-			socket->recvfrom = NULL;
+			socket->sendmsg = NULL;
+			socket->recvmsg = NULL;
 			socket->getsockname = NULL;
 			socket->getpeername = NULL;
 			socket->accept = NULL;
@@ -207,7 +209,7 @@ void syscall_listen(struct registers *regs) {
 	int backlog = regs->rsi;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x, tid %x] backlog: sockfd {%x}, backlog {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, backlog);
+	print("syscall: [pid %x, tid %x] listen: sockfd {%x}, backlog {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, backlog);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -258,16 +260,13 @@ void syscall_bind(struct registers *regs) {
 	regs->rax = socket->bind(socket, addr, addrlen);
 }
 
-void syscall_sendto(struct registers *regs) {
+void syscall_sendmsg(struct registers *regs) {
 	int sockfd = regs->rdi;
-	const void *buf = (void*)regs->rsi;
-	size_t len = regs->rdx;
-	int flags = regs->r10;
-	const struct sockaddr *dest = (void*)regs->r10;
-	socklen_t addrlen = regs->r9;
+	struct msghdr *msg = (void*)regs->rsi;
+	int flags = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x, tid %x] sendto: sockfd {%x}, buf {%x}, len {%x}, flags {%x}, dest {%x}, addrlen {%x}\n", sockfd, buf, len, flags, dest, addrlen);
+	print("syscall: [pid %x, tid %x] sendmsg: sockfd {%x}, msg {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, msg, flags);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -276,8 +275,13 @@ void syscall_sendto(struct registers *regs) {
 		return;
 	}
 
+	struct socketaddr *dest = msg->msg_name;
+	socklen_t addrlen = msg->msg_namelen;
+
 	struct socket *socket = fd_handle->file_handle->private_data;
 	struct socket *peer = socket->peer;
+
+	print("socket: %x | peer %x\n", socket, peer);
 
 	if(socket->state != SOCKET_CONNECTED || peer == NULL) {
 		set_errno(ENOTCONN);
@@ -293,19 +297,16 @@ void syscall_sendto(struct registers *regs) {
 		}
 	}
 
-	regs->rax = socket->sendto(socket, peer, buf, len, flags);
+	regs->rax = socket->sendmsg(socket, msg, flags);
 }
 
-void syscall_recvfrom(struct registers *regs) {
+void syscall_recvmsg(struct registers *regs) {
 	int sockfd = regs->rdi;
-	void *buf = (void*)regs->rsi;
-	size_t len = regs->rdx;
-	int flags = regs->r10;
-	struct socketaddr *src = (void*)regs->r10;
-	socklen_t *addrlen = (void*)regs->r9;
+	struct msghdr *msg = (void*)regs->rsi; 
+	int flags = regs->rdx;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x, tid %x] recvfrom: sockfd {%x}, buf {%x}, len {%x}, flags {%x}, src {%x}, addrlen {%x}\n", sockfd, buf, len, flags, src, addrlen);
+	print("syscall: [pid %x, tid %x] recvmsg: sockfd {%x}, msg {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, msg, flags);
 #endif
 
 	struct fd_handle *fd_handle = search_socket(sockfd);
@@ -314,23 +315,29 @@ void syscall_recvfrom(struct registers *regs) {
 		return;
 	}
 
+	struct socketaddr *src = msg->msg_name;
+	socklen_t addrlen = msg->msg_namelen;
+
 	struct socket *socket = fd_handle->file_handle->private_data;
 	struct socket *peer = socket->peer;
 
-	if(socket->state != SOCKET_CONNECTED || peer == NULL) {
+	print("socket: %x | peer %x\n", socket, peer);
+
+	if(peer->state != SOCKET_CONNECTED || peer == NULL) {
+		print("How is this true %x %x\n", socket, peer);
 		set_errno(EDESTADDRREQ);
 		regs->rax = -1;
 		return;
 	}
 
 	if(src && addrlen) {
-		if(socket->getsockname(peer, src, addrlen) == -1) {
+		if(socket->getsockname(peer, src, &addrlen) == -1) {
 			regs->rax = -1;
 			return;
 		}
 	}
 
-	regs->rax = socket->recvfrom(socket, peer, buf, len, flags);
+	regs->rax = socket->recvmsg(socket, msg, flags);
 }
 
 void syscall_connect(struct registers *regs) {
@@ -563,20 +570,26 @@ static int unix_getpeername(struct socket *socket, struct socketaddr *_ret, sock
 	return 0;
 }
 
-static int unix_sendto(struct socket *socket, struct socket *target, const void *buffer, size_t len, int) {
+static int unix_sendmsg(struct socket *socket, const struct msghdr *msg, int) {
 	struct file_handle *file_handle = socket->file_handle;
 
-	ssize_t ret = target->stream_ops->write(file_handle, buffer, len, file_handle->stat->st_size);
+	void *bufferbase = msg->msg_iov[0].iov_base;
+	size_t transfer_size = msg->msg_iov[0].iov_len;
+
+	print("%x %x %x\n", file_handle, bufferbase, transfer_size);
+
+	ssize_t ret = socket->stream_ops->write(file_handle, bufferbase, transfer_size, file_handle->stat->st_size);
+
+	waitq_wake(socket->peer->trigger);
 
 	return ret;
 }
 
-static int unix_recvfrom(struct socket *socket, struct socket *target, void *buffer, size_t len, int) {
-	struct file_handle *file_handle = target->file_handle;
-
+static int unix_recvmsg(struct socket *socket, struct msghdr *msg, int) {
+	struct file_handle *file_handle = socket->file_handle;
 	off_t offset = file_handle->stat->st_size;
 
-	if((target->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
+	if((socket->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
 		goto handle;
 	}
 
@@ -592,7 +605,12 @@ static int unix_recvfrom(struct socket *socket, struct socket *target, void *buf
 		return -1;
 	}
 handle:
-	ret = socket->stream_ops->read(file_handle, buffer, len, offset);
+	void *bufferbase = msg->msg_iov[0].iov_base;
+	size_t transfer_size = msg->msg_iov[0].iov_len;
+
+	print("%x %x %x\n", file_handle, bufferbase, transfer_size);
+
+	ret = socket->stream_ops->read(file_handle, bufferbase, transfer_size, offset);
 
 	return ret;
 }
@@ -606,7 +624,10 @@ static ssize_t socket_read(struct file_handle *handle, void *buf, size_t cnt, of
 		return -1;
 	}
 
-	return socket->recvfrom(socket, peer, buf, cnt, 0); 
+	set_errno(ENOSYS);
+	return -1;
+
+	//return socket->recvfrom(socket, peer, buf, cnt, 0); 
 }
 
 static ssize_t socket_write(struct file_handle *handle, const void *buf, size_t cnt, off_t) {
@@ -618,7 +639,10 @@ static ssize_t socket_write(struct file_handle *handle, const void *buf, size_t 
 		return -1;
 	}
 
-	return socket->sendto(socket, peer, buf, cnt, 0); 
+	set_errno(ENOSYS);
+	return -1;
+
+	//return socket->sendto(socket, peer, buf, cnt, 0); 
 }
 
 static int socket_close(struct vfs_node*, struct file_handle *handle) {
@@ -640,6 +664,10 @@ static int socket_close(struct vfs_node*, struct file_handle *handle) {
 	}
 
 	return 0;
+}
+
+static int socket_unlink(struct vfs_node *node) {
+	print("Hello from socekt link");
 }
 
 static int socket_ioctl(struct file_handle*, uint64_t, void*) {
