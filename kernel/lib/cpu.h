@@ -136,6 +136,24 @@ static inline uint64_t get_user_fs() {
 	return rdmsr(MSR_FS_BASE);
 }
 
+static inline uint64_t rdseed() {
+	uint64_t ret;
+	asm volatile ("rdseed %0" : "=r"(ret));
+	return ret;
+}
+
+static inline uint64_t rdrand() {
+	uint64_t ret;
+	asm volatile ("rdrand %0" : "=r"(ret));
+	return ret;
+}
+
+static inline uint64_t rdtsc() {
+	uint64_t rax, rdx;
+	asm volatile ("rdtsc" : "=a"(rax), "=d"(rdx));
+	return (uint64_t)rax | ((uint64_t)rdx << 32);
+}
+
 static inline void invlpg(uint64_t vaddr) {
 	asm volatile ("invlpg %0" :: "m"((*((int(*)[])((void*)vaddr)))) : "memory");
 }

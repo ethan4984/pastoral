@@ -1557,7 +1557,7 @@ void syscall_renameat(struct registers *regs) {
 	const char *new_path = (void*)regs->r10;
 
 #ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x, tid %x] renameat: olddirfd {%x}, oldpath {%s}, newdirfd {%x}, newpath {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, old_dirfd, old_path, new_dirfd, new_path);
+	print("syscall: [pid %x, tid %x] renameat: olddirfd {%x}, oldpath {%s}, newdirfd {%x}, newpath {%s}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, old_dirfd, old_path, new_dirfd, new_path);
 #endif
 
 	struct vfs_node *vfs_node_old;

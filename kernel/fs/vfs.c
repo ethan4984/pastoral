@@ -245,6 +245,10 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path, 
 		parent = vfs_root;
 	}
 
+	if(strcmp(path, "") == 0) {
+		return parent;
+	}
+
 	VECTOR(const char*) subpath_list = { 0 };
 
 	char *str = alloc(strlen(path));

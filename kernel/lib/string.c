@@ -28,6 +28,10 @@ int strncmp(const char *str0, const char *str1, size_t n) {
 }
 
 char *strcpy(char *dest, const char *src) {
+	if(!src || !dest) {
+		return dest;
+	}
+
 	size_t i = 0;
 
 	for(; src[i]; i++) {

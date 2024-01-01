@@ -3,7 +3,7 @@
 #include <mm/pmm.h>
 #include <cpu.h>
 
-static uint64_t fnv_hash(char *data, size_t byte_cnt) {
+uint64_t fnv_hash(char *data, size_t byte_cnt) {
 	uint64_t hash = 0xcbf29ce484222325;
 
 	for(size_t i = 0; i < byte_cnt; i++) {

@@ -129,7 +129,6 @@ extern void isr_handler_main(struct registers *regs) {
 		uint64_t rbp;
 		asm volatile ("mov %%rbp, %0" : "=r"(rbp));
 		stacktrace((void*)rbp);
-	//	stacktrace((void*)regs->rbp);
 
 		spinrelease_irqsave(&exception_lock);
 

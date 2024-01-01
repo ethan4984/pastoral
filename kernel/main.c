@@ -25,6 +25,7 @@
 #include <drivers/tty/self_tty.h>
 #include <drivers/tty/pty.h>
 #include <drivers/keyboard.h>
+#include <drivers/random.h>
 
 static volatile struct limine_stack_size_request limine_stack_size_request = {
 	.id = LIMINE_STACK_SIZE_REQUEST,
@@ -136,6 +137,8 @@ void pastoral_thread() {
 		vfs_create_node_deep(NULL, NULL, NULL, stat, device_path);
 	}
 
+	random_init();
+
 	ps2_init();
 
 	init_process();
@@ -170,6 +173,9 @@ void pastoral_entry(void) {
 	slab_cache_create(NULL, 8192);
 	slab_cache_create(NULL, 16384);
 	slab_cache_create(NULL, 32768);
+	slab_cache_create(NULL, 65536);
+	slab_cache_create(NULL, 131072);
+	slab_cache_create(NULL, 262144);
 
 	vmm_init();
 
