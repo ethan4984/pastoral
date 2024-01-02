@@ -2,14 +2,12 @@
 #include <sched/sched.h>
 #include <int/apic.h>
 #include <lib/cpu.h>
+#include <drivers/timer.h>
 #include <time.h>
 #include <debug.h>
 #include <limine.h>
 
 #define PIT_FREQ 1000
-
-struct timespec clock_realtime;
-struct timespec clock_monotonic;
 
 typeof(timer_list) timer_list;
 
@@ -17,48 +15,6 @@ static volatile struct limine_boot_time_request limine_boot_time_request = {
 	.id = LIMINE_BOOT_TIME_REQUEST,
 	.revision = 0
 };
-
-struct timespec timespec_add(struct timespec a, struct timespec b) {
-	struct timespec ret = {
-		.tv_nsec = a.tv_nsec + b.tv_nsec,
-		.tv_sec = a.tv_sec + b.tv_sec
-	};
-
-	if(ret.tv_nsec > TIMER_HZ) {
-		ret.tv_nsec -= TIMER_HZ;
-		ret.tv_sec++;
-	}
-
-	return ret;
-}
-
-struct timespec timespec_sub(struct timespec a, struct timespec b) {
-	struct timespec ret = {
-		.tv_nsec = a.tv_nsec - b.tv_nsec,
-		.tv_sec = a.tv_sec - b.tv_sec
-	};
-
-	if(ret.tv_nsec < 0) {
-		ret.tv_nsec += TIMER_HZ;
-		ret.tv_sec--;
-	}
-
-	if(ret.tv_sec < 0) {
-		ret.tv_nsec = 0;
-		ret.tv_sec = 0;
-	}
-
-	return ret;
-}
-
-struct timespec timespec_convert_ms(int ms) {
-	struct timespec ret = {
-		.tv_nsec = (ms % 1000) * 100000,
-		.tv_sec = ms / 1000
-	};
-
-	return ret;
-}
 
 void pit_handler(struct registers*, void*) {
 	struct timespec interval = { .tv_sec = 0, .tv_nsec = TIMER_HZ / PIT_FREQ };

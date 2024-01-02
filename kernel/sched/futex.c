@@ -42,7 +42,7 @@ int futex(uintptr_t uaddr, int ops, int expected, const struct timespec *timeout
 			futex->paddr = futex_paddr;
 
 			if(timeout) {
-				waitq_set_timer(&futex->waitq, *timeout);
+				waitq_set_timer(&futex->waitq, timeout);
 			}
 
 			futex->trigger = waitq_alloc(&futex->waitq, EVENT_LOCK);

@@ -370,7 +370,7 @@ int signal_dispatch(struct task *task, struct registers *state) {
 
 int signal_wait(struct signal_queue *signal_queue, sigset_t mask, struct timespec *timespec) {
 	if(timespec) {
-		waitq_set_timer(&signal_queue->waitq, *timespec);
+		waitq_set_timer(&signal_queue->waitq, timespec);
 	}
 
 	spinlock_irqsave(&signal_queue->siglock);

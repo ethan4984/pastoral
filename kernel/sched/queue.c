@@ -53,14 +53,14 @@ int waitq_wait(struct waitq *waitq, int type) {
 	return -1;
 }
 
-int waitq_set_timer(struct waitq *waitq, struct timespec timespec) {
+int waitq_set_timer(struct waitq *waitq, const struct timespec *timespec) {
 	struct waitq_trigger *timer_trigger = waitq_alloc(waitq, EVENT_TIMER);
 
-	waitq->timespec = timespec;
+	waitq->timespec = *timespec;
 	waitq->timer_trigger = timer_trigger;
 
 	struct timer *timer = alloc(sizeof(struct timer));
-	timer->timespec = timespec;
+	timer->timespec = *timespec;
 
 	waitq_add(waitq, timer_trigger);
 

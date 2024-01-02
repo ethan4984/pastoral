@@ -818,7 +818,7 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 	struct waitq waitq = { 0 };
 
 	if(timespec) {
-		waitq_set_timer(&waitq, *timespec);
+		waitq_set_timer(&waitq, timespec);
 	}
 
 	VECTOR(struct file_handle*) handle_list = { 0 };
@@ -1163,6 +1163,58 @@ void syscall_mkdirat(struct registers *regs) {
 	print("syscall: [pid %x, tid %x] mkdirat: dirfd {%x}, pathname {%s}, mode {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, pathname, mode);
 #endif
 
+	struct vfs_node *dir;
+	if(dirfd_lookup_vfs(dirfd, pathname, &dir) == -1) {
+		regs->rax = -1;
+		return;
+	}
+
+	char *pathname_copy = alloc(strlen(pathname));
+	strcpy(pathname_copy, pathname);
+
+	while(*pathname_copy == '/') pathname_copy++;
+
+	int cutoff = find_last_char(pathname_copy, '/');
+	const char *name; 
+	const char *dirpath;
+
+	if(cutoff == -1) {
+		name = pathname_copy;
+		dirpath = "./";
+	} else {
+		name = pathname_copy + cutoff + 1;
+		dirpath = pathname_copy;
+		pathname_copy[cutoff] = '\0';
+	}
+
+	struct vfs_node *pathname_parent;
+	if(user_lookup_at(dirfd, dirpath, AT_SYMLINK_NOFOLLOW, X_OK, &pathname_parent) == -1) {
+		regs->rax = -1;
+		return;
+	}
+
+	struct vfs_node *dir_node = vfs_search_relative(pathname_parent, name, false);
+	if(dir_node) {
+		set_errno(EEXIST);
+		regs->rax = -1; 
+		return;
+	}
+
+	struct stat *stat = alloc(sizeof(struct stat)); 
+	stat_init(stat);
+	stat->st_mode = S_IFDIR | (mode & ~(*CURRENT_TASK->umask));
+	stat->st_uid = CURRENT_TASK->effective_uid;
+
+	print("Creatign with %s\n", name); 
+
+	dir_node = vfs_create(pathname_parent, name, stat);
+
+	if(pathname_parent->stat->st_mode & S_ISGID) {
+		dir_node->stat->st_gid = pathname_parent->stat->st_gid;
+	} else {
+		dir_node->stat->st_gid = CURRENT_TASK->effective_gid;
+	}
+
 	regs->rax = 0;
 }
 
@@ -1306,11 +1358,11 @@ void syscall_symlinkat(struct registers *regs) {
 	char *linkpath_copy = alloc(strlen(linkpath));
 	strcpy(linkpath_copy, linkpath);
 
+	while(*linkpath_copy == '/') linkpath_copy++;
+
 	int cutoff = find_last_char(linkpath_copy, '/');
 	const char *name; 
 	const char *dirpath;
-
-	while(*linkpath_copy == '/') linkpath_copy++;
 
 	if(cutoff == -1) {
 		name = linkpath_copy;
@@ -1434,7 +1486,7 @@ void syscall_fchmodat(struct registers *regs) {
 #endif
 
 	struct vfs_node *file;
-	if(user_lookup_at(fd, path, 0, flags, &file) == -1) {
+	if(user_lookup_at(fd, path, flags, 0, &file) == -1) {
 		regs->rax = -1;
 		return;
 	}
@@ -1583,6 +1635,71 @@ void syscall_renameat(struct registers *regs) {
 	if(vfs_move(vfs_node_old, vfs_node_new, 0) == -1) {
 		regs->rax = -1;
 		return;
+	}
+
+	regs->rax = 0;
+}
+
+void syscall_linkat(struct registers *regs) {
+	int olddirfd = regs->rdi;
+	const char *oldpath = (void*)regs->rsi;
+	int newdirfd = regs->rdx;
+	const char *newpath = (void*)regs->r10;
+	int flags = regs->r8;
+
+#ifndef SYSCALL_DEBUG
+	print("syscall: [pid %x, tid %x] linkat: olddirfd {%x}, oldpath {%s}, newdirfd {%x}, newpath {%s}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, olddirfd, oldpath, newdirfd, newpath, flags);
+#endif
+	
+	char *newpath_copy = alloc(strlen(newpath));
+	strcpy(newpath_copy, newpath);
+
+	while(*newpath_copy == '/') newpath_copy++;
+
+	int cutoff = find_last_char(newpath_copy, '/');
+	const char *name; 
+	const char *dirpath;
+
+	if(cutoff == -1) {
+		name = newpath_copy;
+		dirpath = "./";
+	} else {
+		name = newpath_copy + cutoff + 1;
+		dirpath = newpath_copy;
+		newpath_copy[cutoff] = '\0';
+	}
+
+	struct vfs_node *newpath_parent;
+	if(user_lookup_at(newdirfd, dirpath, AT_SYMLINK_FOLLOW, X_OK, &newpath_parent) == -1) {
+		regs->rax = -1;
+		return;
+	}
+
+	struct vfs_node *newpath_node = vfs_search_relative(newpath_parent, name, false);
+	if(newpath_node) { 
+		set_errno(EEXIST); 
+		regs->rax = -1 ; 
+		return; 
+	}
+
+	struct vfs_node *oldpath_node;
+	if(user_lookup_at(olddirfd, oldpath, AT_SYMLINK_FOLLOW, X_OK, &oldpath_node) == -1) {
+		regs->rax = -1;
+		return;
+	}
+
+	struct stat *stat = alloc(sizeof(struct stat));
+	*stat = *oldpath_node->stat;
+	stat_init(stat);
+
+	stat->st_uid = CURRENT_TASK->effective_uid;
+
+	newpath_node = vfs_create(newpath_parent, name, stat);
+
+	if(newpath_node->stat->st_mode & S_ISGID) {
+		newpath_node->stat->st_gid = newpath_parent->stat->st_gid;
+	} else {
+		newpath_node->stat->st_gid = newpath_parent->stat->st_gid;
 	}
 
 	regs->rax = 0;

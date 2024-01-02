@@ -76,6 +76,8 @@ int initramfs() {
 			case USTAR_SYMTYPE:
 				stat->st_mode |= S_IFLNK;
 				break;
+			default:
+				goto end;
 		}
 
 		struct vfs_node *node = vfs_create_node_deep(NULL, &ramfs_fops, &ramfs_filesystem, stat, ustar_header->name);
@@ -84,6 +86,7 @@ int initramfs() {
 			node->symlink = ustar_header->linkname;
 		}
 
+end:
 		ustar_header = (void*)ustar_header + 512 + ALIGN_UP(stat->st_size, 512);
 
 		if((uintptr_t)ustar_header >= ((uintptr_t)module->address + module->size)) {
