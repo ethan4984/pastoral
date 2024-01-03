@@ -12,7 +12,7 @@ void syscall_usleep(struct registers *regs) {
 	const struct timespec *req = (void*)regs->rdi;
 	struct timespec *rem = (void*)regs->rsi; 
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_TIME)
 	print("syscall: [pid %x, tid %x] usleep: req {%x}, rem {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, req, rem);
 #endif
 
@@ -38,7 +38,7 @@ void syscall_clock_gettime(struct registers *regs) {
 	clockid_t clk_id = regs->rdi;
 	struct timespec *tp = (void*)regs->rsi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_TIME)
 	print("syscall: [pid %x, tid %x] clock_gettime: clk_id {%x}, tp {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, clk_id, tp);
 #endif
 

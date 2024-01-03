@@ -4,9 +4,17 @@
 #include <sched/sched.h>
 #include <lib/errno.h>
 
+#define SYSCALL_FD 1
+#define SYSCALL_SOCKET 2
+#define SYSCALL_SCHED 3
+#define SYSCALL_SIGNAL 4
+#define SYSCALL_MEM 5
+#define SYSCALL_TIME 6
+
 struct syscall_handle {
 	void (*handler)(struct registers*);
 	const char *name;
+	int class;
 };
 
 extern void syscall_openat(struct registers*);
@@ -86,7 +94,7 @@ static void syscall_set_fs_base(struct registers *regs) {
 
 	CURRENT_TASK->user_fs_base = addr;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED)
 	print("syscall: [pid %x, tid %x] set_fs_base: addr {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, addr);
 #endif
 
@@ -96,7 +104,7 @@ static void syscall_set_fs_base(struct registers *regs) {
 }
 
 static void syscall_get_fs_base(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED)
 	print("syscall: [pid %x, tid %x] get_fs_base\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
@@ -108,7 +116,7 @@ static void syscall_set_gs_base(struct registers *regs) {
 
 	CURRENT_TASK->user_gs_base = addr;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED)
 	print("syscall: [pid %x, tid %x] set_gs_base: addr {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, addr);
 #endif
 
@@ -118,7 +126,7 @@ static void syscall_set_gs_base(struct registers *regs) {
 }
 
 static void syscall_get_gs_base(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED)
 	print("syscall: [pid %x, tid %x] get_gs_base\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
@@ -131,82 +139,82 @@ static void syscall_syslog(struct registers *regs) {
 }
 
 static struct syscall_handle syscall_list[] = {
-	{ .handler = syscall_openat, .name = "open" }, // 0
-	{ .handler = syscall_close, .name = "close" }, // 1
-	{ .handler = syscall_read, .name = "read" }, // 2
-	{ .handler = syscall_write, .name = "write" }, // 3
-	{ .handler = syscall_seek, .name = "seek" }, // 4
-	{ .handler = syscall_dup, .name = "dup" }, // 5
-	{ .handler = syscall_dup2, .name = "dup2" }, // 6
-	{ .handler = syscall_mmap, .name = "mmap" }, // 7
-	{ .handler = syscall_munmap, .name = "munamp" }, // 8
+	{ .handler = syscall_openat, .name = "open", .class = SYSCALL_FD }, // 0
+	{ .handler = syscall_close, .name = "close", .class = SYSCALL_FD}, // 1
+	{ .handler = syscall_read, .name = "read", .class = SYSCALL_FD }, // 2
+	{ .handler = syscall_write, .name = "write", .class = SYSCALL_FD }, // 3
+	{ .handler = syscall_seek, .name = "seek", .class = SYSCALL_FD }, // 4
+	{ .handler = syscall_dup, .name = "dup", .class = SYSCALL_FD }, // 5
+	{ .handler = syscall_dup2, .name = "dup2", .class = SYSCALL_FD }, // 6
+	{ .handler = syscall_mmap, .name = "mmap", .class = SYSCALL_MEM }, // 7
+	{ .handler = syscall_munmap, .name = "munamp", .class = SYSCALL_MEM }, // 8
 	{ .handler = syscall_set_fs_base, .name = "set_fs_base" }, // 9
 	{ .handler = syscall_set_gs_base, .name = "set_gs_base" }, // 10
 	{ .handler = syscall_get_fs_base, .name = "get_fs_base" }, // 11
 	{ .handler = syscall_get_gs_base, .name = "get_gs_base" }, // 12
 	{ .handler = syscall_syslog, .name = "syslog" }, // 13
-	{ .handler = syscall_exit, .name = "exit" }, // 14
-	{ .handler = syscall_getpid, .name = "getpid" }, // 15
-	{ .handler = syscall_gettid, .name = "gettid" }, // 16
-	{ .handler = syscall_getppid, .name = "getppid" }, // 17
-	{ .handler = NULL, .name = "isatty" }, // 18
-	{ .handler = syscall_fcntl, .name = "fcntl" }, // 19
-	{ .handler = syscall_stat, .name = "fstat" }, // 20
-	{ .handler = syscall_statat, .name = "fstatat" }, // 21
+	{ .handler = syscall_exit, .name = "exit", .class = SYSCALL_SCHED }, // 14
+	{ .handler = syscall_getpid, .name = "getpid", .class = SYSCALL_SCHED }, // 15
+	{ .handler = syscall_gettid, .name = "gettid", .class = SYSCALL_SCHED }, // 16
+	{ .handler = syscall_getppid, .name = "getppid", .class = SYSCALL_SCHED }, // 17
+	{ .handler = NULL, .name = "isatty", .class = SYSCALL_FD }, // 18
+	{ .handler = syscall_fcntl, .name = "fcntl", .class = SYSCALL_FD }, // 19
+	{ .handler = syscall_stat, .name = "fstat", .class = SYSCALL_FD }, // 20
+	{ .handler = syscall_statat, .name = "fstatat", .class = SYSCALL_FD }, // 21
 	{ .handler = syscall_ioctl, .name = "ioctl" }, // 22
-	{ .handler = syscall_fork, .name = "fork" }, // 23
-	{ .handler = syscall_waitpid, .name = "waitpid" }, // 24
-	{ .handler = syscall_readdir, .name = "readdir" }, // 25
-	{ .handler = syscall_execve, .name = "execve" }, // 26
-	{ .handler = syscall_getcwd, .name = "getcwd" }, // 27
-	{ .handler = syscall_chdir, .name = "chdir" }, // 28
-	{ .handler = syscall_faccessat, .name = "faccessat" }, // 29
-	{ .handler = syscall_pipe, .name = "pipe" }, // 30
+	{ .handler = syscall_fork, .name = "fork", .class = SYSCALL_SCHED }, // 23
+	{ .handler = syscall_waitpid, .name = "waitpid", .class = SYSCALL_SCHED }, // 24
+	{ .handler = syscall_readdir, .name = "readdir", .class = SYSCALL_FD }, // 25
+	{ .handler = syscall_execve, .name = "execve", .class = SYSCALL_SCHED }, // 26
+	{ .handler = syscall_getcwd, .name = "getcwd", .class = SYSCALL_FD }, // 27
+	{ .handler = syscall_chdir, .name = "chdir", .class = SYSCALL_FD }, // 28
+	{ .handler = syscall_faccessat, .name = "faccessat", .class = SYSCALL_FD }, // 29
+	{ .handler = syscall_pipe, .name = "pipe", .class = SYSCALL_FD }, // 30
 	{ .handler = syscall_umask, .name = "umask" }, // 31
-	{ .handler = syscall_getuid, .name = "getuid" }, // 32
-	{ .handler = syscall_geteuid, .name = "geteuid" }, // 33
-	{ .handler = syscall_setuid, .name = "setuid" }, // 34
-	{ .handler = syscall_seteuid, .name = "seteuid" }, // 35
-	{ .handler = syscall_getgid, .name = "getgid" }, // 36
-	{ .handler = syscall_getegid, .name = "getegid" }, // 37
-	{ .handler = syscall_setgid, .name = "setgid" }, // 38
-	{ .handler = syscall_setegid, .name = "setegid" }, // 39
-	{ .handler = syscall_fchmod, .name = "fchmod" }, // 40
-	{ .handler = syscall_fchmodat, .name = "fchmodat" }, // 41
-	{ .handler = syscall_fchownat, .name = "fchownat" }, // 42
-	{ .handler = syscall_sigaction, .name = "sigaction" }, // 43
-	{ .handler = syscall_sigpending, .name = "sigpending" }, // 44
-	{ .handler = syscall_sigprocmask, .name = "sigprocmask" }, // 45
-	{ .handler = syscall_kill, .name = "kill" }, // 46
-	{ .handler = syscall_setpgid, .name = "setpgid" }, // 47
-	{ .handler = syscall_getpgid, .name = "getpgid" }, // 48
-	{ .handler = syscall_setsid, .name = "setsid" }, // 49
-	{ .handler = syscall_getsid, .name = "getsid" }, // 50
-	{ .handler = syscall_pause, .name = "pause" }, // 51
-	{ .handler = syscall_sigsuspend, .name = "sigsuspend" }, // 52
-	{ .handler = syscall_poll, .name = "poll" }, // 53
-	{ .handler = syscall_ppoll, .name = "ppoll" }, // 54
-	{ .handler = syscall_socket, .name = "socket" }, // 55
-	{ .handler = syscall_getsockname, .name = "getsockname" }, // 56
-	{ .handler = syscall_getpeername, .name = "getpeername" }, // 57
-	{ .handler = syscall_listen, .name = "listen" }, // 58
-	{ .handler = syscall_accept, .name = "accept" }, // 59
-	{ .handler = syscall_bind, .name = "bind" }, // 60
-	{ .handler = syscall_connect, .name = "connect" }, // 61
-	{ .handler = syscall_sigreturn, .name = "sigreturn" }, // 62
-	{ .handler = syscall_sendmsg, .name = "sendmsg" }, // 63
-	{ .handler = syscall_recvmsg, .name = "recvmsg" }, // 64
-	{ .handler = syscall_clone, .name = "clone" }, // 65
-	{ .handler = syscall_futex, .name = "futex" }, // 66
-	{ .handler = syscall_unlinkat, .name = "unlinkat" }, // 67
-	{ .handler = syscall_utimensat, .name = "utimensat" }, // 68
-	{ .handler = syscall_renameat, .name = "renameat" }, // 69
-	{ .handler = syscall_symlinkat, .name = "symlinkat" }, // 70
-	{ .handler = syscall_readlinkat, .name = "readlinkat" }, // 71
-	{ .handler = syscall_mkdirat, .name = "mkdirat" }, // 72
-	{ .handler = syscall_usleep, .name = "usleep" }, // 73
-	{ .handler = syscall_clock_gettime, .name = "clock_gettime" }, // 74
-	{ .handler = syscall_linkat, .name = "linkat" } // 75
+	{ .handler = syscall_getuid, .name = "getuid", .class = SYSCALL_SCHED }, // 32
+	{ .handler = syscall_geteuid, .name = "geteuid", .class = SYSCALL_SCHED }, // 33
+	{ .handler = syscall_setuid, .name = "setuid", .class = SYSCALL_SCHED }, // 34
+	{ .handler = syscall_seteuid, .name = "seteuid", .class = SYSCALL_SCHED }, // 35
+	{ .handler = syscall_getgid, .name = "getgid", .class = SYSCALL_SCHED }, // 36
+	{ .handler = syscall_getegid, .name = "getegid", .class = SYSCALL_SCHED }, // 37
+	{ .handler = syscall_setgid, .name = "setgid", .class = SYSCALL_SCHED }, // 38
+	{ .handler = syscall_setegid, .name = "setegid", .class = SYSCALL_SCHED }, // 39
+	{ .handler = syscall_fchmod, .name = "fchmod", .class = SYSCALL_FD }, // 40
+	{ .handler = syscall_fchmodat, .name = "fchmodat", .class = SYSCALL_FD }, // 41
+	{ .handler = syscall_fchownat, .name = "fchownat", .class = SYSCALL_FD }, // 42
+	{ .handler = syscall_sigaction, .name = "sigaction", .class = SYSCALL_SIGNAL }, // 43
+	{ .handler = syscall_sigpending, .name = "sigpending", .class = SYSCALL_SIGNAL  }, // 44
+	{ .handler = syscall_sigprocmask, .name = "sigprocmask", .class = SYSCALL_SIGNAL  }, // 45
+	{ .handler = syscall_kill, .name = "kill", .class = SYSCALL_SCHED }, // 46
+	{ .handler = syscall_setpgid, .name = "setpgid", .class = SYSCALL_SCHED }, // 47
+	{ .handler = syscall_getpgid, .name = "getpgid", .class = SYSCALL_SCHED }, // 48
+	{ .handler = syscall_setsid, .name = "setsid", .class = SYSCALL_SCHED }, // 49
+	{ .handler = syscall_getsid, .name = "getsid", .class = SYSCALL_SCHED }, // 50
+	{ .handler = syscall_pause, .name = "pause", .class = SYSCALL_SCHED }, // 51
+	{ .handler = syscall_sigsuspend, .name = "sigsuspend", .class = SYSCALL_SIGNAL  }, // 52
+	{ .handler = syscall_poll, .name = "poll", .class = SYSCALL_FD }, // 53
+	{ .handler = syscall_ppoll, .name = "ppoll", .class = SYSCALL_FD }, // 54
+	{ .handler = syscall_socket, .name = "socket", .class = SYSCALL_SOCKET  }, // 55
+	{ .handler = syscall_getsockname, .name = "getsockname", .class = SYSCALL_SOCKET }, // 56
+	{ .handler = syscall_getpeername, .name = "getpeername", .class = SYSCALL_SOCKET }, // 57
+	{ .handler = syscall_listen, .name = "listen", .class = SYSCALL_SOCKET }, // 58
+	{ .handler = syscall_accept, .name = "accept", .class = SYSCALL_SOCKET }, // 59
+	{ .handler = syscall_bind, .name = "bind", .class = SYSCALL_SOCKET }, // 60
+	{ .handler = syscall_connect, .name = "connect", .class = SYSCALL_SOCKET }, // 61
+	{ .handler = syscall_sigreturn, .name = "sigreturn", .class = SYSCALL_SIGNAL }, // 62
+	{ .handler = syscall_sendmsg, .name = "sendmsg", .class = SYSCALL_SOCKET }, // 63
+	{ .handler = syscall_recvmsg, .name = "recvmsg", .class = SYSCALL_SOCKET }, // 64
+	{ .handler = syscall_clone, .name = "clone", .class = SYSCALL_SCHED }, // 65
+	{ .handler = syscall_futex, .name = "futex", .class = SYSCALL_SCHED }, // 66
+	{ .handler = syscall_unlinkat, .name = "unlinkat", .class = SYSCALL_FD }, // 67
+	{ .handler = syscall_utimensat, .name = "utimensat", .class = SYSCALL_FD }, // 68
+	{ .handler = syscall_renameat, .name = "renameat", .class = SYSCALL_FD }, // 69
+	{ .handler = syscall_symlinkat, .name = "symlinkat", .class = SYSCALL_FD }, // 70
+	{ .handler = syscall_readlinkat, .name = "readlinkat", .class = SYSCALL_FD }, // 71
+	{ .handler = syscall_mkdirat, .name = "mkdirat", .class = SYSCALL_FD }, // 72
+	{ .handler = syscall_usleep, .name = "usleep", .class = SYSCALL_TIME}, // 73
+	{ .handler = syscall_clock_gettime, .name = "clock_gettime", .class = SYSCALL_TIME }, // 74
+	{ .handler = syscall_linkat, .name = "linkat", .class = SYSCALL_FD } // 75
 };
 
 extern void syscall_handler(struct registers *regs) {
@@ -231,9 +239,50 @@ extern void syscall_handler(struct registers *regs) {
 		set_errno(0);
 	}
 
-#ifndef SYSCALL_DEBUG
-	print("syscall: [pid %x, tid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid, CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
+#ifndef SYSCALL_DEBUG_ALL
+	switch(syscall_list[syscall_number].class) {
+		case SYSCALL_FD:
+#if defined(SYSCALL_DEBUG_FD)
+			print("syscall: [pid %x, tid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid,
+					CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
 #endif
+			break;
+		case SYSCALL_SCHED:
+#if defined(SYSCALL_DEBUG_SCHED)
+			print("syscall: [pid %x, tid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid,
+					CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
+#endif
+			break;
+		case SYSCALL_SOCKET:
+#if defined(SYSCALL_DEBUG_SOCKET)
+			print("syscall: [pid %x, tid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid,
+					CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
+#endif
+			break;
+		case SYSCALL_SIGNAL:
+#if defined(SYSCALL_DEBUG_SIGNAL)
+			print("syscall: [pid %x, tid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid,
+					CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
+#endif
+			break;
+		case SYSCALL_MEM:
+#if defined(SYSCALL_DEBUG_MEM)
+			print("syscall: [pid %x, tid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid,
+					CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
+#endif
+			break;
+		case SYSCALL_TIME:
+#if defined(SYSCALL_DEBUG_TIME)
+			print("syscall: [pid %x, tid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid,
+					CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
+#endif
+			break;
+	}
+#else
+	print("syscall: [pid %x, tid %x] %s returning %x with errno %d\n", CORE_LOCAL->pid,
+			CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
+#endif
+
 
 	CURRENT_TASK->signal_queue.active = true;
 }

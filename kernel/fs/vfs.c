@@ -280,6 +280,7 @@ struct vfs_node *vfs_search_absolute(struct vfs_node *parent, const char *path, 
 		}
 
 		if(!S_ISDIR(parent->stat->st_mode)) {
+			print("BRO");
 			return NULL;
 		}
 

@@ -487,7 +487,7 @@ void syscall_waitpid(struct registers *regs) {
 	int *status = (int*)regs->rsi;
 	int options = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] waitpid: pid {%x}, status {%x}, options {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pid, (uintptr_t)status, options);
 #endif
 
@@ -871,7 +871,7 @@ struct task *clone(int flags, void *child_stack, pid_t *ptid, pid_t *ctid, void 
 }
 
 void syscall_exit(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] exit: status {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, regs->rdi);
 #endif
 	struct task *task = CURRENT_TASK;
@@ -917,7 +917,7 @@ void syscall_execve(struct registers *regs) {
 		strcpy(argv[i], _argv[i]);
 	}
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: execve: path {%s}, argv {", path);
 
 	for(size_t i = 0; i < argv_cnt; i++) {
@@ -934,7 +934,10 @@ void syscall_execve(struct registers *regs) {
 #endif
 	struct task *current_task = CURRENT_TASK;
 
-	struct vfs_node *vfs_node = vfs_search_absolute(NULL, path, true);
+	struct vfs_node *pathparent;
+	dirfd_lookup_vfs(AT_FDCWD, path, &pathparent);
+
+	struct vfs_node *vfs_node = vfs_search_absolute(pathparent, path, true);
 	if(vfs_node == NULL) {
 		set_errno(ENOENT);
 		regs->rax = -1;
@@ -1054,7 +1057,7 @@ void syscall_clone(struct registers *regs) {
 	pid_t *ctid = (void*)clone_args->child_tid;
 	void *tls = (void*)clone_args->tls;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] clone: stack {%x}, flags {%x}, ptid {%x}, tls {%x}, ctid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, stack, flags, ptid, tls, ctid);
 #endif
 
@@ -1074,7 +1077,7 @@ void syscall_clone(struct registers *regs) {
 }
 
 void syscall_fork(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] fork\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	
@@ -1089,49 +1092,49 @@ void syscall_fork(struct registers *regs) {
 }
 
 void syscall_getpid(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getpid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CORE_LOCAL->pid;
 }
 
 void syscall_getppid(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getppid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->parent->id.pid;
 }
 
 void syscall_gettid(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] gettid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CORE_LOCAL->tid;
 }
 
 void syscall_getuid(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getuid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->real_uid;
 }
 
 void syscall_geteuid(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] geteuid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->effective_uid;
 }
 
 void syscall_getgid(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getgid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->real_gid;
 }
 
 void syscall_getegid(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getegid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	regs->rax = CURRENT_TASK->effective_gid;
@@ -1141,7 +1144,7 @@ void syscall_setuid(struct registers *regs) {
 	uid_t uid = regs->rdi;
 	struct task *current_task = CURRENT_TASK;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] setuid: uid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, uid);
 #endif
 
@@ -1167,7 +1170,7 @@ void syscall_seteuid(struct registers *regs) {
 	uid_t euid = regs->rdi;
 	struct task *current_task = CURRENT_TASK;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] seteuid: euid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, euid);
 #endif
 
@@ -1185,7 +1188,7 @@ void syscall_setgid(struct registers *regs) {
 	gid_t gid = regs->rdi;
 	struct task *current_task = CURRENT_TASK;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] setgid: gid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, gid);
 #endif
 
@@ -1211,7 +1214,7 @@ void syscall_setegid(struct registers *regs) {
 	uid_t egid = regs->rdi;
 	struct task *current_task = CURRENT_TASK;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] setegid: egid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, egid);
 #endif
 
@@ -1229,7 +1232,7 @@ void syscall_setpgid(struct registers *regs) {
 	pid_t pid = regs->rdi == 0 ? CORE_LOCAL->pid : regs->rdi;
 	pid_t pgid = regs->rsi == 0 ? CORE_LOCAL->pid : regs->rsi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] setpgid: pid {%x}, pgid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pid, pgid);
 #endif
 
@@ -1246,7 +1249,7 @@ void syscall_setpgid(struct registers *regs) {
 void syscall_getpgid(struct registers *regs) {
 	pid_t pid = regs->rdi == 0 ? CORE_LOCAL->pid : regs->rdi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getpgid: pid {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pid);
 #endif
 
@@ -1267,7 +1270,7 @@ void syscall_getpgid(struct registers *regs) {
 }
 
 void syscall_setsid(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] setsid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
@@ -1280,7 +1283,7 @@ void syscall_setsid(struct registers *regs) {
 }
 
 void syscall_getsid(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getsid\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 

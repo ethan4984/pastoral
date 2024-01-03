@@ -81,10 +81,9 @@ void syscall_futex(struct registers *regs) {
 	uint32_t val = regs->rdx; 
 	const struct timespec *timeout = (void*)regs->r10;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_SCHED_DEBUG)
 	print("syscall: [pid %x, tid %x] futex: uaddr {%x}, op {%x}, val {%x}, timeout {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, uaddr, op, val, timeout);
 #endif
 
 	regs->rax = futex((uintptr_t)uaddr, op, val, timeout);
-	//regs->rax = 0;
 }

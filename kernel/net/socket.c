@@ -140,7 +140,7 @@ void syscall_socket(struct registers *regs) {
 	int type = regs->rsi;
 	int protocol = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] socket: family {%x}, type {%x}, protocol {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, family, type, protocol);
 #endif
 
@@ -171,7 +171,7 @@ void syscall_getsockname(struct registers *regs) {
 	struct socketaddr *addr = (void*)regs->rsi;
 	socklen_t *addrlen = (void*)regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getsockname: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 
@@ -190,7 +190,7 @@ void syscall_getpeername(struct registers *regs) {
 	struct socketaddr *addr = (void*)regs->rsi;
 	socklen_t *addrlen = (void*)regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getpeername: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 
@@ -208,7 +208,7 @@ void syscall_listen(struct registers *regs) {
 	int sockfd = regs->rdi;
 	int backlog = regs->rsi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] listen: sockfd {%x}, backlog {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, backlog);
 #endif
 
@@ -227,7 +227,7 @@ void syscall_accept(struct registers *regs) {
 	struct socketaddr *addr = (void*)regs->rsi;
 	socklen_t *addrlen = (void*)regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] accept: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 
@@ -246,7 +246,7 @@ void syscall_bind(struct registers *regs) {
 	const struct socketaddr *addr = (void*)regs->rsi;
 	socklen_t addrlen = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] bind: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 
@@ -265,7 +265,7 @@ void syscall_sendmsg(struct registers *regs) {
 	struct msghdr *msg = (void*)regs->rsi;
 	int flags = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] sendmsg: sockfd {%x}, msg {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, msg, flags);
 #endif
 
@@ -305,7 +305,7 @@ void syscall_recvmsg(struct registers *regs) {
 	struct msghdr *msg = (void*)regs->rsi; 
 	int flags = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] recvmsg: sockfd {%x}, msg {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, msg, flags);
 #endif
 
@@ -345,7 +345,7 @@ void syscall_connect(struct registers *regs) {
 	const struct socketaddr *addr = (void*)regs->rsi;
 	socklen_t addrlen = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] connect: sockfd {%x}, addr {%x}, addrlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, addr, addrlen);
 #endif
 

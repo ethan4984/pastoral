@@ -189,7 +189,7 @@ static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 
 	switch(req) {
 		case TIOCGPTN:
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD)
 			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGPTN\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			int *ptn = arg;
@@ -197,7 +197,7 @@ static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 			return 0;
 
 		case TIOCGWINSZ: {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD)
 			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			memcpy(arg, &pts->winsize, sizeof(struct winsize));
@@ -205,7 +205,7 @@ static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 		}
 
 		case TIOCSWINSZ: {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD)
 			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			memcpy(&pts->winsize, arg, sizeof(struct winsize));
@@ -226,7 +226,7 @@ static int pts_ioctl(struct tty *tty, uint64_t req, void *arg) {
 
 	switch(req) {
 		case TIOCGWINSZ: {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD)
 			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			memcpy(arg, &pts->winsize, sizeof(struct winsize));
@@ -234,7 +234,7 @@ static int pts_ioctl(struct tty *tty, uint64_t req, void *arg) {
 		}
 
 		case TIOCSWINSZ: {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD)
 			print("syscall: [pid %x, tid %x] pty_ioctl: TIOCGWINSZ\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			memcpy(&pts->winsize, arg, sizeof(struct winsize));

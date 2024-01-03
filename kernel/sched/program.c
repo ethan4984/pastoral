@@ -98,7 +98,7 @@ int program_place_parameters(struct program *program, char **envp, char **argv) 
 }
 
 int program_load(struct program *program, const char *path) {
-	int fd = fd_openat(AT_FDCWD, path, O_RDONLY, 0);
+	int fd = fd_openat(AT_FDCWD, path, AT_SYMLINK_FOLLOW, O_RDONLY);
 	if(fd == -1) {
 		return -1;
 	}
@@ -122,7 +122,7 @@ int program_load(struct program *program, const char *path) {
 	fd_close(fd);
 
 	if(program->interp_present) {
-		fd = fd_openat(AT_FDCWD, program->interp_path, O_RDONLY, 0);
+		fd = fd_openat(AT_FDCWD, program->interp_path, 0, O_RDONLY);
 		if(fd == -1) {
 			return -1;
 		}

@@ -11,7 +11,7 @@
 #include <mm/pmm.h>
 #include <fs/cdev.h>
 
-static int dirfd_lookup_vfs(int dirfd, const char *path, struct vfs_node **ret) {
+int dirfd_lookup_vfs(int dirfd, const char *path, struct vfs_node **ret) {
 	bool relative = *path != '/' ? true : false;
 
 	if(relative) {
@@ -47,8 +47,8 @@ static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t 
 		return -1;
 	}
 
-	bool symlink_follow = lookup_flags & AT_SYMLINK_NOFOLLOW ? true : false;
-	bool effective_ids = lookup_flags & AT_EACCESS ? true : false;
+	bool symlink_follow = (lookup_flags & AT_SYMLINK_NOFOLLOW) == AT_SYMLINK_NOFOLLOW ? true : false;
+	bool effective_ids = (lookup_flags & AT_EACCESS) == AT_EACCESS ? true : false;
 
 	VECTOR(const char*) subpath_list = { 0 };
 
@@ -180,9 +180,9 @@ int stat_has_access(struct stat *stat, uid_t uid, gid_t gid, int mode) {
 }
 
 int stat_update_time(struct stat *stat, int flags) {
-	if(flags & STAT_ACCESS) stat->st_atim = clock_realtime;
-	if(flags & STAT_MOD) stat->st_mtim = clock_realtime;
-	if(flags & STAT_STATUS) stat->st_ctim = clock_realtime;
+	if((flags & STAT_ACCESS) == STAT_ACCESS) stat->st_atim = clock_realtime;
+	if((flags & STAT_MOD) == STAT_MOD) stat->st_mtim = clock_realtime;
+	if((flags & STAT_STATUS) == STAT_STATUS) stat->st_ctim = clock_realtime;
 
 	return 0;
 }
@@ -448,7 +448,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 		return -1;
 	}
 
-	bool symfollow = flags & AT_SYMLINK_NOFOLLOW ? false : true;
+	bool symfollow = (flags & AT_SYMLINK_NOFOLLOW) == AT_SYMLINK_NOFOLLOW ? false : true;
 
 	struct vfs_node *dir;
 	if(dirfd_lookup_vfs(dirfd, path, &dir) == -1) {
@@ -619,7 +619,7 @@ int fd_statat(int dirfd, const char *path, void *buffer, int flags) {
 		return -1;
 	}
 
-	bool symfollow = flags & AT_SYMLINK_NOFOLLOW ? false : true;
+	bool symfollow = (flags & AT_SYMLINK_NOFOLLOW) == AT_SYMLINK_NOFOLLOW ? false : true;
 	struct vfs_node *vfs_node;
 
 	if(flags & AT_EMPTY_PATH) {
@@ -817,9 +817,9 @@ int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
 int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 	struct waitq waitq = { 0 };
 
-	if(timespec) {
+	/*if(timespec) {
 		waitq_set_timer(&waitq, timespec);
-	}
+	}*/
 
 	VECTOR(struct file_handle*) handle_list = { 0 };
 
@@ -874,7 +874,7 @@ void syscall_dup2(struct registers *regs) {
 	int oldfd = regs->rdi;
 	int newfd = regs->rsi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] dup2: oldfd {%x}, newfd {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, oldfd, newfd);
 #endif
 
@@ -884,7 +884,7 @@ void syscall_dup2(struct registers *regs) {
 void syscall_dup(struct registers *regs) {
 	int fd = regs->rdi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] dup: fd {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd);
 #endif
 
@@ -895,7 +895,7 @@ void syscall_stat(struct registers *regs) {
 	int fd = regs->rdi;
 	void *buf = (void*)regs->rsi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] stat: fd {%x}, buf {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, (uintptr_t)buf);
 #endif
 
@@ -908,7 +908,7 @@ void syscall_statat(struct registers *regs) {
 	void *buf = (void*)regs->rdx;
 	int flags = regs->r10;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] statat: dirfd {%x}, path {%s}, buf {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, path, (uintptr_t)buf, flags);
 #endif
 
@@ -920,7 +920,7 @@ void syscall_write(struct registers *regs) {
 	const void *buf = (const void*)regs->rsi;
 	size_t cnt = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] write: fd {%x}, buf {%x}, cnt {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, (uintptr_t)buf, cnt);
 #endif
 
@@ -932,7 +932,7 @@ void syscall_read(struct registers *regs) {
 	void *buf = (void*)regs->rsi;
 	size_t cnt = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] read: fd {%x}, buf {%x}, cnt {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, (uintptr_t)buf, cnt);
 #endif
 
@@ -944,7 +944,7 @@ void syscall_seek(struct registers *regs) {
 	off_t offset = regs->rsi;
 	int whence = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] seek: fd {%x}, offset {%x}, whence {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, offset, whence);
 #endif
 
@@ -956,7 +956,7 @@ void syscall_unlinkat(struct registers *regs) {
 	const char *pathname = (const char *)regs->rsi; 
 	int flags = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] unlinkat: dirfd {%x}, pathname {%s}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, pathname, flags);
 #endif
 
@@ -969,7 +969,7 @@ void syscall_openat(struct registers *regs) {
 	int flags = regs->rdx;
 	mode_t mode = regs->r10;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] open: dirfd {%x}, pathname {%s}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, pathname, flags);
 #endif
 
@@ -979,7 +979,7 @@ void syscall_openat(struct registers *regs) {
 void syscall_close(struct registers *regs) {
 	int fd = regs->rdi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] close: fd {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd);
 #endif
 
@@ -987,7 +987,7 @@ void syscall_close(struct registers *regs) {
 }
 
 void syscall_fcntl(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] fcntl: fd {%x}, cmd {%x}, data {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, regs->rdi, regs->rsi, regs->rdx);
 #endif
 
@@ -1045,7 +1045,7 @@ void syscall_readdir(struct registers *regs) {
 	int fd = regs->rdi;
 	struct dirent *buf = (void*)regs->rsi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] readdir: fd {%x}, buf {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, (uintptr_t)buf);
 #endif
 
@@ -1114,7 +1114,7 @@ void syscall_getcwd(struct registers *regs) {
 	char *buf = (void*)regs->rdi;
 	size_t size = regs->rsi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] getcwd: buf {%x}, size {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, buf, size);
 #endif
 
@@ -1133,7 +1133,7 @@ void syscall_getcwd(struct registers *regs) {
 void syscall_chdir(struct registers *regs) {
 	const char *path = (const char*)regs->rdi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] chdir: path {%s}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, path);
 #endif
 
@@ -1159,7 +1159,7 @@ void syscall_mkdirat(struct registers *regs) {
 	const char *pathname = (void*)regs->rsi;
 	mode_t mode = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] mkdirat: dirfd {%x}, pathname {%s}, mode {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, pathname, mode);
 #endif
 
@@ -1221,7 +1221,7 @@ void syscall_mkdirat(struct registers *regs) {
 void syscall_pipe(struct registers *regs) {
 	int *fd_pair = (int*)regs->rdi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] pipe: fd pair {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd_pair);
 #endif
 
@@ -1287,7 +1287,7 @@ void syscall_faccessat(struct registers *regs) {
 	int mode = regs->rdx;
 	int flags = regs->r10;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] faccessat: dirfd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, path, mode, flags);
 #endif
 
@@ -1299,8 +1299,8 @@ void syscall_faccessat(struct registers *regs) {
 	int lookup_flags = 0;
 
 	if(mode == F_OK) mode = 0;
-	if(flags & AT_SYMLINK_NOFOLLOW) lookup_flags |= AT_SYMLINK_NOFOLLOW;
-	if(flags & AT_EMPTY_PATH) lookup_flags |= AT_EMPTY_PATH;
+	if((flags & AT_SYMLINK_NOFOLLOW) == AT_SYMLINK_NOFOLLOW) lookup_flags |= AT_SYMLINK_NOFOLLOW;
+	if((flags & AT_EMPTY_PATH) == AT_EMPTY_PATH) lookup_flags |= AT_EMPTY_PATH;
 
 	struct vfs_node *node;
 	if(user_lookup_at(dirfd, path, lookup_flags, mode, &node) == -1) {
@@ -1317,7 +1317,7 @@ void syscall_readlinkat(struct registers *regs) {
 	char *buf = (void*)regs->rdx;
 	size_t bufsize = regs->r10;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] readlinkat: pathname {%s}, dirfd {%x}, buf {%x}, bufsize {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pathname, dirfd, buf, bufsize);
 #endif
 
@@ -1351,7 +1351,7 @@ void syscall_symlinkat(struct registers *regs) {
 	int newdirfd = regs->rsi;
 	const char *linkpath = (const char*)regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] symlinkat: target {%s}, newdirfd {%x}, linkpath {%s}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, target, newdirfd, linkpath);
 #endif
 
@@ -1412,7 +1412,7 @@ void syscall_ioctl(struct registers *regs) {
 	uint64_t req = regs->rsi;
 	void *args = (void*)regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] ioctl: fd {%x}, req {%x}, args {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, req, args);
 #endif
 
@@ -1435,7 +1435,7 @@ void syscall_ioctl(struct registers *regs) {
 void syscall_umask(struct registers *regs) {
 	mode_t mask = regs->rdi & 0777;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] umask: mask {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, mask);
 #endif
 
@@ -1461,7 +1461,7 @@ void syscall_fchmod(struct registers *regs) {
 	int fd = regs->rdi;
 	mode_t mode = regs->rsi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] fchmod: fd {%x}, mode {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, mode);
 #endif
 
@@ -1481,7 +1481,7 @@ void syscall_fchmodat(struct registers *regs) {
 	mode_t mode = regs->rdx;
 	int flags = regs->r10;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] fchmodat: fd {%x}, path {%s}, mode {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, path, mode, flags);
 #endif
 
@@ -1501,7 +1501,7 @@ void syscall_fchownat(struct registers *regs) {
 	gid_t gid = regs->r10;
 	int flag = regs->r8;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] fchownat: fd {%x}, path {%s}, uid {%x}, gid {%x}, flag {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fd, path, uid, gid, flag);
 #endif
 
@@ -1513,7 +1513,7 @@ void syscall_poll(struct registers *regs) {
 	nfds_t nfds = regs->rsi;
 	int timeout = regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] poll: fds {%x}, nfds {%x}, timeout {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fds, nfds, timeout);
 #endif
 
@@ -1533,7 +1533,7 @@ void syscall_ppoll(struct registers *regs) {
 	struct timespec *timespec = (void*)regs->rdx;
 	sigset_t *sigmask = (void*)regs->r10;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] ppoll: fds {%x}, nfds {%x}, timespec {%x}, sigmask {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, fds, nfds, timespec, sigmask);
 #endif
 
@@ -1552,7 +1552,7 @@ void syscall_utimensat(struct registers *regs) {
 	const struct timespec *timespec = (void*)regs->rdx;
 	int flags = regs->r10;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] utimensat: dirfd {%x}, path {%s}, timespec {%x}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, dirfd, path, timespec, flags);
 #endif
 
@@ -1608,7 +1608,7 @@ void syscall_renameat(struct registers *regs) {
 	int new_dirfd = regs->rdx;
 	const char *new_path = (void*)regs->r10;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] renameat: olddirfd {%x}, oldpath {%s}, newdirfd {%x}, newpath {%s}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, old_dirfd, old_path, new_dirfd, new_path);
 #endif
 
@@ -1647,7 +1647,7 @@ void syscall_linkat(struct registers *regs) {
 	const char *newpath = (void*)regs->r10;
 	int flags = regs->r8;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] linkat: olddirfd {%x}, oldpath {%s}, newdirfd {%x}, newpath {%s}, flags {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, olddirfd, oldpath, newdirfd, newpath, flags);
 #endif
 	

@@ -512,7 +512,7 @@ static void sigreturn_default(int release_block) {
 }
 
 void syscall_sigreturn(struct registers*) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SIGNAL) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] sigreturn\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 	asm volatile ("cli");
@@ -614,7 +614,7 @@ void syscall_sigaction(struct registers *regs) {
 	const struct sigaction *act = (void*)regs->rsi;
 	struct sigaction *old = (void*)regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SIGNAL) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] sigaction: signum {%x}, act {%x}, old {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sig, act, old);
 #endif
 
@@ -624,7 +624,7 @@ void syscall_sigaction(struct registers *regs) {
 void syscall_sigpending(struct registers *regs) {
 	sigset_t *set = (void*)regs->rdi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SIGNAL) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] sigpending: set {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, set);
 #endif
 
@@ -636,7 +636,7 @@ void syscall_sigprocmask(struct registers *regs) {
 	const sigset_t *set = (void*)regs->rsi;
 	sigset_t *oldset = (void*)regs->rdx;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SIGNAL) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] sigprocmask: how {%x}, set {%x}, oldset {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, how, set, oldset);
 #endif
 
@@ -647,7 +647,7 @@ void syscall_kill(struct registers *regs) {
 	pid_t pid = regs->rdi;
 	int sig = regs->rsi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SIGNAL) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] kill: pid {%x}, sig {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, pid, sig);
 #endif
 
@@ -655,7 +655,7 @@ void syscall_kill(struct registers *regs) {
 }
 
 void syscall_pause(struct registers *regs) {
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SIGNAL) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] pause\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
@@ -675,7 +675,7 @@ void syscall_pause(struct registers *regs) {
 void syscall_sigsuspend(struct registers *regs) {
 	sigset_t *mask = (void*)regs->rdi;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_SIGNAL) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] pause\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 

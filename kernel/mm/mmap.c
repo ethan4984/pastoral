@@ -50,6 +50,7 @@ static struct mmap_region *mmap_search_region(struct page_table *page_table, uin
 }
 
 static int mmap_shared_pages(struct page_table *page_table, uintptr_t vaddr, int fd, off_t offset, int length, int prot) {
+	print("SHARED PAGES!!!!\n");
 	struct fd_handle *handle = fd_translate(fd);
 	if(handle == NULL) {
 		set_errno(EBADF);
@@ -352,7 +353,7 @@ extern void syscall_mmap(struct registers *regs) {
 	int fd = regs->r8;
 	off_t offset = regs->r9;
 
-#ifndef SYSCALL_DEBUG
+#if defined(SYSCALL_DEBUG_MEM) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] mmap: addr {%x}, length {%x}, prot {%x}, flags {%x}, fd {%x}, offset {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, (uintptr_t)addr, length, prot, flags, fd, offset);
 #endif
 
@@ -369,7 +370,7 @@ extern void syscall_munmap(struct registers *regs) {
 	void *addr = (void*)regs->rdi;
 	size_t length = regs->rsi;
 
-#ifndef SYSCALL_DBEUG
+#if defined(SYSCALL_DEBUG_MEM) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] munmap: addr {%x}, length {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, (uintptr_t)addr, length);
 #endif
 
