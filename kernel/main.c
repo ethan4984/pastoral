@@ -90,7 +90,7 @@ void init_process() {
 	ret = sched_task_init(task, envp, argv);
 	if(ret == -1) panic("unable to start init process");
 
-	waitq_trigger_calibrate(task->status_trigger, task, EVENT_PROCESS_STATUS);
+	waitq_flush_trigger(task->status_trigger);
 	waitq_add(CURRENT_TASK->waitq, task->status_trigger);
 
 	struct task *parent = task->parent;
@@ -138,14 +138,8 @@ void pastoral_thread() {
 	}
 
 	random_init();
-
 	ps2_init();
-
 	init_process();
-
-	sched_dequeue(CURRENT_TASK);
-
-	print("this is here right\n");
 
 	for(;;)
 		asm ("hlt");

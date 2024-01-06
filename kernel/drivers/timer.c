@@ -18,20 +18,22 @@ void syscall_usleep(struct registers *regs) {
 
 	waitq_set_timer(CURRENT_TASK->waitq, req);
 
-	int ret = waitq_wait(CURRENT_TASK->waitq, EVENT_TIMER);
-	waitq_release(CURRENT_TASK->waitq, EVENT_TIMER);
+	for(;;) {
+		if(CURRENT_TASK->waitq->timer_trigger->fired) {
+			break;
+		}
 
-	if(ret == -1) {
-		set_errno(EINTR);
-		regs->rax = -1; 
-		return;
+		int ret = waitq_block(CURRENT_TASK->waitq, NULL);
+		if(ret == -1) {
+			regs->rax = -1;
+			goto finish;
+		}
 	}
 
-	if(rem) {
-		*rem = *req;
-	}
-
+	*rem = *req;
 	regs->rax = 0;
+finish:
+	waitq_remove(CURRENT_TASK->waitq, CURRENT_TASK->waitq->timer_trigger);
 }
 
 void syscall_clock_gettime(struct registers *regs) {

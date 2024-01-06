@@ -88,6 +88,8 @@ extern void syscall_mkdirat(struct registers*);
 extern void syscall_usleep(struct registers*);
 extern void syscall_clock_gettime(struct registers*);
 extern void syscall_linkat(struct registers*);
+extern void syscall_getsockopt(struct registers*);
+extern void syscall_setsockopt(struct registers*);
 
 static void syscall_set_fs_base(struct registers *regs) {
 	uint64_t addr = regs->rdi;
@@ -214,7 +216,9 @@ static struct syscall_handle syscall_list[] = {
 	{ .handler = syscall_mkdirat, .name = "mkdirat", .class = SYSCALL_FD }, // 72
 	{ .handler = syscall_usleep, .name = "usleep", .class = SYSCALL_TIME}, // 73
 	{ .handler = syscall_clock_gettime, .name = "clock_gettime", .class = SYSCALL_TIME }, // 74
-	{ .handler = syscall_linkat, .name = "linkat", .class = SYSCALL_FD } // 75
+	{ .handler = syscall_linkat, .name = "linkat", .class = SYSCALL_FD }, // 75
+	{ .handler = syscall_getsockopt, .name = "getsockopt", .class = SYSCALL_SOCKET }, // 76
+	{ .handler = syscall_setsockopt, .name = "setsockopt", .class = SYSCALL_SOCKET } // 77
 };
 
 extern void syscall_handler(struct registers *regs) {

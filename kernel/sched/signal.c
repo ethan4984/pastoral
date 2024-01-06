@@ -156,7 +156,7 @@ int signal_send_task(struct task *sender, struct task *target, int sig) {
 	signal->refcnt = 1;
 	signal->signum = sig;
 	signal->siginfo = alloc(sizeof(struct siginfo));
-	signal->trigger = waitq_alloc(&queue->waitq, EVENT_SIGNAL);
+	signal->trigger = EVENT_DEFAULT_TRIGGER(&queue->waitq);
 	signal->queue = signal_queue;
 	signal_queue->sigpending |= SIGMASK(sig);
 
@@ -374,27 +374,38 @@ int signal_wait(struct signal_queue *signal_queue, sigset_t mask, struct timespe
 	}
 
 	spinlock_irqsave(&signal_queue->siglock);
+
 	for(size_t i = 1; i <= SIGNAL_MAX; i++) {
 		if(mask & SIGMASK(i)) {
 			struct signal *signal = &signal_queue->queue[i - 1];
+			signal_queue->sigdelivered &= ~SIGMASK(i);
 
 			if(signal->trigger == NULL) {
-				signal->trigger = waitq_alloc(&signal_queue->waitq, EVENT_SIGNAL);
+				signal->trigger = EVENT_DEFAULT_TRIGGER(&signal_queue->waitq);
 			}
 
 			waitq_add(&signal_queue->waitq, signal->trigger);
 		}
 	}
+
 	spinrelease_irqsave(&signal_queue->siglock);
 
-	int ret = waitq_wait(&signal_queue->waitq, EVENT_SIGNAL);
-	waitq_release(&signal_queue->waitq, EVENT_SIGNAL);
+	int ret;
 
-	if(ret == -1) {
-		return -1;
+	for(;;) {
+		for(size_t i = 1; i <= SIGNAL_MAX; i++) {
+			if(signal_queue->sigdelivered & SIGMASK(i)) {
+				signal_queue->sigdelivered &= ~SIGMASK(i);
+				goto finish;
+			}
+		}
+
+		ret = waitq_block(&signal_queue->waitq, NULL);
+		if(ret == -1) {
+			return -1;
+		}
 	}
-
-	waitq_release(&signal_queue->waitq, EVENT_SIGNAL);
+finish:
 
 	return 0;
 }
@@ -462,7 +473,8 @@ static void sigreturn_default(int release_block) {
 	spinlock_irqsave(&signal_queue->siglock);
 
 	struct signal *signal = &signal_queue->queue[task->signal_context.signum - 1];
-	waitq_wake(signal->trigger);
+	signal_queue->sigdelivered |= SIGMASK(task->signal_context.signum);
+	waitq_arise(signal->trigger, task);
 
 	spinrelease_irqsave(&signal_queue->siglock);
 
@@ -524,7 +536,8 @@ void syscall_sigreturn(struct registers*) {
 	spinlock_irqsave(&signal_queue->siglock);
 
 	struct signal *signal = &signal_queue->queue[task->signal_context.signum - 1];
-	waitq_wake(signal->trigger);
+	signal_queue->sigdelivered |= SIGMASK(task->signal_context.signum);
+	waitq_arise(signal->trigger, task);
 
 	spinrelease_irqsave(&signal_queue->siglock);
 

@@ -45,13 +45,19 @@ int futex(uintptr_t uaddr, int ops, int expected, const struct timespec *timeout
 				waitq_set_timer(&futex->waitq, timeout);
 			}
 
-			futex->trigger = waitq_alloc(&futex->waitq, EVENT_LOCK);
-			waitq_add(&futex->waitq, futex->trigger);
+			futex->locked = 1;
+			futex->trigger = EVENT_DEFAULT_TRIGGER(&futex->waitq);
 
-			waitq_wait(&futex->waitq, EVENT_LOCK);
-			waitq_release(&futex->waitq, EVENT_LOCK);
+			for(;;) {
+				if(futex->locked == 0) {
+					break;
+				}
 
-			waitq_remove(&futex->waitq, futex->trigger);
+				int ret = waitq_block(&futex->waitq, NULL);
+				if(ret == -1) {
+					return -1;	
+				}
+			}
 
 			break;
 		}
@@ -62,8 +68,9 @@ int futex(uintptr_t uaddr, int ops, int expected, const struct timespec *timeout
 			}
 
 			hash_table_delete(&futex_list, &futex_paddr, sizeof(futex_paddr));
-
-			waitq_wake(futex->trigger);
+			
+			futex->locked = 0;
+			waitq_arise(futex->trigger, CURRENT_TASK);
 
 			break;
 		}
@@ -81,7 +88,7 @@ void syscall_futex(struct registers *regs) {
 	uint32_t val = regs->rdx; 
 	const struct timespec *timeout = (void*)regs->r10;
 
-#if defined(SYSCALL_SCHED_DEBUG)
+#if defined(SYSCALL_DEBUG_SCHED) || defined(SYSCALL_DEBUG_ALL)
 	print("syscall: [pid %x, tid %x] futex: uaddr {%x}, op {%x}, val {%x}, timeout {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, uaddr, op, val, timeout);
 #endif
 

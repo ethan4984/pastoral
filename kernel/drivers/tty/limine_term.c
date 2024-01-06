@@ -163,7 +163,7 @@ void limine_terminals_init() {
 
 		ltty->terminal = limine_terminals[i];
 		ltty->write = limine_terminal_request.response->write;
-		ltty->trigger = waitq_alloc(&ltty->waitq, EVENT_COMMAND);
+		ltty->trigger = EVENT_DEFAULT_TRIGGER(&ltty->waitq);
 		ltty->fb_addr = (void *) framebuffer->address;
 		ltty->fb_pitch = framebuffer->pitch;
 		ltty->fb_width = framebuffer->width;

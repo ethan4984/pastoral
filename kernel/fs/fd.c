@@ -1,4 +1,5 @@
 #include <fs/fd.h>
+#include <net/socket.h>
 #include <vector.h>
 #include <cpu.h>
 #include <sched/sched.h>
@@ -36,7 +37,7 @@ int dirfd_lookup_vfs(int dirfd, const char *path, struct vfs_node **ret) {
 	return 0;
 }
 
-static int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
+int user_lookup_at(int dirfd, const char *path, int lookup_flags, mode_t mode, struct vfs_node **ret) {
 	if(*path == '/' && *(path + 1) == '\0') {
 		*ret = vfs_root;
 		return 0;
@@ -187,7 +188,7 @@ int stat_update_time(struct stat *stat, int flags) {
 	return 0;
 }
 
-static struct fd_handle *fd_translate_unlocked(int index) {
+struct fd_handle *fd_translate_unlocked(int index) {
 	struct task *current_task = CURRENT_TASK;
 	return hash_table_search(&current_task->fd_table->fd_list, &index, sizeof(index));
 }
@@ -283,8 +284,8 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	if(ret != -1) {
 		stat_update_time(stat, STAT_MOD | STAT_STATUS);
 
-		waitq_trigger_calibrate(fd_handle->file_handle->trigger, CURRENT_TASK, EVENT_POLLIN);
-		waitq_wake(fd_handle->file_handle->trigger);
+		fd_handle->file_handle->status |= POLLIN;
+		waitq_arise(fd_handle->file_handle->trigger, CURRENT_TASK);
 
 		fd_handle->file_handle->position += ret;
 	}
@@ -350,11 +351,16 @@ ssize_t pipe_read(struct file_handle *file, void *buf, size_t cnt, off_t offset)
 	const void *out = file->pipe->buffer;
 
 	if(offset > stat->st_size) {
-		int ret = waitq_wait(&file->waitq, EVENT_WRITE);
-		waitq_release(&file->waitq, EVENT_WRITE);
+		for(;;) {
+			if((file->status & POLLIN) == POLLIN) {
+				file->status &= ~POLLIN;
+				break;
+			}
 
-		if(ret == -1) {
-			return -1;
+			int ret = waitq_block(&file->waitq, NULL);
+			if(ret == -1) {
+				return -1;
+			}
 		}
 	}
 
@@ -384,8 +390,8 @@ ssize_t pipe_write(struct file_handle *file, const void *buf, size_t cnt, off_t 
 	}
 
 	if(offset > stat->st_size) {
-		waitq_trigger_calibrate(file->trigger, CURRENT_TASK, EVENT_WRITE);
-		waitq_wake(file->trigger);
+		file->status |= POLLIN;
+		waitq_arise(file->trigger, CURRENT_TASK);
 	}
 
 	stat_update_time(stat, STAT_MOD);
@@ -530,6 +536,7 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	new_file_handle->ops = fops;
 	new_file_handle->flags = flags & ~O_CLOEXEC;
 	new_file_handle->stat = vfs_node->stat;
+	new_file_handle->trigger = EVENT_DEFAULT_TRIGGER(&new_file_handle->waitq);
 
 	if(S_ISCHR(vfs_node->stat->st_mode)) {
 		if(cdev_open(vfs_node, new_file_handle) == -1) {
@@ -564,19 +571,22 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	return new_fd_handle->fd_number;
 }
 
-
 static void fd_close_unlocked(struct fd_handle *handle) {
 	struct task *current_task = CURRENT_TASK;
 
-	if(handle->file_handle->ops->close)
+	if(handle->file_handle == NULL) {
+		return;
+	}
+
+	if(handle->file_handle->ops->close) {
 		handle->file_handle->ops->close(handle->file_handle->vfs_node, handle->file_handle);
+	}
 
 	file_put(handle->file_handle);
 	hash_table_delete(&current_task->fd_table->fd_list, &handle->fd_number, sizeof(handle->fd_number));
 	bitmap_free(&current_task->fd_table->fd_bitmap, handle->fd_number);
 	free(handle);
 }
-
 
 int fd_close(int fd) {
 	struct task *current_task = CURRENT_TASK;
@@ -817,9 +827,9 @@ int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
 int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 	struct waitq waitq = { 0 };
 
-	/*if(timespec) {
+	if(timespec) {
 		waitq_set_timer(&waitq, timespec);
-	}*/
+	}
 
 	VECTOR(struct file_handle*) handle_list = { 0 };
 
@@ -834,37 +844,39 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 
 		struct file_handle *file_handle = fd_handle->file_handle;
 
-		int type = 0;
+		waitq_add(&waitq, file_handle->trigger);
+		VECTOR_PUSH(handle_list, file_handle);
+	}
 
-		if(pollfd->events == POLLIN) type |= EVENT_POLLIN;
+	int ret = 0;
 
-		if(type) {
-			file_handle->trigger = waitq_alloc(&waitq, type);
-			waitq_add(&waitq, file_handle->trigger);
-			VECTOR_PUSH(handle_list, file_handle);
-		} else {
-			print("poll: unrecognised event type {%x}\n", type);
+	for(;;) {
+		if(waitq.timer_trigger && waitq.timer_trigger->fired) {
+			break;
+		}
+
+		for(size_t i = 0; i < handle_list.length; i++) {
+			struct file_handle *handle = handle_list.data[i];
+	
+			if(handle->status & fds[i].events) {
+				fds[i].revents = handle->status & fds[i].events;
+				ret++;
+			}
+		}
+
+		if(ret) {
+			break;
+		}
+
+		if(waitq_block(&waitq, NULL) == -1) {
+			ret = -1;
+			break;
 		}
 	}
-
-	int ret = waitq_wait(&waitq, EVENT_ANY);
-	if(ret == -1) {
-		return -1;
-	}
-
-	ret = 0;
 
 	for(size_t i = 0; i < handle_list.length; i++) {
 		struct file_handle *handle = handle_list.data[i];
-		struct waitq_trigger *trigger = handle->trigger;
-
-		if(trigger->fired) {
-			fds[i].revents = fds[i].events;
-			ret++;
-		}
-
-		waitq_obtain(&handle->waitq, trigger->type);
-		waitq_remove(&waitq, trigger);
+		waitq_remove(&waitq, handle->trigger);
 	}
 
 	return ret;
@@ -974,6 +986,8 @@ void syscall_openat(struct registers *regs) {
 #endif
 
 	regs->rax = fd_openat(dirfd, pathname, flags, mode);
+
+//	print("sycall return: [pid %x, tid %x] open: %x %x\n", CORE_LOCAL->pid, CORE_LOCAL->tid, regs->rax, regs->rax == -1 ? get_errno() : 0);
 }
 
 void syscall_close(struct registers *regs) {
@@ -1022,12 +1036,12 @@ void syscall_fcntl(struct registers *regs) {
 			file_unlock(fd_handle->file_handle);
 			break;
 		case F_SETFL: {
-			if (regs->rdx & O_ACCMODE) {
+			/*if (regs->rdx & O_ACCMODE) {
 				// It is disallowed to change the access mode.
 				set_errno(EINVAL);
 				regs->rax = -1;
 				break;
-			}
+			}*/
 			file_lock(fd_handle->file_handle);
 			fd_handle->file_handle->flags = regs->rdx;
 			regs->rax = 0;
@@ -1205,8 +1219,6 @@ void syscall_mkdirat(struct registers *regs) {
 	stat->st_mode = S_IFDIR | (mode & ~(*CURRENT_TASK->umask));
 	stat->st_uid = CURRENT_TASK->effective_uid;
 
-	print("Creatign with %s\n", name); 
-
 	dir_node = vfs_create(pathname_parent, name, stat);
 
 	if(pathname_parent->stat->st_mode & S_ISGID) {
@@ -1263,6 +1275,7 @@ void syscall_pipe(struct registers *regs) {
 	read_file_handle->pipe = pipe;
 	read_file_handle->flags = O_RDONLY;
 	read_file_handle->stat = pipe_stat;
+	read_file_handle->trigger = EVENT_DEFAULT_TRIGGER(&read_file_handle->waitq);
 
 	write_fd_handle->fd_number = fd_pair[1];
 	write_fd_handle->file_handle = write_file_handle;
@@ -1270,6 +1283,7 @@ void syscall_pipe(struct registers *regs) {
 	write_file_handle->pipe = pipe;
 	write_file_handle->flags = O_WRONLY;
 	write_file_handle->stat = pipe_stat;
+	write_file_handle->trigger = EVENT_DEFAULT_TRIGGER(&write_file_handle->waitq);
 
 	stat_update_time(pipe_stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
@@ -1678,7 +1692,7 @@ void syscall_linkat(struct registers *regs) {
 	struct vfs_node *newpath_node = vfs_search_relative(newpath_parent, name, false);
 	if(newpath_node) { 
 		set_errno(EEXIST); 
-		regs->rax = -1 ; 
+		regs->rax = -1; 
 		return; 
 	}
 

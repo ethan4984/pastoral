@@ -2,12 +2,12 @@
 
 #include <elf.h>
 
-//#define SYSCALL_DEBUG_ALL
+#define SYSCALL_DEBUG_ALL
 
 //#define SYSCALL_DEBUG_FD
 //#define SYSCALL_DEBUG_SCHED
 #define SYSCALL_DEBUG_SOCKET
-#define SYSCALL_DEBUG_MEM
+//#define SYSCALL_DEBUG_MEM
 //#define SYSCALL_DEBUG_TIME
 //#define SYSCALL_DEBUG_SIGNAL
 

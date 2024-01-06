@@ -42,8 +42,21 @@
 #define SOCK_CLOEXEC 0x20000
 #define SOCK_RDM 0x40000
 
+#define MSG_CTRUNC 0x1
+#define MSG_DONTROUTE 0x2
+#define MSG_EOR 0x4
+#define MSG_OOB 0x8
+#define MSG_NOSIGNAL 0x10
+#define MSG_PEEK 0x20
+#define MSG_TRUNC 0x40
+#define MSG_WAITALL 0x80
+#define MSG_CONFIRM 0x800
+
+#define MSG_DONTWAIT 0x1000
+#define MSG_CMSG_CLOEXEC 0x2000
+
 typedef unsigned int sa_family_t;
-typedef unsigned long socklen_t;
+typedef unsigned int socklen_t;
 
 struct socketaddr {
 	sa_family_t sa_family;
@@ -79,24 +92,19 @@ struct socket {
 	struct socketaddr *addr;
 
 	int (*bind)(struct socket*, const struct socketaddr*, socklen_t);
-	int (*connect)(struct socket*, const struct socketaddr*, socklen_t);
+	int (*connect)(struct socket*, const struct socketaddr*, socklen_t, int);
 	int (*sendmsg)(struct socket*, const struct msghdr*, int);
 	int (*recvmsg)(struct socket*, struct msghdr*, int);
 	int (*getsockname)(struct socket*, struct socketaddr*, socklen_t*);
 	int (*getpeername)(struct socket*, struct socketaddr*, socklen_t*);
-	int (*accept)(struct socket*, struct socketaddr*, socklen_t*);
+	int (*accept)(struct socket*, struct socketaddr*, socklen_t*, int);
 	int (*listen)(struct socket*, int);
-
-	struct waitq waitq;
-	struct waitq_trigger *trigger;
 
 	struct socket *peer;
 	VECTOR(struct socket*) backlog;
 	int backlog_max;
 
 	struct file_handle *file_handle;
-	struct fd_handle *fd_handle;
-
 	struct file_ops *stream_ops;
 
 	struct spinlock lock;

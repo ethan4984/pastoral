@@ -12,6 +12,7 @@ struct futex {
 	struct waitq waitq;
 	struct waitq_trigger *trigger;
 	uint64_t paddr;
+	int locked;
 	int expected;
 	int operation;
 };

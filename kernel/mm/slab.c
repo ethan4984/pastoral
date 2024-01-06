@@ -250,6 +250,8 @@ void *alloc(size_t size) {
 }
 
 void free(void *obj) {
+	return;
+
 	if(!obj)
 		return;
 

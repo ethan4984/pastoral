@@ -123,6 +123,7 @@ struct signal_queue {
 
 	struct signal queue[SIGNAL_MAX];
 	sigset_t sigpending;
+	sigset_t sigdelivered;
 	bool active;
 
 	struct waitq waitq;

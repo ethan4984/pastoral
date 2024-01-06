@@ -44,8 +44,8 @@ struct task {
 	int has_execved;
 
 	size_t idle_cnt;
-	int sched_status;
-	int process_status;
+	ssize_t sched_status;
+	ssize_t process_status;
 
 	size_t user_gs_base;
 	size_t user_fs_base;
@@ -137,6 +137,7 @@ void reschedule(struct registers *regs, void *ptr);
 void sched_dequeue(struct task *task);
 void sched_requeue(struct task *task);
 void sched_yield();
+void sched_initiate_resched();
 void task_terminate(struct task *task, int status);
 void task_stop(struct task *task, int sig);
 void task_continue(struct task *task);
@@ -160,11 +161,13 @@ extern struct spinlock sched_lock;
 #define TASK_WAITING 1
 #define TASK_YIELD 2
 
-#define THREAD_KERNEL_STACK_SIZE 0x4000
+#define THREAD_KERNEL_STACK_SIZE 0x10000
 #define THREAD_USER_STACK_SIZE 0x100000
 
 #define TASK_MAX_PRIORITY ~(0ull)
 #define TASK_MIN_PRIORITY ~(0)
+
+#define TASK_STATUS_CHANGE (1ull << 31)
 
 static inline void session_lock(struct session *session) {
 	spinlock_irqsave(&session->lock);

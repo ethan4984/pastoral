@@ -14,8 +14,8 @@ static int unix_bind(struct socket *socket, const struct socketaddr *addr, sockl
 static int unix_getsockname(struct socket *socket, struct socketaddr *addr, socklen_t *length);
 static int unix_getpeername(struct socket *socket, struct socketaddr *addr, socklen_t *length);
 static int unix_listen(struct socket *socket, int backlog);
-static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t *length);
-static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length);
+static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t *length, int flags);
+static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length, int flags);
 static int unix_recvmsg(struct socket *socket, struct msghdr *msg, int flags);
 static int unix_sendmsg(struct socket *socket, const struct msghdr *msg, int flags);
 
@@ -123,14 +123,17 @@ static struct fd_handle *create_sockfd(struct socket *socket, struct file_handle
 	socket_fd_handle->file_handle = socket_file_handle;
 	socket_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
 
-	socket->fd_handle = socket_fd_handle;
 	socket->file_handle = socket_file_handle;
 
 	stat_update_time(socket_file_handle->stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
 
-	spinlock_irqsave(&CURRENT_TASK->fd_table->fd_lock);
-	hash_table_push(&CURRENT_TASK->fd_table->fd_list, &socket_fd_handle->fd_number, socket_fd_handle, sizeof(socket_fd_handle->fd_number));
-	spinrelease_irqsave(&CURRENT_TASK->fd_table->fd_lock);
+	socket_file_handle->trigger = EVENT_DEFAULT_TRIGGER(&file_handle->waitq);
+
+	struct task *current_task = CURRENT_TASK;
+
+	spinlock_irqsave(&current_task->fd_table->fd_lock);
+	hash_table_push(&current_task->fd_table->fd_list, &socket_fd_handle->fd_number, socket_fd_handle, sizeof(socket_fd_handle->fd_number));
+	spinrelease_irqsave(&current_task->fd_table->fd_lock);
 
 	return socket_fd_handle;
 }
@@ -238,7 +241,7 @@ void syscall_accept(struct registers *regs) {
 	}
 
 	struct socket *socket = fd_handle->file_handle->private_data;
-	regs->rax = socket->accept(socket, addr, addrlen);
+	regs->rax = socket->accept(socket, addr, addrlen, fd_handle->flags);
 }
 
 void syscall_bind(struct registers *regs) {
@@ -321,10 +324,7 @@ void syscall_recvmsg(struct registers *regs) {
 	struct socket *socket = fd_handle->file_handle->private_data;
 	struct socket *peer = socket->peer;
 
-	print("socket: %x | peer %x\n", socket, peer);
-
 	if(peer->state != SOCKET_CONNECTED || peer == NULL) {
-		print("How is this true %x %x\n", socket, peer);
 		set_errno(EDESTADDRREQ);
 		regs->rax = -1;
 		return;
@@ -336,6 +336,8 @@ void syscall_recvmsg(struct registers *regs) {
 			return;
 		}
 	}
+
+	print("Bro how %x %x and %x %x\n", peer, socket, peer->file_handle, socket->file_handle);
 
 	regs->rax = socket->recvmsg(socket, msg, flags);
 }
@@ -356,7 +358,35 @@ void syscall_connect(struct registers *regs) {
 	}
 
 	struct socket *socket = fd_handle->file_handle->private_data;
-	regs->rax = socket->connect(socket, addr, addrlen);
+	regs->rax = socket->connect(socket, addr, addrlen, fd_handle->flags);
+}
+
+void syscall_getsockopt(struct registers *regs) {
+	int sockfd = regs->rdi;
+	int level = regs->rsi;
+	int optname = regs->rdx;
+	void *optval = (void*)regs->r10;
+	socklen_t *optlen = (void*)regs->r8;
+
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
+	print("syscall: [pid %x, tid %x] getsockopt: sockfd {%x}, level {%x}, optname {%x}, optval {%x}, optlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, level, optname, optval, optlen);
+#endif
+
+	regs->rax = 0;
+}
+
+void syscall_setsockopt(struct registers *regs) {
+	int sockfd = regs->rdi;
+	int level = regs->rsi;
+	int optname = regs->rdx;
+	void *optval = (void*)regs->r10;
+	socklen_t optlen = regs->r8;
+
+#if defined(SYSCALL_DEBUG_SOCKET) || defined(SYSCALL_DEBUG_ALL)
+	print("syscall: [pid %x, tid %x] setsockopt: sockfd {%x}, level {%x}, optname {%x}, optval {%x}, optlen {%x}\n", CORE_LOCAL->pid, CORE_LOCAL->tid, sockfd, level, optname, optval, optlen);
+#endif
+
+	regs->rax = 0;
 }
 
 static struct hash_table unix_addr_table;
@@ -377,7 +407,7 @@ static struct socket *unix_search_address(struct socketaddr_un *addr, socklen_t 
 		return NULL;
 	}
 
-	struct socket *socket = hash_table_search(&unix_addr_table, addr, sizeof(struct socketaddr_un));
+	struct socket *socket = hash_table_search(&unix_addr_table, addr->sun_path, strlen(addr->sun_path));
 
 	return socket; 
 }
@@ -399,9 +429,50 @@ static int unix_bind(struct socket *socket, const struct socketaddr *socketaddr,
 		return -1;
 	}
 
+	char *path = alloc(strlen(socketaddr_un->sun_path));
+	strcpy(path, socketaddr_un->sun_path);
+
+	while(*path == '/') path++;
+
+	int cutoff = find_last_char(path, '/');
+	const char *name; 
+	const char *dirpath;
+
+	if(cutoff == -1) {
+		name = path; 
+		dirpath = "./";
+	} else {
+		name = path + cutoff + 1;
+		dirpath = path;
+		path[cutoff] = '\0';
+	}
+
+	struct vfs_node *path_parent;
+	if(user_lookup_at(AT_FDCWD, dirpath, AT_SYMLINK_FOLLOW, X_OK, &path_parent) == -1) {
+		return -1;
+	}
+
+	struct vfs_node *path_node = vfs_search_relative(path_parent, name, false);
+	if(path_node == NULL) {
+		struct stat *stat = alloc(sizeof(struct stat));
+		stat_init(stat); 
+		stat->st_mode = S_IFSOCK;
+		stat->st_uid = CURRENT_TASK->effective_uid;
+
+		if((path_parent->stat->st_mode & S_ISGID) == S_ISGID) {
+			stat->st_gid = path_parent->stat->st_gid;
+		} else {
+			stat->st_gid = CURRENT_TASK->effective_gid;
+		}
+
+		path_node = vfs_create(path_parent, name, stat);
+	}
+
+	socket->file_handle->vfs_node = path_node;
+
 	*(struct socketaddr_un*)socket->addr = *socketaddr_un;
 
-	hash_table_push(&unix_addr_table, socket->addr, socket, sizeof(struct socketaddr_un));
+	hash_table_push(&unix_addr_table, socketaddr_un->sun_path, socket, strlen(socketaddr_un->sun_path));
 
 	return 0;
 }
@@ -419,26 +490,29 @@ static int unix_listen(struct socket *socket, int backlog) {
 	return 0;
 }
 
-static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t *length) {
+static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t *length, int flags) {
 	if(socket->type != SOCK_STREAM && socket->type != SOCK_SEQPACKET) {
 		set_errno(EOPNOTSUPP);
 		return -1;
 	}
 
-	if((socket->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
+	if((flags & O_NONBLOCK) == O_NONBLOCK) {
 		goto handle;
 	}
 
-	socket->trigger = waitq_alloc(&socket->waitq, EVENT_SOCKET);
-	waitq_add(&socket->waitq, socket->trigger);
-	
-	int ret = waitq_wait(&socket->waitq, EVENT_SOCKET);
-	waitq_release(&socket->waitq, EVENT_SOCKET);
+	struct file_handle *file_handle = socket->file_handle;
+	int ret;
 
-	waitq_remove(&socket->waitq, socket->trigger);
+	for(;;) {
+		if((file_handle->status & POLLIN) == POLLIN) {
+			file_handle->status &= ~POLLIN;
+			break;
+		}
 
-	if(ret == -1) {
-		return -1;
+		ret = waitq_block(&socket->file_handle->waitq, NULL);
+		if(ret == -1) {
+			return -1;
+		}
 	}
 handle:
 	struct socket *peer;
@@ -457,18 +531,20 @@ handle:
 
 	socket->peer = peer;
 
-	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
-		waitq_wake(peer->trigger);
+	if((flags & O_NONBLOCK) != O_NONBLOCK) {
+		peer->file_handle->status |= POLLOUT;
+		waitq_arise(peer->file_handle->trigger, CURRENT_TASK);
 	}
 
 	socket->state = SOCKET_CONNECTED;
+	peer->state = SOCKET_CONNECTED;
 
 	struct fd_handle *socket_fd_handle = create_sockfd(peer, peer->file_handle);
 
 	return socket_fd_handle->fd_number;
 }
 
-static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length) {
+static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length, int flags) {
 	struct socketaddr_un *socketaddr_un = (void*)addr;
 
 	if(unix_validate_address(socketaddr_un, length) == -1) {
@@ -487,24 +563,30 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 	}
 
 	VECTOR_PUSH(target_socket->backlog, socket);
-
 	socket->peer = target_socket;
+	socket->state = SOCKET_CONNECTING;
 
-	if((socket->fd_handle->flags & O_NONBLOCK) != O_NONBLOCK) {
-		waitq_wake(target_socket->trigger);
+	if((flags & O_NONBLOCK) != O_NONBLOCK) {
+		target_socket->file_handle->status |= POLLIN;
+		waitq_arise(target_socket->file_handle->trigger, CURRENT_TASK);
 
-		socket->trigger = waitq_alloc(&socket->waitq, EVENT_SOCKET);
-		waitq_add(&socket->waitq, socket->trigger);
+		for(;;) {
+			if((socket->file_handle->status & POLLOUT) == POLLOUT) {
+				socket->file_handle->status &= ~POLLOUT;
+				break;
+			}
 
-		int ret = waitq_wait(&socket->waitq, EVENT_SOCKET);
-		waitq_release(&socket->waitq, EVENT_SOCKET);
-
-		waitq_remove(&socket->waitq, socket->trigger);
-
-		if(ret == -1) {
-			return -1;
+			int ret = waitq_block(&socket->file_handle->waitq, NULL);
+			if(ret == -1) {
+				return -1;
+			}
 		}
 	}
+
+	if(socket->state != SOCKET_CONNECTING) {
+		set_errno(EHOSTUNREACH);
+		return 0;
+	} 
 
 	socket->state = SOCKET_CONNECTED;
 
@@ -576,73 +658,82 @@ static int unix_sendmsg(struct socket *socket, const struct msghdr *msg, int) {
 	void *bufferbase = msg->msg_iov[0].iov_base;
 	size_t transfer_size = msg->msg_iov[0].iov_len;
 
-	print("%x %x %x\n", file_handle, bufferbase, transfer_size);
-
 	ssize_t ret = socket->stream_ops->write(file_handle, bufferbase, transfer_size, file_handle->stat->st_size);
 
-	waitq_wake(socket->peer->trigger);
+	file_handle->status |= POLLIN;
+	waitq_arise(socket->file_handle->trigger, CURRENT_TASK);
 
 	return ret;
 }
 
-static int unix_recvmsg(struct socket *socket, struct msghdr *msg, int) {
+static int unix_recvmsg(struct socket *socket, struct msghdr *msg, int flags) {
 	struct file_handle *file_handle = socket->file_handle;
 	off_t offset = file_handle->stat->st_size;
 
-	if((socket->fd_handle->flags & O_NONBLOCK) == O_NONBLOCK) {
+	if((flags & MSG_DONTWAIT) == MSG_DONTWAIT) {
 		goto handle;
 	}
 
-	file_handle->trigger = waitq_alloc(&file_handle->waitq, EVENT_POLLIN);
-	waitq_add(&file_handle->waitq, file_handle->trigger);
+	for(;;) {
+		if((file_handle->status & POLLIN) == POLLIN) {
+			file_handle->status &= ~POLLIN;
+			break;
+		}
 
-	ssize_t ret = waitq_wait(&file_handle->waitq, EVENT_POLLIN);
-	waitq_release(&file_handle->waitq, EVENT_POLLIN);
-
-	waitq_remove(&file_handle->waitq, file_handle->trigger);
-
-	if(ret == -1) {
-		return -1;
+		int ret = waitq_block(&file_handle->waitq, NULL);
+		if(ret == -1) {
+			return -1;
+		}
 	}
 handle:
 	void *bufferbase = msg->msg_iov[0].iov_base;
 	size_t transfer_size = msg->msg_iov[0].iov_len;
 
-	print("%x %x %x\n", file_handle, bufferbase, transfer_size);
-
-	ret = socket->stream_ops->read(file_handle, bufferbase, transfer_size, offset);
+	int ret = socket->stream_ops->read(file_handle, bufferbase, transfer_size, offset);
 
 	return ret;
 }
 
 static ssize_t socket_read(struct file_handle *handle, void *buf, size_t cnt, off_t) {
 	struct socket *socket = handle->private_data;
-	struct socket *peer = socket->peer;
 
 	if(socket->state != SOCKET_CONNECTED) {
 		set_errno(EDESTADDRREQ);
 		return -1;
 	}
 
-	set_errno(ENOSYS);
-	return -1;
+	struct iovec iov = { };
+	iov.iov_base = buf;
+	iov.iov_len = cnt;
 
-	//return socket->recvfrom(socket, peer, buf, cnt, 0); 
+	struct msghdr msg = { };
+	msg.msg_name = socket->addr;
+	msg.msg_namelen = sizeof(struct socketaddr_un);
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+
+	return socket->recvmsg(socket, &msg, 0);
 }
 
 static ssize_t socket_write(struct file_handle *handle, const void *buf, size_t cnt, off_t) {
 	struct socket *socket = handle->private_data;
-	struct socket *peer = socket->peer;
 
 	if(socket->state != SOCKET_CONNECTED) {
 		set_errno(EDESTADDRREQ);
 		return -1;
 	}
 
-	set_errno(ENOSYS);
-	return -1;
+	struct iovec iov = { };
+	iov.iov_base = (void*)buf;
+	iov.iov_len = cnt;
 
-	//return socket->sendto(socket, peer, buf, cnt, 0); 
+	struct msghdr msg = { };
+	msg.msg_name = socket->addr;
+	msg.msg_namelen = sizeof(struct socketaddr_un);
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+
+	return socket->sendmsg(socket, &msg, 0);
 }
 
 static int socket_close(struct vfs_node*, struct file_handle *handle) {
@@ -666,8 +757,9 @@ static int socket_close(struct vfs_node*, struct file_handle *handle) {
 	return 0;
 }
 
-static int socket_unlink(struct vfs_node *node) {
-	print("Hello from socekt link");
+static int socket_unlink(struct vfs_node *) {
+	set_errno(ENOSYS);
+	return -1;
 }
 
 static int socket_ioctl(struct file_handle*, uint64_t, void*) {
