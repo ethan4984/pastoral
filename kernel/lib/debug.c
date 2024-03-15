@@ -106,6 +106,13 @@ static void print_internal(const char *str, va_list arg) {
 static struct spinlock print_lock;
 
 void print(const char *str, ...) {
+	static int syscnt = 0;
+
+	syscnt++;
+	if(syscnt < 16000) {
+		return;
+	}
+
 	va_list arg;
 	va_start(arg, str);
 

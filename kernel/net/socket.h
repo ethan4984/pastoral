@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sched/queue.h>
+#include <events/queue.h>
 #include <types.h>
 #include <lock.h>
 
@@ -83,22 +83,17 @@ struct msghdr {
 	int msg_flags;
 };
 
+struct socket_ops;
+
 struct socket {
 	int family;
 	int type;
 	int protocol;
 	int state;
 
-	struct socketaddr *addr;
+	struct socket_ops *ops;
 
-	int (*bind)(struct socket*, const struct socketaddr*, socklen_t);
-	int (*connect)(struct socket*, const struct socketaddr*, socklen_t, int);
-	int (*sendmsg)(struct socket*, const struct msghdr*, int);
-	int (*recvmsg)(struct socket*, struct msghdr*, int);
-	int (*getsockname)(struct socket*, struct socketaddr*, socklen_t*);
-	int (*getpeername)(struct socket*, struct socketaddr*, socklen_t*);
-	int (*accept)(struct socket*, struct socketaddr*, socklen_t*, int);
-	int (*listen)(struct socket*, int);
+	struct socketaddr *addr;
 
 	struct socket *peer;
 	VECTOR(struct socket*) backlog;
@@ -109,3 +104,17 @@ struct socket {
 
 	struct spinlock lock;
 };
+
+struct socket_ops {
+	int (*bind)(struct socket*, const struct socketaddr*, socklen_t);
+	int (*connect)(struct socket*, const struct socketaddr*, socklen_t, int);
+	int (*sendmsg)(struct socket*, const struct msghdr*, int);
+	int (*recvmsg)(struct socket*, struct msghdr*, int);
+	int (*getsockname)(struct socket*, struct socketaddr*, socklen_t*);
+	int (*getpeername)(struct socket*, struct socketaddr*, socklen_t*);
+	int (*accept)(struct socket*, struct socketaddr*, socklen_t*, int);
+	int (*listen)(struct socket*, int);
+	int (*close)(struct socket*);
+};
+
+struct fd_handle *create_sockfd(struct socket *, struct file_handle *);

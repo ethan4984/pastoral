@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sched/queue.h>
+#include <events/queue.h>
 #include <hash.h>
 #include <lock.h>
 

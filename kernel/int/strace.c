@@ -287,6 +287,5 @@ extern void syscall_handler(struct registers *regs) {
 			CORE_LOCAL->tid, syscall_list[syscall_number].name, regs->rax, get_errno());
 #endif
 
-
 	CURRENT_TASK->signal_queue.active = true;
 }

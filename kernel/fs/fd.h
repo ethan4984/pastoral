@@ -5,7 +5,7 @@
 #include <lib/string.h>
 #include <lib/cpu.h>
 #include <sched/sched.h>
-#include <sched/queue.h>
+#include <events/queue.h>
 #include <bitmap.h>
 #include <lock.h>
 

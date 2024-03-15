@@ -65,8 +65,12 @@ ssize_t ramfs_read(struct file_handle *file, void *buf, size_t cnt, off_t offset
 		return 0;
 	}
 
-	if(offset + cnt > stat->st_size) {
+	if((offset + cnt) > stat->st_size) {
 		cnt = stat->st_size - offset;
+	}
+
+	if(ramfs_handle->buffer == NULL) {
+		return 0;
 	}
 
 	memcpy8(buf, ramfs_handle->buffer + offset, cnt);

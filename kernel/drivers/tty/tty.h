@@ -6,7 +6,7 @@
 #include <lib/termios.h>
 #include <lib/ioctl.h>
 #include <lib/circular_queue.h>
-#include <sched/queue.h>
+#include <events/queue.h>
 #include <lock.h>
 
 #define MAX_LINE 8192

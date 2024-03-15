@@ -1,33 +1,33 @@
-#include <sched/queue.h>
+#include <events/queue.h>
 #include <sched/sched.h>
 #include <errno.h>
+#include <debug.h>
 #include <cpu.h>
 
 /*
- *  usgae:
- *
+ * usage:
  *	for(a; b; c) {
  *		waitq_add(waitq,. possible_trigger);
  *	}
- *                                                        
+ *														  
  *	struct task *waking_task;
- *  uint64_t ret;
- *                                                        
- *  for(;;) {
+ *	uint64_t ret;
+ *														  
+ *	for(;;) {
  *		if(condition) {
  *			break;
  *		}
- *                                                        
+ *														  
  *		struct waitq_trigger *waking_trigger;
- *		uint64_t ret = waitq_block(waitq, &waking_trigger);
+ *		ret = waitq_block(waitq, &waking_trigger);
  *		if(ret == -1) { 
  *			goto finish;
  *		}
  *	}
- *                                                        
- *  for(a; b; c) {
+ *														  
+ *	for(a; b; c) {
  *		waitq_remove(waitq, possible_trigger);
- *  }
+ *	}
  */
 
 int waitq_block(struct waitq *waitq, struct waitq_trigger **waking_object) {
@@ -36,6 +36,8 @@ int waitq_block(struct waitq *waitq, struct waitq_trigger **waking_object) {
 	spinlock_irqsave(&waitq->lock);
 	VECTOR_PUSH(waitq->tasks, task);
 	spinrelease_irqsave(&waitq->lock);
+
+	//print("queue: blocking on thread %x:%x\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 
 	task->signal_queue.active = true;
 	task->blocking = true;
@@ -51,6 +53,8 @@ int waitq_block(struct waitq *waitq, struct waitq_trigger **waking_object) {
 		return -1;
 	}
 
+	//print("queue: waking on thread %x:%x\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
+
 	if(waking_object) {
 		*waking_object = task->last_trigger;
 	}
@@ -63,10 +67,30 @@ int waitq_arise(struct waitq_trigger *trigger, struct task *waking_task) {
 		return -1;
 	}
 
+	/*print("queue: attempting to wake queues:\n");
+
+	for(int i = 0; i < trigger->queues.length; i++) {
+		print("\t[queue] %d:\n", i);
+
+		struct waitq *queue = trigger->queues.data[i];
+		if(queue == NULL) {
+			continue;
+		}
+
+		for(int j = 0; j < queue->tasks.length; j++) {
+			struct task *task = queue->tasks.data[j];
+			if(task == NULL) {
+				continue;
+			}
+
+			print("\t\t[waking] %x:%x\n", task->id.pid, task->id.tid);
+		}
+	}*/
+
 	trigger->task = waking_task;
 
 	spinlock_irqsave(&trigger->lock);
-
+	
 	for(size_t i = 0; i < trigger->queues.length; i++) {
 		struct waitq *waitq = trigger->queues.data[i];
 
@@ -78,6 +102,10 @@ int waitq_arise(struct waitq_trigger *trigger, struct task *waking_task) {
 
 		for(size_t j = 0; j < waitq->tasks.length; j++) {
 			struct task *task = waitq->tasks.data[j];
+			if(task == NULL) {
+				print("TASK NULL\n");
+				continue;
+			}
 
 			task->last_trigger = trigger;
 			task->blocking = false;

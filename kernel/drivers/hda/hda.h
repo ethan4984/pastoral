@@ -4,7 +4,7 @@
 #include <drivers/pci.h>
 #include <types.h>
 #include <sched/sched.h>
-#include <sched/queue.h>
+#include <events/queue.h>
 
 struct hda_registers { 
 	uint16_t gcap;

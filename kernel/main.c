@@ -85,16 +85,16 @@ void init_process() {
 	sched_default_task(task, CURRENT_TASK->namespace, 1);
 
 	int ret = sched_load_program(task, argv[0]);
-	if(ret == -1) panic("unable to start init process");
+	if(ret == -1) panic("sched_load_program: unable to start init process");
 
 	ret = sched_task_init(task, envp, argv);
-	if(ret == -1) panic("unable to start init process");
+	if(ret == -1) panic("sched_task_init: unable to start init process");
 
 	waitq_flush_trigger(task->status_trigger);
 	waitq_add(CURRENT_TASK->waitq, task->status_trigger);
 
 	struct task *parent = task->parent;
-	if(parent == NULL) panic("unable to start init process");
+	if(parent == NULL) panic("task_parent: unable to start init process");
 
 	task->session = parent->session;
 	task->group = parent->group;

@@ -2,7 +2,7 @@
 
 #include <types.h>
 #include <vector.h>
-#include <sched/queue.h>
+#include <events/queue.h>
 #include <lock.h>
 #include <cpu.h>
 

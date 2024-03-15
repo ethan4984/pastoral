@@ -1,5 +1,5 @@
 #include <drivers/timer.h>
-#include <sched/queue.h>
+#include <events/queue.h>
 #include <sched/sched.h>
 #include <debug.h>
 #include <errno.h>

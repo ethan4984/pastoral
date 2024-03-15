@@ -2,7 +2,7 @@
 #include <drivers/tty/tty.h>
 #include <drivers/tty/limine_term.h>
 #include <drivers/tty/console_ioctl.h>
-#include <sched/queue.h>
+#include <events/queue.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>
 #include <int/apic.h>

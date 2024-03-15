@@ -11,6 +11,7 @@
 #include <time.h>
 #include <mm/pmm.h>
 #include <fs/cdev.h>
+#include <events/io.h> 
 
 int dirfd_lookup_vfs(int dirfd, const char *path, struct vfs_node **ret) {
 	bool relative = *path != '/' ? true : false;
@@ -265,7 +266,7 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	}
 
 	if ((fd_handle->file_handle->flags & O_APPEND) && !(S_ISFIFO(stat->st_mode))) {
-		fd_handle->file_handle->position = stat->st_size;
+		if(!S_ISSOCK(stat->st_mode)) fd_handle->file_handle->position = stat->st_size;
 	}
 
 	ssize_t ret;
@@ -273,7 +274,7 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 
 	file_unlock(fd_handle->file_handle);
 
-	if(S_ISCHR(stat->st_mode)) {
+	if(S_ISCHR(stat->st_mode) || S_ISSOCK(stat->st_mode)) {
 		ret = fd_handle->file_handle->ops->write(fd_handle->file_handle, buf, count, off);
 	} else {
 		ret = file_write(fd_handle, buf, count, off);
@@ -287,10 +288,11 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		fd_handle->file_handle->status |= POLLIN;
 		waitq_arise(fd_handle->file_handle->trigger, CURRENT_TASK);
 
-		fd_handle->file_handle->position += ret;
+		if(!S_ISSOCK(stat->st_mode)) fd_handle->file_handle->position += ret;
 	}
 
 	file_unlock(fd_handle->file_handle);
+
 	return ret;
 }
 
@@ -335,7 +337,7 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 
 	file_lock(fd_handle->file_handle);
 
-	if(ret != -1) {
+	if(ret != -1 && !S_ISSOCK(stat->st_mode)) {
 		fd_handle->file_handle->position += ret;
 	}
 
@@ -567,6 +569,14 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	}
 
 	hash_table_push(&current_task->fd_table->fd_list, &new_fd_handle->fd_number, new_fd_handle, sizeof(new_fd_handle->fd_number));
+
+	if(new_fd_handle->fd_number == 8) {
+		print("fd 8 %s\n", path);	
+	} else if(new_fd_handle->fd_number == 4) {
+		print("fd 4 %s\n", path);	
+	} else if(new_fd_handle->fd_number == 6) { 
+		print("fd 6 %s\n", path);	
+	}
 
 	return new_fd_handle->fd_number;
 }
@@ -827,9 +837,9 @@ int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
 int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 	struct waitq waitq = { 0 };
 
-	if(timespec) {
-		waitq_set_timer(&waitq, timespec);
-	}
+	//if(timespec) {
+	//	waitq_set_timer(&waitq, timespec);
+	//}
 
 	VECTOR(struct file_handle*) handle_list = { 0 };
 
@@ -844,6 +854,8 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 
 		struct file_handle *file_handle = fd_handle->file_handle;
 
+		print("polling fd %x for events %x %s\n", pollfd->fd, pollfd->events, vfs_absolute_path(file_handle->vfs_node));
+
 		waitq_add(&waitq, file_handle->trigger);
 		VECTOR_PUSH(handle_list, file_handle);
 	}
@@ -857,9 +869,13 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 
 		for(size_t i = 0; i < handle_list.length; i++) {
 			struct file_handle *handle = handle_list.data[i];
-	
+
+			print("Checking on %d %d %x\n", i, handle->status, handle); 
+
 			if(handle->status & fds[i].events) {
 				fds[i].revents = handle->status & fds[i].events;
+				print("fd %d: revents %d\n", i, fds[i].revents);
+				//handle->status &= ~fds[i].revents;
 				ret++;
 			}
 		}
@@ -1239,6 +1255,8 @@ void syscall_pipe(struct registers *regs) {
 
 	fd_pair[0] = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
 	fd_pair[1] = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
+
+	print("Returning %d:%d\n", fd_pair[0], fd_pair[1]);
 
 	struct fd_handle *read_fd_handle = alloc(sizeof(struct fd_handle));
 	struct fd_handle *write_fd_handle = alloc(sizeof(struct fd_handle));
