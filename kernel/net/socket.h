@@ -91,8 +91,6 @@ struct socket {
 	int protocol;
 	int state;
 
-	struct socket_ops *ops;
-
 	struct socketaddr *addr;
 
 	struct socket *peer;
@@ -101,6 +99,9 @@ struct socket {
 
 	struct file_handle *file_handle;
 	struct file_ops *stream_ops;
+	struct socket_ops *ops;
+
+	int status;
 
 	struct spinlock lock;
 };
@@ -117,4 +118,8 @@ struct socket_ops {
 	int (*close)(struct socket*);
 };
 
+struct fd_handle *search_socket(int);
 struct fd_handle *create_sockfd(struct socket *, struct file_handle *);
+struct file_handle *socket_default_file(struct socket *);
+
+struct socket *socket_create(int family, int type, int protocol);

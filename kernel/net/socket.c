@@ -37,7 +37,7 @@ static bool socket_validate_type(int type) {
 	}
 }
 
-static struct socket *socket_create(int family, int type, int protocol) {
+struct socket *socket_create(int family, int type, int protocol) {
 	if(!socket_validate_family(family)) {
 		set_errno(EAFNOSUPPORT);
 		return NULL;
@@ -79,9 +79,10 @@ static struct socket *socket_create(int family, int type, int protocol) {
 	return socket;
 }
 
-static struct fd_handle *search_socket(int sockfd) {
+struct fd_handle *search_socket(int sockfd) {
 	struct fd_handle *fd_handle = fd_translate(sockfd);
 	if(fd_handle == NULL) {
+		print("Here for some reason\n");
 		set_errno(EBADF);
 		return NULL;
 	}
@@ -93,6 +94,46 @@ static struct fd_handle *search_socket(int sockfd) {
 	}
 
 	return fd_handle;
+}
+
+struct fd_handle *create_sockfd(struct socket *socket, struct file_handle *file_handle) {
+	struct fd_handle *socket_fd_handle = alloc(sizeof(struct fd_handle));
+	struct file_handle *socket_file_handle = file_handle;
+	fd_init(socket_fd_handle);
+
+	socket_fd_handle->file_handle = file_handle;
+	socket_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
+
+	socket->file_handle = socket_file_handle;
+
+	stat_update_time(socket_file_handle->stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
+
+	socket_file_handle->trigger = EVENT_DEFAULT_TRIGGER(&file_handle->waitq);
+
+	struct task *current_task = CURRENT_TASK;
+
+	spinlock_irqsave(&current_task->fd_table->fd_lock);
+	hash_table_push(&current_task->fd_table->fd_list, &socket_fd_handle->fd_number, socket_fd_handle, sizeof(socket_fd_handle->fd_number));
+	spinrelease_irqsave(&current_task->fd_table->fd_lock);
+
+	socket_fd_handle->flags |= POLLOUT;
+
+	return socket_fd_handle;
+}
+
+struct file_handle *socket_default_file(struct socket *socket) {
+	struct file_handle *socket_file_handle = alloc(sizeof(struct file_handle));
+	file_init(socket_file_handle);
+
+	socket_file_handle->ops = &socket_file_ops;
+	socket_file_handle->private_data = socket;
+	socket_file_handle->stat = alloc(sizeof(struct stat));
+	socket_file_handle->stat->st_mode = S_IFSOCK;
+	socket_file_handle->flags |= O_RDWR;
+
+	ramfs_create_dangle(socket_file_handle->stat);
+
+	return socket_file_handle;
 }
 
 static ssize_t socket_read(struct file_handle *handle, void *buf, size_t cnt, off_t) {
@@ -134,7 +175,7 @@ static ssize_t socket_write(struct file_handle *handle, const void *buf, size_t 
 	msg.msg_iov = &iov;
 	msg.msg_iovlen = 1;
 
-	return socket->ops->sendmsg(socket, &msg, 0);
+	return socket->ops->sendmsg(socket, &msg, (handle->flags & O_NONBLOCK) == O_NONBLOCK ? MSG_DONTWAIT : 0);
 }
 
 static int socket_close(struct vfs_node*, struct file_handle *handle) {
@@ -163,33 +204,6 @@ static int socket_unlink(struct vfs_node *) {
 
 static int socket_ioctl(struct file_handle*, uint64_t, void*) {
 	return -1; 
-}
-
-struct fd_handle *create_sockfd(struct socket *socket, struct file_handle *file_handle) {
-	struct fd_handle *socket_fd_handle = alloc(sizeof(struct fd_handle));
-	struct file_handle *socket_file_handle = file_handle;
-	fd_init(socket_fd_handle);
-
-	socket_fd_handle->file_handle = file_handle;
-	socket_fd_handle->fd_number = bitmap_alloc(&CURRENT_TASK->fd_table->fd_bitmap);
-
-	socket->file_handle = socket_file_handle;
-
-	stat_update_time(socket_file_handle->stat, STAT_ACCESS | STAT_MOD | STAT_STATUS);
-
-	socket_file_handle->trigger = EVENT_DEFAULT_TRIGGER(&file_handle->waitq);
-
-	struct task *current_task = CURRENT_TASK;
-
-	print("creating socketfd %d\n", socket_fd_handle->fd_number);
-
-	spinlock_irqsave(&current_task->fd_table->fd_lock);
-	hash_table_push(&current_task->fd_table->fd_list, &socket_fd_handle->fd_number, socket_fd_handle, sizeof(socket_fd_handle->fd_number));
-	spinrelease_irqsave(&current_task->fd_table->fd_lock);
-
-	socket_fd_handle->flags |= POLLOUT;
-
-	return socket_fd_handle;
 }
 
 void syscall_socket(struct registers *regs) {
@@ -440,5 +454,3 @@ void syscall_setsockopt(struct registers *regs) {
 
 	regs->rax = 0;
 }
-
-

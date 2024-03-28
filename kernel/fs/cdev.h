@@ -22,7 +22,7 @@ struct cdev {
 };
 
 
-int cdev_open(struct vfs_node *node, struct file_handle *file);
+int cdev_open(struct vfs_node *node, struct file_handle *file, int flags);
 
 int cdev_register(struct cdev *cdev);
 int cdev_unregister(dev_t dev);

@@ -110,8 +110,6 @@ int elf64_file_init(struct elf_file *file) {
 	file->shstrtab = (void*)(pmm_alloc(DIV_ROUNDUP(file->shstrtab_hdr->sh_size, PAGE_SIZE), 1) + HIGH_VMA);
 	ret = file->read(file, file->shstrtab, file->shstrtab_hdr->sh_offset, file->shstrtab_hdr->sh_size);
 
-	print("%d %d\n", file->shstrtab_hdr->sh_size, ret);
-
 	if(ret != file->shstrtab_hdr->sh_size) {
 		return -1;
 	}

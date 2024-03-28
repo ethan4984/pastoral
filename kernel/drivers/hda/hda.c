@@ -235,7 +235,7 @@ void hda_device_init(struct pci_device *pci_device) {
 	}
 
 	// enable global device and controller interrupts
-	regs->intctl |= (1 << 30) | (1 << 31);
+	regs->intctl |= (1ull << 30) | (1ull << 31);
 
 	enumerate_codec(device);
 }

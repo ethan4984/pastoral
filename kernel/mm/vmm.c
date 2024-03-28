@@ -340,7 +340,7 @@ void vmm_default_table(struct page_table *page_table) {
 	uintptr_t kernel_vaddr = limine_kernel_address_request.response->virtual_base;
 	uintptr_t kernel_paddr = limine_kernel_address_request.response->physical_base;
 
-	for(size_t i = 0; i < 0x400; i++) {
+	for(size_t i = 0; i < 0x6400; i++) {
 		page_table->map_page(page_table, kernel_vaddr, kernel_paddr, VMM_FLAGS_P | VMM_FLAGS_RW | VMM_FLAGS_G | VMM_FLAGS_US);
 		kernel_vaddr += 0x1000;
 		kernel_paddr += 0x1000;

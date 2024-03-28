@@ -145,13 +145,18 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 		return -1;
 	}
 
-	struct io_monitor monitor = SOCKET_IO_MONITOR(socket, (flags & O_NONBLOCK) == O_NONBLOCK);
-	struct io_event connection = (struct io_event) {
+	bool blocking = (socket->file_handle->flags & O_NONBLOCK) != O_NONBLOCK;
+	blocking = false;
+
+	struct io_monitor monitor = SOCKET_IO_MONITOR(socket, blocking);
+	struct io_event connection_event = (struct io_event) {
 		.events = POLLIN,
 		.exclusive = true
 	};
 
-	int ret = io_wait(&monitor, &connection);
+	socket->state = SOCKET_CONNECTING;
+
+	int ret = io_wait(&monitor, &connection_event);
 	if(ret == -1) return -1;
 
 	struct socket *peer;
@@ -161,11 +166,7 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 		return -1;
 	}
 
-	if(!socket->backlog.length) {
-		io_release(&monitor, POLLIN);
-	}
-
-	VECTOR_PUSH(socket->backlog, peer);
+	if(!socket->backlog.length) io_release(&monitor, POLLIN);
 
 	if(addr && length) {
 		ret = unix_getsockname(peer, addr, length);
@@ -174,19 +175,39 @@ static int unix_accept(struct socket *socket, struct socketaddr *addr, socklen_t
 		}
 	}
 
-	socket->peer = peer;
+	struct socket *connection = socket_create(socket->family, socket->type, socket->protocol);
+	if(socket == NULL) {
+		return -1;
+	}
 
-	struct io_monitor peer_monitor = SOCKET_IO_MONITOR(socket->peer, (flags & O_NONBLOCK) != O_NONBLOCK);
-	io_set(&peer_monitor, POLLOUT);
-	
-	socket->state = SOCKET_CONNECTED;
+	struct file_handle *socket_file_handle = socket_default_file(connection);
+	if(socket_file_handle == NULL) {
+		return -1;
+	}
+
+	socket_file_handle->status |= POLLOUT;
+
+	connection->state = SOCKET_CONNECTED;
+	connection->file_handle = socket_file_handle;
+	connection->peer = peer;
+
+	peer->peer = connection;
 	peer->state = SOCKET_CONNECTED;
 
-	struct fd_handle *socket_fd_handle = create_sockfd(peer, peer->file_handle);
+	bool peer_blocking = (peer->file_handle->flags & O_NONBLOCK) != O_NONBLOCK;
+	struct io_monitor peer_monitor = SOCKET_IO_MONITOR(peer, peer_blocking);
+
+	io_set(&peer_monitor, POLLOUT);
+
+	struct fd_handle *socket_fd_handle = create_sockfd(connection, connection->file_handle);
+
+	connection->file_handle->status &= ~POLLIN;
+	peer->status &= ~POLLIN;
+	socket->status &= ~POLLIN;
 	
 	return socket_fd_handle->fd_number;
 }
-
+	
 static int unix_connect(struct socket *socket, const struct socketaddr *addr, socklen_t length, int flags) {
 	struct socketaddr_un *socketaddr_un = (void*)addr;
 
@@ -210,8 +231,11 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 	socket->peer = target_socket;
 	socket->state = SOCKET_CONNECTING;
 
-	struct io_monitor monitor = SOCKET_IO_MONITOR(socket, (flags & O_NONBLOCK) != O_NONBLOCK);
-	struct io_monitor peer_monitor = SOCKET_IO_MONITOR(socket->peer, (flags & O_NONBLOCK) != O_NONBLOCK);
+	bool blocking = (socket->file_handle->flags & O_NONBLOCK) != O_NONBLOCK;
+	bool peer_blocking = (socket->peer->file_handle->flags & O_NONBLOCK) != O_NONBLOCK;
+
+	struct io_monitor monitor = SOCKET_IO_MONITOR(socket, blocking);
+	struct io_monitor peer_monitor = SOCKET_IO_MONITOR(socket->peer, peer_blocking);
 
 	struct io_event connection = (struct io_event) {
 		.events = POLLOUT,
@@ -225,10 +249,13 @@ static int unix_connect(struct socket *socket, const struct socketaddr *addr, so
 
 	io_set(&monitor, POLLOUT);
 
-	if(socket->state != SOCKET_CONNECTING) {
+	if(target_socket->state != SOCKET_CONNECTING) {
 		set_errno(EHOSTUNREACH);
-		return 0;
+		return -1;
 	}
+
+	socket->file_handle->status &= ~POLLIN;	
+	socket->peer->file_handle->status &= ~POLLIN;
 
 	socket->state = SOCKET_CONNECTED;
 
@@ -297,28 +324,27 @@ static int unix_getpeername(struct socket *socket, struct socketaddr *_ret, sock
 static int unix_sendmsg(struct socket *socket, const struct msghdr *msg, int flags) {
 	struct file_handle *file_handle = socket->peer->file_handle;
 
-	struct io_monitor peer_monitor = SOCKET_IO_MONITOR(socket, (flags & MSG_DONTWAIT) == MSG_DONTWAIT);
+	bool blocking = (flags & MSG_DONTWAIT) != MSG_DONTWAIT;
+
+	struct io_monitor peer_monitor = SOCKET_IO_MONITOR(socket->peer, blocking);
 
 	void *bufferbase = msg->msg_iov[0].iov_base;
 	size_t transfer_size = msg->msg_iov[0].iov_len;
 
 	ssize_t ret = socket->peer->stream_ops->write(file_handle, bufferbase, transfer_size, file_handle->stat->st_size);
-
-	file_handle->stat->st_size += ret;
-	file_handle->position += ret;
-
-	print("waking file hande %x %x\n", socket->file_handle, socket->peer->file_handle);
-
 	io_set(&peer_monitor, POLLIN);
 
 	return ret;
 }
 
 static int unix_recvmsg(struct socket *socket, struct msghdr *msg, int flags) {
-	struct file_handle *file_handle = socket->peer->file_handle;
+	struct file_handle *file_handle = socket->file_handle;
 	off_t offset = file_handle->position;
 
-	struct io_monitor monitor = SOCKET_IO_MONITOR(socket->peer, (flags & MSG_DONTWAIT) != MSG_DONTWAIT);
+	bool blocking = (flags & MSG_DONTWAIT) != MSG_DONTWAIT;
+	blocking = false;
+
+	struct io_monitor monitor = SOCKET_IO_MONITOR(socket, blocking);
 	struct io_event data_to_read = {
 		.events = POLLIN,
 		.exclusive = true
@@ -331,7 +357,6 @@ static int unix_recvmsg(struct socket *socket, struct msghdr *msg, int flags) {
 		void *bufferbase = msg->msg_iov[i].iov_base;
 		size_t transfer_size = msg->msg_iov[i].iov_len;
 
-		print("recvmsg %x %x %x %x %x\n", file_handle, bufferbase, transfer_size, offset, file_handle->stat->st_size);
 		ret = socket->stream_ops->read(file_handle, bufferbase, transfer_size, offset);
 
 		if(!ret) {
@@ -342,6 +367,8 @@ static int unix_recvmsg(struct socket *socket, struct msghdr *msg, int flags) {
 
 		offset += ret;
 	}
+
+	file_handle->position = offset;
 
 	if(file_handle->position >= file_handle->stat->st_size) {
 		io_release(&monitor, POLLIN);

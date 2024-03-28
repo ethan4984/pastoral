@@ -66,7 +66,7 @@ struct pipe {
 };
 
 struct file_ops {
-	int (*open)(struct vfs_node *, struct file_handle *);
+	int (*open)(struct vfs_node *, struct file_handle *, int);
 	int (*close)(struct vfs_node *, struct file_handle *);
 	int (*unlink)(struct vfs_node*); 
 

@@ -65,6 +65,8 @@ ssize_t tty_handle_canon(struct tty *, void *, size_t);
 ssize_t tty_handle_raw(struct tty *, void *, size_t);
 void tty_handle_signal(struct tty *, char ch);
 
+int set_active_tty(const char *path);
+
 static inline void tty_lock(struct tty *tty) {
 	spinlock_irqsave(&tty->lock);
 }

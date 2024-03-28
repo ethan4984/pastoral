@@ -74,8 +74,9 @@ int memcmp(const char *str0, const char *str1, size_t n) {
 	return 0;
 }
 
+static char characters[] = "0123456789ABCDEF";
+
 static void sprint_print_number(char *str, int *write_cnt, size_t number, int base) {
-	static char characters[] = "0123456789ABCDEF";
 	int arr[50], cnt = 0;
 
 	do {

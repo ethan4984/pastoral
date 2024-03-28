@@ -39,7 +39,7 @@ static struct bitmap pts_bitmap = {
 static struct spinlock pty_lock;
 
 // Driver operations
-static int ptmx_open(struct vfs_node *node, struct file_handle *file);
+static int ptmx_open(struct vfs_node *node, struct file_handle *file, int);
 static ssize_t ptm_read(struct file_handle *file, void *buf, size_t count, off_t);
 static ssize_t ptm_write(struct file_handle *file, const void *buf, size_t count, off_t);
 static int ptm_ioctl(struct file_handle *file, uint64_t req, void *arg);
@@ -84,7 +84,7 @@ int pty_init() {
 	return 0;
 }
 
-static int ptmx_open(struct vfs_node*, struct file_handle *file) {
+static int ptmx_open(struct vfs_node*, struct file_handle *file, int) {
 	spinlock_irqsave(&pty_lock);
 
 	int slave_no = bitmap_alloc(&pts_bitmap);

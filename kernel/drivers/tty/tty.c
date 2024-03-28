@@ -7,7 +7,7 @@
 #include <sched/signal.h>
 #include <lib/debug.h>
 
-static int tty_open(struct vfs_node *, struct file_handle *file);
+static int tty_open(struct vfs_node *, struct file_handle *file, int flags);
 static ssize_t tty_read(struct file_handle *file, void *buf, size_t count, off_t);
 static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count, off_t);
 static int tty_close(struct vfs_node *, struct file_handle *file);
@@ -49,15 +49,15 @@ int tty_unregister(dev_t dev) {
 	return cdev_unregister(dev);
 }
 
-static int tty_open(struct vfs_node *, struct file_handle *file) {
+static int tty_open(struct vfs_node *, struct file_handle *file, int flags) {
 	struct tty *tty = file->private_data;
 	if(__atomic_fetch_add(&tty->refcnt, 1, __ATOMIC_RELAXED) == 0)
 		if(tty->driver->ops->connect)
 			if(tty->driver->ops->connect(tty) == -1)
 				return -1;
 
-	if(!tty->session && !(file->flags & O_NOCTTY)
-		&& (CURRENT_TASK->group->pgid == CURRENT_TASK->session->pgid_leader)) {
+	if((tty->session == NULL) && (!((flags & O_NOCTTY) == O_NOCTTY)) &&
+			(CURRENT_TASK->group->pgid == CURRENT_TASK->session->pgid_leader)) {
 		tty->session = CURRENT_TASK->session;
 		tty->foreground_group = CURRENT_TASK->group;
 		CURRENT_TASK->session->tty = tty;
@@ -141,6 +141,7 @@ static ssize_t tty_write(struct file_handle *file, const void *buf, size_t count
 			spinlock_irqsave(&tty->output_lock);
 		}
 	}
+
 	spinrelease_irqsave(&tty->output_lock);
 	tty->driver->ops->flush_output(tty);
 
@@ -167,7 +168,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 	tty_lock(tty);
 	switch(req) {
 		case TIOCGPGRP: {
-#if defined(SYSCALL_DEBUG_FD)
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 			print("syscall: [pid %x, tid %x] tty_ioctl (TIOCGPGRP)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			if(CURRENT_TASK->session != tty->session) {
@@ -183,7 +184,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 		}
 
 		case TIOCSPGRP: {
-#if defined(SYSCALL_DEBUG_FD)
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 			print("syscall: [pid %x, tid %x] tty_ioctl (TIOCSPGRP)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 
@@ -208,11 +209,12 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 		}
 
 		case TIOCSCTTY: {
-#if defined(SYSCALL_DEBUG_FD)
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 			print("syscall: [pid %x, tid %x] tty_ioctl (TIOCSCTTY)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			if(tty->session || (CURRENT_TASK->session->pgid_leader
 				!= CURRENT_TASK->group->pgid)) {
+					print("Failing with eperm\n");
 					set_errno(EPERM);
 					return -1;
 			}
@@ -225,7 +227,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 		}
 
 		case TCGETS: {
-#if defined(SYSCALL_DEBUG_FD)
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 			print("syscall: [pid %x, tid %x] tty_ioctl (TCGETS)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			spinlock_irqsave(&tty->input_lock);
@@ -239,7 +241,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 		}
 
 		case TCSETS: {
-#if defined(SYSCALL_DEBUG_FD)
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 			print("syscall: [pid %x, tid %x] tty_ioctl (TCSETS)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			spinlock_irqsave(&tty->input_lock);
@@ -253,7 +255,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 		}
 
 		case TCSETSW: {
-#if defined(SYSCALL_DEBUG_FD)
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 			print("syscall: [pid %x, tid %x] tty_ioctl (TCSETW)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			while(__atomic_load_n(&tty->output_queue.items, __ATOMIC_RELAXED));
@@ -268,7 +270,7 @@ static int tty_ioctl(struct file_handle *file, uint64_t req, void *arg) {
 		}
 
 		case TCSETSF: {
-#if defined(SYSCALL_DEBUG_FD)
+#if defined(SYSCALL_DEBUG_FD) || defined(SYSCALL_DEBUG_ALL)
 			print("syscall: [pid %x, tid %x] tty_ioctl (TCSETF)\n", CORE_LOCAL->pid, CORE_LOCAL->tid);
 #endif
 			while(__atomic_load_n(&tty->output_queue.items, __ATOMIC_RELAXED));
@@ -325,4 +327,26 @@ void tty_handle_signal(struct tty *tty, char ch) {
 			signal_send_group(NULL, tty->foreground_group, SIGTSTP);
 		}
 	}
+}
+
+int set_active_tty(const char *path) {
+	struct tty *tty;
+
+	int fd = fd_openat(AT_FDCWD, path, O_NOCTTY, O_RDONLY);
+	if(fd == -1) {
+		return -1;
+	}
+
+	struct fd_handle *fd_handle = fd_translate(fd);
+	struct file_handle *file_handle = fd_handle->file_handle;
+	tty = file_handle->private_data;
+
+	fd_close(fd);
+
+	if(tty) {
+		print("Setting active tty %x\n", tty);
+		active_tty = tty;
+	}
+
+	return (tty == NULL) ? -1 : 0;
 }

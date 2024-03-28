@@ -15,7 +15,7 @@
 #include <drivers/pci.h>
 #include <drivers/pit.h>
 #include <drivers/iommu/intel/vtd.h>
-#include <drivers/tty/limine_term.h>
+#include <drivers/tty/terminal.h>
 #include <drivers/fbdev.h>
 #include <fs/vfs.h>
 #include <fs/initramfs.h>
@@ -27,10 +27,15 @@
 #include <drivers/keyboard.h>
 #include <drivers/random.h>
 
+#ifndef LIMINE_TERMINAL
+#include <drivers/flanterm/flanterm.h>
+#include <drivers/flanterm/backends/fb.h>
+#endif
+
 static volatile struct limine_stack_size_request limine_stack_size_request = {
 	.id = LIMINE_STACK_SIZE_REQUEST,
 	.revision = 0,
-	.stack_size = 0x8000
+	.stack_size = 0x10000
 };
 
 static volatile struct limine_hhdm_request limine_hhdm_request = {
@@ -70,7 +75,6 @@ void init_process() {
 		"FBDEV=/dev/fb0",
 		NULL
 	};
-
 
 	struct sched_arguments *arguments = alloc(sizeof(struct sched_arguments));
 
@@ -117,12 +121,14 @@ void pastoral_thread() {
 
 	initramfs();
 
-	limine_terminals_init();
+	struct limine_framebuffer **framebuffers = limine_framebuffer_request.response->framebuffers;
+	uint64_t framebuffer_count = limine_framebuffer_request.response->framebuffer_count;
+
+	terminals_init(*framebuffers);
 	self_tty_init();
 	pty_init();
 
-	struct limine_framebuffer **framebuffers = limine_framebuffer_request.response->framebuffers;
-	uint64_t framebuffer_count = limine_framebuffer_request.response->framebuffer_count;
+	set_active_tty("/dev/tty0");
 
 	for(uint64_t i = 0; i < framebuffer_count; i++) {
 		fbdev_init_device(framebuffers[i]);
@@ -150,7 +156,7 @@ void pastoral_entry(void) {
 
 	debug_init();
 
-	print("Pastoral unleashes the real power of the cpu\n");
+	print("Pastoral unleashes the real power of the cpu %x\n", limine_kernel_file_request.response->kernel_file->size);
 
 	init_cpu_features();
 

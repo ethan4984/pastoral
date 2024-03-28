@@ -258,12 +258,12 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 		return -1;
 	}
 
-	if((fd_handle->file_handle->flags & O_ACCMODE) != O_WRONLY
-		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
-		file_unlock(fd_handle->file_handle);
-		set_errno(EBADF);
-		return -1;
-	}
+//	if((fd_handle->file_handle->flags & O_ACCMODE) != O_WRONLY
+//		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
+//		file_unlock(fd_handle->file_handle);
+//		set_errno(EBADF);
+//		return -1;
+//	}
 
 	if ((fd_handle->file_handle->flags & O_APPEND) && !(S_ISFIFO(stat->st_mode))) {
 		if(!S_ISSOCK(stat->st_mode)) fd_handle->file_handle->position = stat->st_size;
@@ -285,10 +285,11 @@ ssize_t fd_write(int fd, const void *buf, size_t count) {
 	if(ret != -1) {
 		stat_update_time(stat, STAT_MOD | STAT_STATUS);
 
-		fd_handle->file_handle->status |= POLLIN;
-		waitq_arise(fd_handle->file_handle->trigger, CURRENT_TASK);
-
-		if(!S_ISSOCK(stat->st_mode)) fd_handle->file_handle->position += ret;
+		if(!S_ISSOCK(stat->st_mode)) {
+			fd_handle->file_handle->position += ret;
+			fd_handle->file_handle->status |= POLLIN;
+			waitq_arise(fd_handle->file_handle->trigger, CURRENT_TASK);
+		}
 	}
 
 	file_unlock(fd_handle->file_handle);
@@ -317,12 +318,12 @@ ssize_t fd_read(int fd, void *buf, size_t count) {
 		return -1;
 	}
 
-	if((fd_handle->file_handle->flags & O_ACCMODE) != O_RDONLY
-		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
-		file_unlock(fd_handle->file_handle);
-		set_errno(EBADF);
-		return -1;
-	}
+//	if((fd_handle->file_handle->flags & O_ACCMODE) != O_RDONLY
+//		&& (fd_handle->file_handle->flags & O_ACCMODE) != O_RDWR) {
+//		file_unlock(fd_handle->file_handle);
+//		set_errno(EBADF);
+//		return -1;
+//	}
 
 	ssize_t ret;
 	off_t off = fd_handle->file_handle->position;
@@ -541,13 +542,13 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	new_file_handle->trigger = EVENT_DEFAULT_TRIGGER(&new_file_handle->waitq);
 
 	if(S_ISCHR(vfs_node->stat->st_mode)) {
-		if(cdev_open(vfs_node, new_file_handle) == -1) {
+		if(cdev_open(vfs_node, new_file_handle, flags) == -1) {
 			file_put(new_file_handle);
 			return -1;
 		}
 	} else {
 		if(fops->open) {
-			if(fops->open(vfs_node, new_file_handle) == -1) {
+			if(fops->open(vfs_node, new_file_handle, flags) == -1) {
 				file_put(new_file_handle);
 				return -1;
 			}
@@ -569,14 +570,6 @@ int fd_openat(int dirfd, const char *path, int flags, mode_t mode) {
 	}
 
 	hash_table_push(&current_task->fd_table->fd_list, &new_fd_handle->fd_number, new_fd_handle, sizeof(new_fd_handle->fd_number));
-
-	if(new_fd_handle->fd_number == 8) {
-		print("fd 8 %s\n", path);	
-	} else if(new_fd_handle->fd_number == 4) {
-		print("fd 4 %s\n", path);	
-	} else if(new_fd_handle->fd_number == 6) { 
-		print("fd 6 %s\n", path);	
-	}
 
 	return new_fd_handle->fd_number;
 }
@@ -837,9 +830,9 @@ int fd_fchownat(int fd, const char *path, uid_t uid, gid_t gid, int flag) {
 int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 	struct waitq waitq = { 0 };
 
-	//if(timespec) {
-	//	waitq_set_timer(&waitq, timespec);
-	//}
+	if(timespec) {
+		waitq_set_timer(&waitq, timespec);
+	}
 
 	VECTOR(struct file_handle*) handle_list = { 0 };
 
@@ -874,8 +867,6 @@ int fd_poll(struct pollfd *fds, nfds_t nfds, struct timespec *timespec) {
 
 			if(handle->status & fds[i].events) {
 				fds[i].revents = handle->status & fds[i].events;
-				print("fd %d: revents %d\n", i, fds[i].revents);
-				//handle->status &= ~fds[i].revents;
 				ret++;
 			}
 		}

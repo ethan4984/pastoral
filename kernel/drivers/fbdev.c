@@ -9,7 +9,6 @@
 #include <cpu.h>
 #include <fs/cdev.h>
 
-
 VECTOR(struct fb_device*) fbdev_list;
 static int fb_minor = 0;
 
@@ -24,7 +23,6 @@ static struct file_ops fbdev_ops = {
 	.ioctl = fbdev_ioctl,
 	.shared = fbdev_shared
 };
-
 
 void fbdev_init_device(struct limine_framebuffer *framebuffer) {
 	struct fb_device *device = alloc(sizeof(struct fb_device));

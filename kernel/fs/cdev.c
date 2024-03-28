@@ -7,9 +7,11 @@
 static struct spinlock cdev_lock;
 static struct hash_table cdev_list;
 
-int cdev_open(struct vfs_node *node, struct file_handle *file) {
+int cdev_open(struct vfs_node *node, struct file_handle *file, int flags) {
 	spinlock_irqsave(&cdev_lock);
+
 	struct cdev *dev = hash_table_search(&cdev_list, &file->stat->st_rdev, sizeof(dev_t));
+
 	if(!dev) {
 		spinrelease_irqsave(&cdev_lock);
 		set_errno(ENODEV);
@@ -18,13 +20,15 @@ int cdev_open(struct vfs_node *node, struct file_handle *file) {
 
 	file->ops = dev->fops;
 	file->private_data = dev->private_data;
+
 	if(file->ops->open) {
 		spinrelease_irqsave(&cdev_lock);
-		int ret = file->ops->open(node, file);
+		int ret = file->ops->open(node, file, flags);
 		return ret;
 	}
 
 	spinrelease_irqsave(&cdev_lock);
+
 	return 0;
 }
 

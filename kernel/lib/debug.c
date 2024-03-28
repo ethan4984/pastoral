@@ -110,7 +110,7 @@ void print(const char *str, ...) {
 
 	syscnt++;
 	if(syscnt < 16000) {
-		return;
+		//return;
 	}
 
 	va_list arg;
