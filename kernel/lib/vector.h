@@ -11,7 +11,7 @@
 
 #define VECTOR_INIT(THIS, SIZE) \
 	(THIS).buffer_capacity = SIZE; \
-	(THIS).data = realloc((THIS).data, (THIS).buffer_capacity);
+	(THIS).data = realloc((THIS).data, (THIS).buffer_capacity * sizeof(*(THIS).data));
 
 #define VECTOR_PUSH(THIS, ELEMENT) ({ \
 	__label__ _ret; \
